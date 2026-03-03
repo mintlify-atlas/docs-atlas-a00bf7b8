@@ -1,0 +1,312 @@
+{
+  "projectType": "framework",
+  "projectName": "React Router",
+  "projectDescription": "A multi-strategy router for React bridging the gap from React 18 to React 19, usable as a full framework or minimal library",
+  "theme": "palm",
+  "primaryColor": "#CA2C31",
+  "lightColor": "#E94C50",
+  "darkColor": "#A01E22",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/picking-a-mode",
+              "getting-started/framework-mode",
+              "getting-started/data-mode",
+              "getting-started/declarative-mode"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/routing",
+              "concepts/loaders-and-actions",
+              "concepts/navigation",
+              "concepts/route-modules",
+              "concepts/data-fetching",
+              "concepts/form-handling",
+              "concepts/error-boundaries"
+            ]
+          },
+          {
+            "group": "Routing",
+            "pages": [
+              "routing/route-configuration",
+              "routing/nested-routes",
+              "routing/dynamic-segments",
+              "routing/index-routes",
+              "routing/layout-routes",
+              "routing/file-conventions"
+            ]
+          },
+          {
+            "group": "Data Loading",
+            "pages": [
+              "data/loaders",
+              "data/actions",
+              "data/fetchers",
+              "data/revalidation",
+              "data/optimistic-ui",
+              "data/client-data",
+              "data/resource-routes"
+            ]
+          },
+          {
+            "group": "Framework Features",
+            "pages": [
+              "framework/vite-plugin",
+              "framework/server-rendering",
+              "framework/type-generation",
+              "framework/middleware",
+              "framework/presets",
+              "framework/server-bundles"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/form-validation",
+              "guides/file-uploads",
+              "guides/meta-tags",
+              "guides/headers-and-cookies",
+              "guides/sessions",
+              "guides/error-handling",
+              "guides/navigation-blocking",
+              "guides/search-params",
+              "guides/accessibility",
+              "guides/view-transitions",
+              "guides/suspense",
+              "guides/spa-mode",
+              "guides/pre-rendering"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/data-strategy",
+              "advanced/lazy-route-discovery",
+              "advanced/code-splitting",
+              "advanced/hydration",
+              "advanced/progressive-enhancement",
+              "advanced/concurrency",
+              "advanced/race-conditions",
+              "advanced/hmr",
+              "advanced/instrumentation",
+              "advanced/react-server-components"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/node",
+              "deployment/cloudflare",
+              "deployment/express",
+              "deployment/custom-server"
+            ]
+          },
+          {
+            "group": "Migration",
+            "pages": [
+              "migration/from-v6",
+              "migration/from-remix"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Components",
+            "pages": [
+              "api/components/router-provider",
+              "api/components/browser-router",
+              "api/components/memory-router",
+              "api/components/routes",
+              "api/components/route",
+              "api/components/outlet",
+              "api/components/link",
+              "api/components/nav-link",
+              "api/components/form",
+              "api/components/navigate",
+              "api/components/scroll-restoration",
+              "api/components/await"
+            ]
+          },
+          {
+            "group": "Hooks",
+            "pages": [
+              "api/hooks/use-navigate",
+              "api/hooks/use-location",
+              "api/hooks/use-params",
+              "api/hooks/use-search-params",
+              "api/hooks/use-loader-data",
+              "api/hooks/use-action-data",
+              "api/hooks/use-route-loader-data",
+              "api/hooks/use-fetcher",
+              "api/hooks/use-fetchers",
+              "api/hooks/use-navigation",
+              "api/hooks/use-submit",
+              "api/hooks/use-revalidator",
+              "api/hooks/use-matches",
+              "api/hooks/use-route-error",
+              "api/hooks/use-blocker",
+              "api/hooks/use-href",
+              "api/hooks/use-outlet",
+              "api/hooks/use-routes"
+            ]
+          },
+          {
+            "group": "Routers",
+            "pages": [
+              "api/routers/create-browser-router",
+              "api/routers/create-memory-router",
+              "api/routers/create-hash-router"
+            ]
+          },
+          {
+            "group": "Route Module",
+            "pages": [
+              "api/route-module/loader",
+              "api/route-module/action",
+              "api/route-module/default",
+              "api/route-module/error-boundary",
+              "api/route-module/headers",
+              "api/route-module/links",
+              "api/route-module/meta",
+              "api/route-module/should-revalidate",
+              "api/route-module/handle",
+              "api/route-module/client-loader",
+              "api/route-module/client-action"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utils/redirect",
+              "api/utils/json",
+              "api/utils/data",
+              "api/utils/defer",
+              "api/utils/is-route-error-response",
+              "api/utils/match-routes",
+              "api/utils/match-path",
+              "api/utils/resolve-path",
+              "api/utils/generate-path"
+            ]
+          },
+          {
+            "group": "Server APIs",
+            "pages": [
+              "api/server/create-request-handler",
+              "api/server/create-cookie",
+              "api/server/create-session-storage",
+              "api/server/create-cookie-session-storage",
+              "api/server/create-memory-session-storage"
+            ]
+          },
+          {
+            "group": "Vite Plugin",
+            "pages": [
+              "api/vite/react-router",
+              "api/vite/cloudflare"
+            ]
+          },
+          {
+            "group": "Config",
+            "pages": [
+              "api/config/routes-config",
+              "api/config/react-router-config"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-strategy routing (Declarative, Data, Framework modes)",
+    "Type-safe routing with automatic TypeScript generation",
+    "Nested routes with parallel data loading",
+    "Server-side rendering and hydration",
+    "Optimistic UI with fetchers",
+    "File-based routing conventions",
+    "Loaders and actions for data management",
+    "Built-in error boundaries",
+    "Form handling with progressive enhancement",
+    "Vite plugin for full-stack development",
+    "Support for Node, Cloudflare, and custom servers",
+    "React Server Components support (experimental)",
+    "Code splitting and lazy loading",
+    "Navigation blocking and view transitions"
+  ],
+  "publicApiSurface": [
+    "RouterProvider",
+    "BrowserRouter",
+    "MemoryRouter",
+    "Routes",
+    "Route",
+    "Outlet",
+    "Link",
+    "NavLink",
+    "Form",
+    "Navigate",
+    "ScrollRestoration",
+    "Await",
+    "useNavigate",
+    "useLocation",
+    "useParams",
+    "useSearchParams",
+    "useLoaderData",
+    "useActionData",
+    "useRouteLoaderData",
+    "useFetcher",
+    "useFetchers",
+    "useNavigation",
+    "useSubmit",
+    "useRevalidator",
+    "useMatches",
+    "useRouteError",
+    "useBlocker",
+    "useHref",
+    "useOutlet",
+    "useRoutes",
+    "createBrowserRouter",
+    "createMemoryRouter",
+    "createHashRouter",
+    "redirect",
+    "json",
+    "data",
+    "defer",
+    "isRouteErrorResponse",
+    "matchRoutes",
+    "matchPath",
+    "resolvePath",
+    "generatePath",
+    "createRequestHandler",
+    "createCookie",
+    "createSessionStorage",
+    "createCookieSessionStorage",
+    "createMemorySessionStorage",
+    "loader",
+    "action",
+    "ErrorBoundary",
+    "headers",
+    "links",
+    "meta",
+    "shouldRevalidate",
+    "handle",
+    "clientLoader",
+    "clientAction"
+  ]
+}
