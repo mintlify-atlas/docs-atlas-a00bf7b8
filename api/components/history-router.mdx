@@ -1,0 +1,234 @@
+---
+title: unstable_HistoryRouter
+description: API reference for the unstable_HistoryRouter component in React Router
+---
+
+# unstable_HistoryRouter
+
+<Warning>
+This is an unstable API. It's highly discouraged to use your own history object as it may add two versions of the history library to your bundles unless you use the exact same version that React Router uses internally.
+</Warning>
+
+A low-level declarative `<Router>` that accepts a pre-instantiated history object. This component is primarily for advanced use cases where you need full control over the history instance.
+
+## Import
+
+```tsx
+import { unstable_HistoryRouter as HistoryRouter } from "react-router";
+```
+
+## Type Declaration
+
+```tsx
+interface HistoryRouterProps {
+  basename?: string;
+  children?: React.ReactNode;
+  history: History;
+  unstable_useTransitions?: boolean;
+}
+
+function unstable_HistoryRouter(props: HistoryRouterProps): React.ReactElement;
+```
+
+## Props
+
+<ParamField path="history" type="History" required>
+  A pre-instantiated history object from the `history` library. This is the only required prop.
+  
+  **Important**: You must use the exact same version of the `history` library that React Router uses internally to avoid bundle size issues.
+</ParamField>
+
+<ParamField path="basename" type="string">
+  The base URL for all locations. If your app is served from a subdirectory, set this to the subdirectory path.
+</ParamField>
+
+<ParamField path="children" type="React.ReactNode">
+  Your route configuration, typically `<Routes>` and `<Route>` elements.
+</ParamField>
+
+<ParamField path="unstable_useTransitions" type="boolean">
+  Control whether router state updates are wrapped in `React.startTransition`.
+  
+  - `undefined` (default): All state updates are wrapped in `startTransition`
+  - `true`: Link/Form navigations and all state updates use `startTransition`
+  - `false`: Router doesn't use `startTransition` at all
+  
+  See [React Transitions](/explanation/react-transitions) for more details.
+</ParamField>
+
+## Examples
+
+### Basic Usage
+
+```tsx
+import { unstable_HistoryRouter as HistoryRouter } from "react-router";
+import { createBrowserHistory } from "history";
+
+// Create history instance OUTSIDE of component
+const history = createBrowserHistory();
+
+function App() {
+  return (
+    <HistoryRouter history={history}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+      </Routes>
+    </HistoryRouter>
+  );
+}
+```
+
+<Warning>
+Always create the history instance **outside** of your component. Creating it inside will cause the history to be recreated on every render, breaking navigation.
+</Warning>
+
+### With Custom History Configuration
+
+```tsx
+import { unstable_HistoryRouter as HistoryRouter } from "react-router";
+import { createBrowserHistory } from "history";
+
+// Configure history with custom options
+const history = createBrowserHistory({
+  // Custom window for iframe scenarios
+  window: customWindow,
+  // Enable v5 compatibility
+  v5Compat: true,
+});
+
+function App() {
+  return (
+    <HistoryRouter history={history}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+      </Routes>
+    </HistoryRouter>
+  );
+}
+```
+
+### Accessing History Outside React
+
+One use case for `HistoryRouter` is when you need to access the history object outside of React components, such as in Redux middleware or analytics:
+
+```tsx
+import { unstable_HistoryRouter as HistoryRouter } from "react-router";
+import { createBrowserHistory } from "history";
+
+// Create shared history instance
+export const history = createBrowserHistory();
+
+// Use in Redux middleware
+const analyticsMiddleware = (store) => (next) => (action) => {
+  // Track navigation
+  if (action.type === 'NAVIGATE') {
+    history.push(action.payload.path);
+  }
+  return next(action);
+};
+
+// Use in React app
+function App() {
+  return (
+    <HistoryRouter history={history}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+      </Routes>
+    </HistoryRouter>
+  );
+}
+```
+
+### Testing with Custom History
+
+```tsx
+import { unstable_HistoryRouter as HistoryRouter } from "react-router";
+import { createMemoryHistory } from "history";
+import { render } from "@testing-library/react";
+
+test("renders at specific route", () => {
+  const history = createMemoryHistory();
+  history.push("/test");
+  
+  render(
+    <HistoryRouter history={history}>
+      <Routes>
+        <Route path="/test" element={<div>Test Page</div>} />
+      </Routes>
+    </HistoryRouter>
+  );
+  
+  // Assertions...
+});
+```
+
+## When to Use
+
+Use `unstable_HistoryRouter` only when:
+
+1. **Redux integration**: You need to access history in Redux middleware or sagas
+2. **Analytics**: You need to track navigation events outside React components
+3. **Custom history**: You need specific history library features not exposed by React Router
+4. **Migration**: You're migrating from React Router v5 and need time to refactor
+
+<Warning>
+Using a custom history object has significant downsides:
+- **Bundle size**: May duplicate the history library in your bundle
+- **Version conflicts**: Must match React Router's exact history version
+- **Maintenance**: More difficult to upgrade React Router
+- **Stability**: This API is marked as unstable and may change
+</Warning>
+
+## Alternatives
+
+For most use cases, use these alternatives instead:
+
+<CardGroup cols={2}>
+  <Card title="BrowserRouter" icon="globe" href="/api/components/browser-router">
+    Standard browser routing - use this for most apps
+  </Card>
+  <Card title="useNavigate" icon="arrow-right" href="/api/hooks/use-navigate">
+    Programmatic navigation within React components
+  </Card>
+  <Card title="createBrowserRouter" icon="route" href="/api/routers/create-browser-router">
+    Data Router API for loaders and actions
+  </Card>
+  <Card title="MemoryRouter" icon="memory" href="/api/components/memory-router">
+    For testing - provides history without DOM
+  </Card>
+</CardGroup>
+
+## Migration from v5
+
+If you're migrating from React Router v5 and using a custom history:
+
+```tsx
+// React Router v5
+import { Router } from "react-router-dom";
+import { createBrowserHistory } from "history";
+
+const history = createBrowserHistory();
+
+<Router history={history}>
+  {/* routes */}
+</Router>
+
+// React Router v7 (migration step)
+import { unstable_HistoryRouter as HistoryRouter } from "react-router";
+import { createBrowserHistory } from "history";
+
+const history = createBrowserHistory();
+
+<HistoryRouter history={history}>
+  {/* routes */}
+</HistoryRouter>
+```
+
+**Better**: Refactor to use `<BrowserRouter>` or `createBrowserRouter()` and eliminate the custom history dependency.
+
+## See Also
+
+- [`<BrowserRouter>`](/api/components/browser-router) - Recommended for most apps
+- [`<MemoryRouter>`](/api/components/memory-router) - For testing
+- [`useNavigate`](/api/hooks/use-navigate) - Programmatic navigation hook

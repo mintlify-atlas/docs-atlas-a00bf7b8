@@ -145,6 +145,8 @@
             "pages": [
               "api/components/router-provider",
               "api/components/browser-router",
+              "api/components/hash-router",
+              "api/components/history-router",
               "api/components/memory-router",
               "api/components/routes",
               "api/components/route",
@@ -162,6 +164,7 @@
             "pages": [
               "api/hooks/use-navigate",
               "api/hooks/use-location",
+              "api/hooks/use-navigation-type",
               "api/hooks/use-params",
               "api/hooks/use-search-params",
               "api/hooks/use-loader-data",
@@ -176,8 +179,18 @@
               "api/hooks/use-route-error",
               "api/hooks/use-blocker",
               "api/hooks/use-href",
+              "api/hooks/use-resolved-path",
               "api/hooks/use-outlet",
-              "api/hooks/use-routes"
+              "api/hooks/use-outlet-context",
+              "api/hooks/use-routes",
+              "api/hooks/use-async-value",
+              "api/hooks/use-async-error",
+              "api/hooks/use-in-router-context",
+              "api/hooks/use-form-action",
+              "api/hooks/use-before-unload",
+              "api/hooks/use-view-transition-state",
+              "api/hooks/use-scroll-restoration",
+              "api/hooks/use-prompt"
             ]
           },
           {

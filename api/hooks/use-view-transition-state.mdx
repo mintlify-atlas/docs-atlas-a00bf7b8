@@ -1,0 +1,402 @@
+---
+title: useViewTransitionState
+---
+
+# `useViewTransitionState`
+
+Returns `true` when there is an active View Transition to the specified location. This can be used to apply finer-grained styles to elements to further customize the view transition.
+
+```tsx
+import { useViewTransitionState } from "react-router";
+
+function ImagePreview({ src }: { src: string }) {
+  const isTransitioning = useViewTransitionState("/images/123");
+
+  return (
+    <img
+      src={src}
+      style={{
+        viewTransitionName: isTransitioning ? "image-expand" : "",
+      }}
+    />
+  );
+}
+```
+
+## Parameters
+
+<ParamField path="to" type="To" required>
+  The location to check for an active View Transition. Can be a string path or a partial `Path` object with `pathname`, `search`, and `hash`.
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <ParamField path="relative" type='"route" | "path"' optional default='"route"'>
+    The relative routing type to use when resolving the `to` location:
+    
+    - `"route"` (default) - Relative to the route hierarchy
+    - `"path"` - Relative to the URL path segments
+  </ParamField>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="isTransitioning" type="boolean">
+  `true` if there is an active View Transition to the specified location, otherwise `false`.
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useViewTransitionState(
+  to: To,
+  options?: { relative?: "route" | "path" }
+): boolean;
+
+type To = string | Partial<Path>;
+
+interface Path {
+  pathname: string;
+  search: string;
+  hash: string;
+}
+```
+
+## Usage Examples
+
+### Image Gallery Transitions
+
+```tsx
+import { useViewTransitionState, Link } from "react-router";
+
+function ImageGallery({ images }: { images: Image[] }) {
+  return (
+    <div className="gallery">
+      {images.map((image) => (
+        <ImageThumbnail key={image.id} image={image} />
+      ))}
+    </div>
+  );
+}
+
+function ImageThumbnail({ image }: { image: Image }) {
+  const to = `/images/${image.id}`;
+  const isTransitioning = useViewTransitionState(to);
+
+  return (
+    <Link to={to} viewTransition>
+      <img
+        src={image.thumbnailUrl}
+        alt={image.alt}
+        style={{
+          viewTransitionName: isTransitioning ? `image-${image.id}` : "",
+        }}
+      />
+    </Link>
+  );
+}
+```
+
+### Animated List Items
+
+```tsx
+import { useViewTransitionState, Link } from "react-router";
+
+function ProductList({ products }: { products: Product[] }) {
+  return (
+    <ul>
+      {products.map((product) => (
+        <ProductItem key={product.id} product={product} />
+      ))}
+    </ul>
+  );
+}
+
+function ProductItem({ product }: { product: Product }) {
+  const to = `/products/${product.id}`;
+  const isTransitioning = useViewTransitionState(to);
+
+  return (
+    <li
+      style={{
+        viewTransitionName: isTransitioning ? `product-${product.id}` : "",
+      }}
+    >
+      <Link to={to} viewTransition>
+        <h3>{product.name}</h3>
+        <p>{product.description}</p>
+      </Link>
+    </li>
+  );
+}
+```
+
+### Conditional Transition Styles
+
+```tsx
+import { useViewTransitionState } from "react-router";
+
+function Card({ id, title }: { id: string; title: string }) {
+  const isExpanding = useViewTransitionState(`/cards/${id}`);
+  const isCollapsing = useViewTransitionState("/cards");
+
+  return (
+    <div
+      className="card"
+      style={{
+        viewTransitionName: isExpanding || isCollapsing ? `card-${id}` : "",
+      }}
+    >
+      <h2>{title}</h2>
+    </div>
+  );
+}
+```
+
+### Multiple Transition Elements
+
+```tsx
+import { useViewTransitionState, Link } from "react-router";
+
+function ArticlePreview({ article }: { article: Article }) {
+  const to = `/articles/${article.slug}`;
+  const isTransitioning = useViewTransitionState(to);
+
+  return (
+    <article>
+      <Link to={to} viewTransition>
+        <img
+          src={article.coverImage}
+          style={{
+            viewTransitionName: isTransitioning
+              ? `article-image-${article.slug}`
+              : "",
+          }}
+        />
+        <h2
+          style={{
+            viewTransitionName: isTransitioning
+              ? `article-title-${article.slug}`
+              : "",
+          }}
+        >
+          {article.title}
+        </h2>
+      </Link>
+    </article>
+  );
+}
+```
+
+## Common Patterns
+
+### Shared Element Transitions
+
+```tsx
+import { useViewTransitionState, useParams, Link } from "react-router";
+
+// List view
+function MovieList({ movies }: { movies: Movie[] }) {
+  return (
+    <div>
+      {movies.map((movie) => (
+        <MovieCard key={movie.id} movie={movie} />
+      ))}
+    </div>
+  );
+}
+
+function MovieCard({ movie }: { movie: Movie }) {
+  const to = `/movies/${movie.id}`;
+  const isTransitioning = useViewTransitionState(to);
+
+  return (
+    <Link to={to} viewTransition>
+      <img
+        src={movie.poster}
+        style={{
+          viewTransitionName: isTransitioning ? `movie-poster-${movie.id}` : "",
+        }}
+      />
+    </Link>
+  );
+}
+
+// Detail view
+function MovieDetail() {
+  const { id } = useParams();
+  const isTransitioning = useViewTransitionState("/movies");
+
+  return (
+    <div>
+      <img
+        src={movie.poster}
+        style={{
+          viewTransitionName: isTransitioning ? `movie-poster-${id}` : "",
+        }}
+      />
+    </div>
+  );
+}
+```
+
+### Dynamic Transition Names
+
+```tsx
+import { useViewTransitionState } from "react-router";
+
+function DynamicTransition({ item, targetPath }: { item: Item; targetPath: string }) {
+  const isTransitioning = useViewTransitionState(targetPath);
+
+  const transitionName = isTransitioning
+    ? `${item.type}-${item.id}`
+    : "";
+
+  return (
+    <div
+      style={{
+        viewTransitionName: transitionName,
+      }}
+    >
+      {item.content}
+    </div>
+  );
+}
+```
+
+### Back Navigation Transitions
+
+```tsx
+import { useViewTransitionState, useNavigate } from "react-router";
+
+function DetailView({ id }: { id: string }) {
+  const navigate = useNavigate();
+  const isReturning = useViewTransitionState("/list");
+
+  return (
+    <div
+      style={{
+        viewTransitionName: isReturning ? `item-${id}` : "",
+      }}
+    >
+      <button onClick={() => navigate("/list", { viewTransition: true })}>
+        Back to List
+      </button>
+      {/* Detail content */}
+    </div>
+  );
+}
+```
+
+## CSS Integration
+
+### Defining View Transitions
+
+```css
+/* Define the transition for the expanding image */
+::view-transition-old(image-expand),
+::view-transition-new(image-expand) {
+  animation-duration: 0.3s;
+  animation-timing-function: ease-in-out;
+}
+
+/* Customize the transition direction */
+::view-transition-old(image-expand) {
+  animation-name: shrink;
+}
+
+::view-transition-new(image-expand) {
+  animation-name: expand;
+}
+
+@keyframes expand {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes shrink {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+}
+```
+
+### Complex Transitions
+
+```tsx
+import { useViewTransitionState } from "react-router";
+
+function ComplexCard({ id }: { id: string }) {
+  const isTransitioning = useViewTransitionState(`/items/${id}`);
+
+  return (
+    <div className={isTransitioning ? "transitioning" : ""}>
+      <div
+        className="card-image"
+        style={{
+          viewTransitionName: isTransitioning ? `card-image-${id}` : "",
+        }}
+      />
+      <div
+        className="card-title"
+        style={{
+          viewTransitionName: isTransitioning ? `card-title-${id}` : "",
+        }}
+      />
+      <div
+        className="card-content"
+        style={{
+          viewTransitionName: isTransitioning ? `card-content-${id}` : "",
+        }}
+      />
+    </div>
+  );
+}
+```
+
+## Requirements
+
+1. **View transitions must be enabled** via the `viewTransition` prop on navigation:
+
+   ```tsx
+   <Link to="/path" viewTransition>Link</Link>
+   <Form viewTransition>...</Form>
+   navigate("/path", { viewTransition: true });
+   submit(data, { viewTransition: true });
+   ```
+
+2. **Browser support** - View Transitions API is not supported in all browsers
+
+3. **Must be used within RouterProvider** from `react-router-dom`
+
+## Browser Support
+
+View Transitions are a modern web API with limited browser support. Check [Can I Use](https://caniuse.com/view-transitions) for current browser compatibility.
+
+For unsupported browsers, the transition simply won't occur, and navigation will work normally.
+
+## Notes
+
+- Available in Framework and Data modes only
+- Must be used within `react-router-dom`'s `RouterProvider` (not the one from `react-router`)
+- Returns `true` for both forward and backward transitions to the specified location
+- The `viewTransitionName` CSS property must be set for transitions to work
+- Each `viewTransitionName` should be unique within the document
+- Transitions work bidirectionally (going to and coming from the location)
+
+## Related
+
+- [`<Link viewTransition>`](/api/components/link#viewtransition) - Enable view transitions on links
+- [`<Form viewTransition>`](/api/components/form#viewtransition) - Enable view transitions on form submissions
+- [`useNavigate`](/api/hooks/use-navigate) - Navigate programmatically with view transitions
+- [View Transitions API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API) - MDN documentation

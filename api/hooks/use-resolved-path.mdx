@@ -1,0 +1,370 @@
+---
+title: useResolvedPath
+---
+
+# `useResolvedPath`
+
+Resolves the pathname of the given `to` value against the current location. Similar to `useHref`, but returns a `Path` object instead of a string.
+
+```tsx
+import { useResolvedPath } from "react-router";
+
+function SomeComponent() {
+  // If the user is at /dashboard/profile
+  const path = useResolvedPath("../accounts");
+  path.pathname; // "/dashboard/accounts"
+  path.search; // ""
+  path.hash; // ""
+}
+```
+
+## Parameters
+
+<ParamField path="to" type="To" required>
+  The path to resolve. Can be a string or a partial `Path` object with `pathname`, `search`, and `hash`.
+  
+  ```tsx
+  // String path
+  useResolvedPath("/users");
+  useResolvedPath("../settings");
+  
+  // Path object
+  useResolvedPath({
+    pathname: "/users",
+    search: "?sort=name",
+    hash: "#section",
+  });
+  ```
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <ParamField path="relative" type='"route" | "path"' optional default='"route"'>
+    Defaults to `"route"` so routing is relative to the route tree.
+    
+    Set to `"path"` to make relative routing operate against path segments instead.
+    
+    - `"route"` - Relative to the route hierarchy
+    - `"path"` - Relative to the URL path
+  </ParamField>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="path" type="Path">
+  A `Path` object with the following properties:
+  
+  <ResponseField name="pathname" type="string">
+    The resolved pathname.
+  </ResponseField>
+  
+  <ResponseField name="search" type="string">
+    The search/query string (including the `?` prefix).
+  </ResponseField>
+  
+  <ResponseField name="hash" type="string">
+    The hash fragment (including the `#` prefix).
+  </ResponseField>
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useResolvedPath(
+  to: To,
+  options?: { relative?: "route" | "path" }
+): Path;
+
+type To = string | Partial<Path>;
+
+interface Path {
+  pathname: string;
+  search: string;
+  hash: string;
+}
+```
+
+## Usage Examples
+
+### Basic Path Resolution
+
+```tsx
+import { useResolvedPath } from "react-router";
+
+function NavigationItem() {
+  const path = useResolvedPath("/users");
+  
+  console.log(path);
+  // {
+  //   pathname: "/users",
+  //   search: "",
+  //   hash: ""
+  // }
+
+  return <div>{path.pathname}</div>;
+}
+```
+
+### Relative Path Resolution
+
+```tsx
+import { useResolvedPath } from "react-router";
+
+// Current location: /dashboard/settings/profile
+
+function SettingsNav() {
+  const accountsPath = useResolvedPath("../accounts");
+  console.log(accountsPath.pathname); // "/dashboard/settings/accounts"
+
+  const homePath = useResolvedPath("../../");
+  console.log(homePath.pathname); // "/dashboard"
+
+  const currentPath = useResolvedPath(".");
+  console.log(currentPath.pathname); // "/dashboard/settings/profile"
+
+  return <nav>{/* Navigation items */}</nav>;
+}
+```
+
+### Resolving Path Objects
+
+```tsx
+import { useResolvedPath } from "react-router";
+
+function SearchLink() {
+  const path = useResolvedPath({
+    pathname: "/search",
+    search: "?q=react-router",
+    hash: "#results",
+  });
+
+  console.log(path);
+  // {
+  //   pathname: "/search",
+  //   search: "?q=react-router",
+  //   hash: "#results"
+  // }
+
+  return <a href={`${path.pathname}${path.search}${path.hash}`}>Search</a>;
+}
+```
+
+### Route vs Path Relative
+
+```tsx
+import { useResolvedPath } from "react-router";
+
+// Route hierarchy:
+// <Route path="/blog" element={<Blog />}>
+//   <Route path=":postId" element={<Post />}>
+//     <Route path="edit" element={<Edit />} />
+//   </Route>
+// </Route>
+
+// Current URL: /blog/123/edit
+
+function EditPost() {
+  // Route-relative (default) - goes up one route level
+  const routePath = useResolvedPath("..", { relative: "route" });
+  console.log(routePath.pathname); // "/blog/123"
+
+  // Path-relative - goes up one URL segment
+  const pathPath = useResolvedPath("..", { relative: "path" });
+  console.log(pathPath.pathname); // "/blog/123"
+
+  return <div>{/* Edit form */}</div>;
+}
+```
+
+## Common Patterns
+
+### Building Complex URLs
+
+```tsx
+import { useResolvedPath, useLocation } from "react-router";
+
+function DynamicLink({ userId }: { userId: string }) {
+  const location = useLocation();
+  
+  const path = useResolvedPath({
+    pathname: `/users/${userId}`,
+    search: location.search, // Preserve current search params
+    hash: "#profile",
+  });
+
+  const fullUrl = `${path.pathname}${path.search}${path.hash}`;
+
+  return <a href={fullUrl}>View Profile</a>;
+}
+```
+
+### Checking Active Paths
+
+```tsx
+import { useResolvedPath, useLocation } from "react-router";
+
+function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
+  const resolved = useResolvedPath(to);
+  const location = useLocation();
+
+  const isActive = location.pathname === resolved.pathname;
+
+  return (
+    <a
+      href={resolved.pathname}
+      className={isActive ? "active" : ""}
+    >
+      {children}
+    </a>
+  );
+}
+```
+
+### Prefetching Resources
+
+```tsx
+import { useResolvedPath } from "react-router";
+import { useEffect } from "react";
+
+function PrefetchLink({ to }: { to: string }) {
+  const path = useResolvedPath(to);
+
+  useEffect(() => {
+    // Prefetch data for this path
+    fetch(`/api${path.pathname}`);
+  }, [path.pathname]);
+
+  return <a href={path.pathname}>Go to {path.pathname}</a>;
+}
+```
+
+### Form Actions
+
+```tsx
+import { useResolvedPath } from "react-router";
+
+function SearchForm() {
+  const path = useResolvedPath("/search");
+
+  return (
+    <form action={path.pathname} method="get">
+      <input name="q" type="search" />
+      <button type="submit">Search</button>
+    </form>
+  );
+}
+```
+
+### Generating Breadcrumbs
+
+```tsx
+import { useResolvedPath, useMatches } from "react-router";
+
+function Breadcrumbs() {
+  const matches = useMatches();
+
+  return (
+    <nav>
+      {matches.map((match, index) => {
+        const path = useResolvedPath(match.pathname);
+        return (
+          <span key={index}>
+            <a href={path.pathname}>{match.pathname}</a>
+            {index < matches.length - 1 && " > "}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+```
+
+### Conditional Navigation
+
+```tsx
+import { useResolvedPath, useNavigate } from "react-router";
+
+function ConditionalButton({ to, condition }: { to: string; condition: boolean }) {
+  const navigate = useNavigate();
+  const path = useResolvedPath(to);
+
+  const handleClick = () => {
+    if (condition) {
+      navigate(path.pathname);
+    } else {
+      console.log("Cannot navigate to", path.pathname);
+    }
+  };
+
+  return <button onClick={handleClick}>Navigate</button>;
+}
+```
+
+## Advanced Usage
+
+### Resolving Against Different Base Paths
+
+```tsx
+import { useResolvedPath, useLocation } from "react-router";
+
+function MultiBaseResolver() {
+  const currentPath = useResolvedPath(".");
+  const parentPath = useResolvedPath("..");
+  const rootPath = useResolvedPath("/");
+
+  return (
+    <div>
+      <p>Current: {currentPath.pathname}</p>
+      <p>Parent: {parentPath.pathname}</p>
+      <p>Root: {rootPath.pathname}</p>
+    </div>
+  );
+}
+```
+
+### Type-Safe Path Resolution
+
+```tsx
+import { useResolvedPath } from "react-router";
+
+type AppRoutes = "/" | "/users" | "/settings" | "/about";
+
+function TypedLink({ to }: { to: AppRoutes }) {
+  const path = useResolvedPath(to);
+  return <a href={path.pathname}>{to}</a>;
+}
+```
+
+## Comparison with useHref
+
+```tsx
+import { useResolvedPath, useHref } from "react-router";
+
+function Comparison() {
+  const path = useResolvedPath("/users");
+  const href = useHref("/users");
+
+  console.log(path);
+  // { pathname: "/users", search: "", hash: "" }
+
+  console.log(href);
+  // "/users" (string)
+
+  return null;
+}
+```
+
+## Notes
+
+- Returns a `Path` object instead of a string (unlike `useHref`)
+- The `relative` option defaults to `"route"` for route-based resolution
+- Must be used within a `<Router>` component
+- Available in all React Router modes (Declarative, Data, and Framework)
+- The pathname is resolved against the current location
+- If a basename is configured in the router, it's handled automatically
+
+## Related
+
+- [`useHref`](/api/hooks/use-href) - Similar hook that returns a string
+- [`useLocation`](/api/hooks/use-location) - Get the current location
+- [`useNavigate`](/api/hooks/use-navigate) - Navigate programmatically
+- [`matchPath`](/api/utilities/match-path) - Match a path pattern

@@ -1,0 +1,287 @@
+---
+title: useFormAction
+---
+
+# `useFormAction`
+
+Resolves the URL to the closest route in the component hierarchy instead of the current URL of the app. This is used internally by `<Form>` to resolve the `action` to the closest route.
+
+```tsx
+import { useFormAction } from "react-router";
+
+function SomeComponent() {
+  // Resolves to closest route URL
+  let action = useFormAction();
+  // "/posts" if current route is /posts
+
+  // Closest route URL + "destroy"
+  let destroyAction = useFormAction("destroy");
+  // "/posts/destroy"
+}
+```
+
+## Parameters
+
+<ParamField path="action" type="string" optional>
+  The action to append to the closest route URL. Defaults to the closest route URL if not provided.
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <ParamField path="relative" type='"route" | "path"' optional default='"route"'>
+    The relative routing type to use when resolving the action:
+    
+    - `"route"` (default) - Relative to the route hierarchy
+    - `"path"` - Relative to the URL path segments
+  </ParamField>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="actionUrl" type="string">
+  The resolved action URL string.
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useFormAction(
+  action?: string,
+  options?: { relative?: "route" | "path" }
+): string;
+```
+
+## Usage Examples
+
+### Basic Form Action
+
+```tsx
+import { useFormAction } from "react-router";
+
+function MyForm() {
+  const action = useFormAction();
+  console.log(action); // Current route URL, e.g., "/posts/123"
+
+  return (
+    <form action={action} method="post">
+      <input type="text" name="title" />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+```
+
+### Custom Action Path
+
+```tsx
+import { useFormAction } from "react-router";
+
+function DeleteButton({ postId }: { postId: string }) {
+  const deleteAction = useFormAction("delete");
+  // If current route is "/posts/123", this resolves to "/posts/123/delete"
+
+  return (
+    <form action={deleteAction} method="post">
+      <input type="hidden" name="id" value={postId} />
+      <button type="submit">Delete</button>
+    </form>
+  );
+}
+```
+
+### Multiple Actions on Same Route
+
+```tsx
+import { useFormAction } from "react-router";
+
+function PostEditor() {
+  const saveAction = useFormAction("save");
+  const publishAction = useFormAction("publish");
+  const deleteAction = useFormAction("delete");
+
+  return (
+    <div>
+      <form action={saveAction} method="post">
+        <input name="title" />
+        <button type="submit">Save Draft</button>
+      </form>
+
+      <form action={publishAction} method="post">
+        <button type="submit">Publish</button>
+      </form>
+
+      <form action={deleteAction} method="post">
+        <button type="submit">Delete</button>
+      </form>
+    </div>
+  );
+}
+```
+
+### Relative Routing
+
+```tsx
+import { useFormAction } from "react-router";
+
+// Route hierarchy: /blog/:postId/edit
+
+function EditForm() {
+  // Route-relative (default) - resolves relative to route pattern
+  const routeAction = useFormAction("..", { relative: "route" });
+  // Resolves to "/blog/:postId"
+
+  // Path-relative - resolves relative to URL path
+  const pathAction = useFormAction("..", { relative: "path" });
+  // Resolves to "/blog"
+
+  return (
+    <div>
+      <form action={routeAction} method="post">
+        <button>Submit (route relative)</button>
+      </form>
+      <form action={pathAction} method="post">
+        <button>Submit (path relative)</button>
+      </form>
+    </div>
+  );
+}
+```
+
+## Common Patterns
+
+### Dynamic Form Actions
+
+```tsx
+import { useFormAction } from "react-router";
+import { useState } from "react";
+
+type ActionType = "create" | "update" | "delete";
+
+function DynamicForm() {
+  const [actionType, setActionType] = useState<ActionType>("create");
+  const action = useFormAction(actionType);
+
+  return (
+    <div>
+      <select value={actionType} onChange={(e) => setActionType(e.target.value as ActionType)}>
+        <option value="create">Create</option>
+        <option value="update">Update</option>
+        <option value="delete">Delete</option>
+      </select>
+
+      <form action={action} method="post">
+        <input name="data" />
+        <button type="submit">Submit {actionType}</button>
+      </form>
+    </div>
+  );
+}
+```
+
+### Form with Index Route
+
+```tsx
+import { useFormAction } from "react-router";
+
+// On an index route, the action resolves with ?index parameter
+function IndexForm() {
+  const action = useFormAction();
+  // On index route at "/posts", resolves to "/posts?index"
+
+  return (
+    <form action={action} method="post">
+      <button type="submit">Create Post</button>
+    </form>
+  );
+}
+```
+
+### Preserving Search Params
+
+```tsx
+import { useFormAction, useLocation } from "react-router";
+
+function FormWithSearchParams() {
+  const location = useLocation();
+  const baseAction = useFormAction();
+  
+  // Append current search params to action
+  const action = `${baseAction}${location.search}`;
+
+  return (
+    <form action={action} method="post">
+      <input name="title" />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+```
+
+### Nested Routes
+
+```tsx
+import { useFormAction } from "react-router";
+
+// Route structure:
+// /dashboard
+//   /settings
+//     /profile
+
+function ProfileForm() {
+  // Current route: /dashboard/settings/profile
+  
+  const currentAction = useFormAction();
+  // "/dashboard/settings/profile"
+
+  const parentAction = useFormAction("..");
+  // "/dashboard/settings"
+
+  const rootAction = useFormAction("/");
+  // "/"
+
+  return (
+    <form action={currentAction} method="post">
+      <button type="submit">Save Profile</button>
+    </form>
+  );
+}
+```
+
+## Notes
+
+- Available in Framework and Data modes only
+- When `action` is not provided, it defaults to the current route URL
+- Automatically handles basename if configured in your router
+- Search params from the current location are preserved when `action` is `null` or `.`
+- Index routes automatically append `?index` to the action URL
+- The `relative` option affects how `..` paths are resolved
+
+## How It Works
+
+The hook resolves the action URL based on:
+
+1. The route hierarchy (when `relative: "route"`)
+2. The URL path segments (when `relative: "path"`)
+3. The current basename configuration
+4. Whether the route is an index route
+
+```tsx
+// Example route hierarchy:
+// <Route path="/blog" element={<Blog />}>
+//   <Route path=":postId" element={<Post />}>
+//     <Route path="edit" element={<Edit />} />
+//   </Route>
+// </Route>
+
+// On route /blog/123/edit:
+useFormAction(); // "/blog/123/edit"
+useFormAction("save"); // "/blog/123/edit/save"
+useFormAction(".."); // "/blog/123" (relative to route)
+useFormAction("..", { relative: "path" }); // "/blog/123" (relative to path)
+```
+
+## Related
+
+- [`<Form>`](/api/components/form) - Uses this hook internally
+- [`useResolvedPath`](/api/hooks/use-resolved-path) - Resolves paths relative to current location
+- [`useHref`](/api/hooks/use-href) - Resolves a full href
+- [`useSubmit`](/api/hooks/use-submit) - Programmatically submit forms

@@ -1,0 +1,267 @@
+---
+title: useScrollRestoration
+---
+
+# `useScrollRestoration`
+
+<docs-warning>This hook is deprecated. Use the `<ScrollRestoration>` component instead.</docs-warning>
+
+When rendered inside a `RouterProvider`, will restore scroll positions on navigations.
+
+```tsx
+import { useScrollRestoration } from "react-router";
+
+function App() {
+  useScrollRestoration();
+  
+  return <div>{/* Your app */}</div>;
+}
+```
+
+## Parameters
+
+<ParamField path="options" type="object" optional>
+  <ParamField path="getKey" type="GetScrollRestorationKeyFunction" optional>
+    A function that returns a key to use for scroll restoration. This is useful for custom scroll restoration logic, such as using only the pathname so that subsequent navigations to prior paths will restore the scroll.
+    
+    Defaults to `location.key`.
+    
+    ```tsx
+    useScrollRestoration({
+      getKey: (location, matches) => {
+        // Restore based on pathname only
+        return location.pathname;
+      },
+    });
+    ```
+  </ParamField>
+  
+  <ParamField path="storageKey" type="string" optional default='"react-router-scroll-positions"'>
+    The key to use for storing scroll positions in `sessionStorage`.
+  </ParamField>
+</ParamField>
+
+## Type Declaration
+
+```tsx
+declare function useScrollRestoration(options?: {
+  getKey?: GetScrollRestorationKeyFunction;
+  storageKey?: string;
+}): void;
+
+type GetScrollRestorationKeyFunction = (
+  location: Location,
+  matches: UIMatch[]
+) => string | null;
+```
+
+## Deprecation Notice
+
+This hook is deprecated in favor of the `<ScrollRestoration>` component. The component approach is preferred because:
+
+1. **Better SSR support**: The component can inject the necessary script for SSR scroll restoration
+2. **Simpler API**: No need to manually call the hook in your components
+3. **Automatic setup**: Just render the component and it works
+
+### Migration Guide
+
+#### Before (using useScrollRestoration)
+
+```tsx
+import { useScrollRestoration } from "react-router";
+
+function Root() {
+  useScrollRestoration();
+  
+  return (
+    <html>
+      <body>
+        <Outlet />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+#### After (using ScrollRestoration component)
+
+```tsx
+import { ScrollRestoration } from "react-router";
+
+export default function Root() {
+  return (
+    <html>
+      <body>
+        <Outlet />
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+## Usage Examples (Legacy)
+
+### Basic Usage
+
+```tsx
+import { useScrollRestoration } from "react-router";
+
+function App() {
+  useScrollRestoration();
+
+  return (
+    <div>
+      <nav>{/* Navigation */}</nav>
+      <main>{/* Content */}</main>
+    </div>
+  );
+}
+```
+
+### Custom Storage Key
+
+```tsx
+import { useScrollRestoration } from "react-router";
+
+function App() {
+  useScrollRestoration({
+    storageKey: "my-app-scroll-positions",
+  });
+
+  return <div>{/* App content */}</div>;
+}
+```
+
+### Pathname-Based Restoration
+
+```tsx
+import { useScrollRestoration } from "react-router";
+
+function App() {
+  useScrollRestoration({
+    getKey: (location, matches) => {
+      // Restore scroll based only on pathname
+      // This means going to /blog/post-1 will always
+      // restore to the same position, regardless of how you got there
+      return location.pathname;
+    },
+  });
+
+  return <div>{/* App content */}</div>;
+}
+```
+
+### Route-Based Restoration
+
+```tsx
+import { useScrollRestoration } from "react-router";
+
+function App() {
+  useScrollRestoration({
+    getKey: (location, matches) => {
+      // Restore based on the route ID
+      const match = matches[matches.length - 1];
+      return match?.route.id || location.key;
+    },
+  });
+
+  return <div>{/* App content */}</div>;
+}
+```
+
+### Conditional Restoration
+
+```tsx
+import { useScrollRestoration } from "react-router";
+
+function App() {
+  useScrollRestoration({
+    getKey: (location, matches) => {
+      // Don't restore scroll for certain paths
+      const paths = ["/search", "/filter"];
+      if (paths.some((path) => location.pathname.startsWith(path))) {
+        return null; // Don't restore
+      }
+      return location.key;
+    },
+  });
+
+  return <div>{/* App content */}</div>;
+}
+```
+
+## How It Works
+
+The hook:
+
+1. **Saves scroll positions** to `sessionStorage` when navigating away from a page
+2. **Restores scroll positions** when navigating back to a previously visited page
+3. **Uses `location.key`** by default to track scroll positions for each history entry
+4. **Allows customization** via the `getKey` function for different restoration strategies
+
+## Alternatives
+
+### Use ScrollRestoration Component (Recommended)
+
+```tsx
+import { ScrollRestoration } from "react-router";
+
+export default function Root() {
+  return (
+    <html>
+      <body>
+        <Outlet />
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+### Manual Scroll Management
+
+```tsx
+import { useEffect } from "react";
+import { useLocation } from "react-router";
+
+function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    // Custom scroll behavior
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  return <div>{/* App content */}</div>;
+}
+```
+
+### Prevent Scroll Reset on Specific Links
+
+```tsx
+import { Link } from "react-router";
+
+<Link to="/path" preventScrollReset>
+  Don't reset scroll
+</Link>
+```
+
+## Notes
+
+- **Deprecated**: Use the `<ScrollRestoration>` component instead
+- Available in Framework and Data modes only
+- Must be used within a `RouterProvider`
+- Stores scroll positions in `sessionStorage`
+- The `getKey` function allows customizing which navigations restore scroll
+- Returning `null` from `getKey` prevents scroll restoration for that navigation
+
+## Related
+
+- [`<ScrollRestoration>`](/api/components/scroll-restoration) - Recommended replacement component
+- [`preventScrollReset`](/api/components/link#preventscrollreset) - Prevent scroll reset on specific navigations
+- [`useLocation`](/api/hooks/use-location) - Get current location
+- [Scroll Restoration Guide](/how-to/scroll-restoration) - Learn about scroll restoration patterns

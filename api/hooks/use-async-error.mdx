@@ -1,0 +1,259 @@
+---
+title: useAsyncError
+---
+
+# `useAsyncError`
+
+<docs-warning>This hook is deprecated. Use the `errorElement` prop on `<Await>` instead, or handle errors in your loader/action.</docs-warning>
+
+Returns the rejection value from the closest `<Await>` component.
+
+```tsx
+import { Await, useAsyncError } from "react-router";
+
+function ErrorElement() {
+  const error = useAsyncError();
+  return <p>Uh Oh, something went wrong! {error.message}</p>;
+}
+
+// Somewhere in your app
+<Await resolve={promiseThatRejects} errorElement={<ErrorElement />} />;
+```
+
+## Return Value
+
+<ResponseField name="error" type="unknown">
+  The error that was thrown in the nearest `<Await>` component when its promise was rejected. The type will match whatever error was thrown.
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useAsyncError(): unknown;
+```
+
+## Deprecation Notice
+
+This hook is deprecated in favor of using the `errorElement` prop directly on the `<Await>` component or handling errors in your loader/action functions.
+
+### Recommended Alternatives
+
+#### Use errorElement Prop
+
+```tsx
+import { Await } from "react-router";
+
+function ErrorComponent({ error }: { error: Error }) {
+  return <div>Error: {error.message}</div>;
+}
+
+<Await 
+  resolve={promiseThatMightReject}
+  errorElement={<ErrorComponent error={new Error("Failed to load")} />}
+>
+  <SuccessComponent />
+</Await>
+```
+
+#### Handle Errors in Loader
+
+```tsx
+export async function loader() {
+  try {
+    const data = await fetchData();
+    return { data };
+  } catch (error) {
+    // Handle error in loader instead
+    throw new Response("Failed to load data", { status: 500 });
+  }
+}
+```
+
+## Usage Examples (Legacy)
+
+### Basic Error Handling
+
+```tsx
+import { useAsyncError, Await, useLoaderData } from "react-router";
+import { Suspense } from "react";
+
+function ErrorDisplay() {
+  const error = useAsyncError() as Error;
+  
+  return (
+    <div className="error">
+      <h3>Something went wrong</h3>
+      <p>{error.message}</p>
+    </div>
+  );
+}
+
+export async function loader() {
+  return {
+    data: fetchDataThatMightFail(),
+  };
+}
+
+export default function MyRoute() {
+  const { data } = useLoaderData();
+
+  return (
+    <Suspense fallback={<p>Loading...</p>}>
+      <Await resolve={data} errorElement={<ErrorDisplay />}>
+        {(resolvedData) => <div>{resolvedData}</div>}
+      </Await>
+    </Suspense>
+  );
+}
+```
+
+### Detailed Error Information
+
+```tsx
+import { useAsyncError } from "react-router";
+
+interface APIError {
+  message: string;
+  code: string;
+  details?: Record<string, unknown>;
+}
+
+function DetailedError() {
+  const error = useAsyncError() as APIError;
+
+  return (
+    <div className="error-details">
+      <h3>Error {error.code}</h3>
+      <p>{error.message}</p>
+      {error.details && (
+        <pre>{JSON.stringify(error.details, null, 2)}</pre>
+      )}
+    </div>
+  );
+}
+```
+
+### Error with Retry
+
+```tsx
+import { useAsyncError } from "react-router";
+import { useRevalidator } from "react-router";
+
+function ErrorWithRetry() {
+  const error = useAsyncError() as Error;
+  const revalidator = useRevalidator();
+
+  return (
+    <div className="error-retry">
+      <p>Failed to load: {error.message}</p>
+      <button onClick={() => revalidator.revalidate()}>
+        Try Again
+      </button>
+    </div>
+  );
+}
+```
+
+## Type Safety
+
+```tsx
+import { useAsyncError } from "react-router";
+
+class CustomError extends Error {
+  code: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+function TypedErrorDisplay() {
+  const error = useAsyncError() as CustomError;
+
+  return (
+    <div>
+      <h3>Error {error.code}</h3>
+      <p>{error.message}</p>
+    </div>
+  );
+}
+```
+
+## Error Type Guards
+
+```tsx
+import { useAsyncError } from "react-router";
+
+function ErrorDisplay() {
+  const error = useAsyncError();
+
+  if (error instanceof Error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  if (typeof error === "string") {
+    return <div>Error: {error}</div>;
+  }
+
+  return <div>An unknown error occurred</div>;
+}
+```
+
+## Notes
+
+- **Deprecated**: Use `errorElement` prop on `<Await>` or handle errors in your loader/action instead
+- This hook must be used within a component rendered by an `<Await>` component's `errorElement`
+- Available in Framework and Data modes only
+- The returned error is `unknown` by default - use type assertions or type guards for type safety
+- The error is only available when the promise rejects
+
+## Migration Guide
+
+### Before (using useAsyncError)
+
+```tsx
+function ErrorElement() {
+  const error = useAsyncError();
+  return <div>Error: {error.message}</div>;
+}
+
+<Await resolve={promise} errorElement={<ErrorElement />}>
+  <SuccessComponent />
+</Await>
+```
+
+### After (using errorElement directly)
+
+```tsx
+function ErrorElement({ error }: { error: Error }) {
+  return <div>Error: {error.message}</div>;
+}
+
+<Await 
+  resolve={promise}
+  errorElement={<ErrorElement error={error} />}
+>
+  <SuccessComponent />
+</Await>
+```
+
+### Or (handle in loader)
+
+```tsx
+export async function loader() {
+  try {
+    const data = await fetchData();
+    return defer({ data });
+  } catch (error) {
+    // Let error boundary handle it
+    throw error;
+  }
+}
+```
+
+## Related
+
+- [`useAsyncValue`](/api/hooks/use-async-value) - Get the resolved value from Await
+- [`<Await>`](/api/components/await) - Component for rendering deferred data
+- [`useRouteError`](/api/hooks/use-route-error) - Get errors from loaders/actions
+- [Error Handling Guide](/how-to/error-handling) - Learn about error handling in React Router

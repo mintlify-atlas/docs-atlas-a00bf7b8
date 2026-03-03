@@ -1,0 +1,138 @@
+---
+title: useNavigationType
+---
+
+# `useNavigationType`
+
+Returns the current navigation action which describes how the router came to the current location, either by a pop, push, or replace on the history stack.
+
+```tsx
+import { useNavigationType } from "react-router";
+
+function SomeComponent() {
+  const navigationType = useNavigationType();
+  // "POP" | "PUSH" | "REPLACE"
+}
+```
+
+## Return Value
+
+<ResponseField name="navigationType" type='"POP" | "PUSH" | "REPLACE"'>
+  The current navigation type:
+  
+  - `"POP"` - The user navigated using the browser back/forward buttons
+  - `"PUSH"` - A new entry was added to the history stack (e.g., via a link click or `navigate()`)
+  - `"REPLACE"` - The current entry in the history stack was replaced (e.g., via `navigate("/path", { replace: true })`)
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useNavigationType(): NavigationType;
+
+type NavigationType = "POP" | "PUSH" | "REPLACE";
+```
+
+## Usage Examples
+
+### Track Navigation Method
+
+```tsx
+import { useNavigationType, useLocation } from "react-router";
+import { useEffect } from "react";
+
+function AnalyticsTracker() {
+  const navigationType = useNavigationType();
+  const location = useLocation();
+
+  useEffect(() => {
+    // Send analytics based on how user navigated
+    analytics.track("pageview", {
+      path: location.pathname,
+      navigationType,
+    });
+  }, [location, navigationType]);
+
+  return null;
+}
+```
+
+### Conditional Behavior Based on Navigation Type
+
+```tsx
+import { useNavigationType } from "react-router";
+import { useEffect } from "react";
+
+function MyComponent() {
+  const navigationType = useNavigationType();
+
+  useEffect(() => {
+    // Only scroll to top on PUSH navigations,
+    // preserve scroll position on POP (back/forward)
+    if (navigationType === "PUSH") {
+      window.scrollTo(0, 0);
+    }
+  }, [navigationType]);
+
+  return <div>{/* ... */}</div>;
+}
+```
+
+### Differentiate Fresh Navigation from History Navigation
+
+```tsx
+import { useNavigationType } from "react-router";
+
+function Article() {
+  const navigationType = useNavigationType();
+  const isBackNavigation = navigationType === "POP";
+
+  return (
+    <article>
+      {isBackNavigation && (
+        <p className="notice">Welcome back! You were reading this article.</p>
+      )}
+      {/* Article content */}
+    </article>
+  );
+}
+```
+
+## Common Patterns
+
+### Combining with useLocation
+
+```tsx
+import { useNavigationType, useLocation } from "react-router";
+import { useEffect } from "react";
+
+function App() {
+  const navigationType = useNavigationType();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (navigationType === "POP") {
+      console.log("User used back/forward button");
+    } else if (navigationType === "PUSH") {
+      console.log("User navigated to a new page");
+    } else if (navigationType === "REPLACE") {
+      console.log("Current page was replaced");
+    }
+  }, [location, navigationType]);
+
+  return <div>{/* ... */}</div>;
+}
+```
+
+## Notes
+
+- The navigation type is derived from the browser's history API
+- This hook must be used within a `<Router>` component
+- The navigation type is available in all React Router modes (Declarative, Data, and Framework)
+- Initial page loads typically have a navigation type of `"POP"`
+
+## Related
+
+- [`useLocation`](/api/hooks/use-location) - Get the current location
+- [`useNavigate`](/api/hooks/use-navigate) - Navigate programmatically
+- [`Link`](/api/components/link) - Declarative navigation (creates PUSH navigations by default)

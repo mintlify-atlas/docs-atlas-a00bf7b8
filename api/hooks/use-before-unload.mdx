@@ -1,0 +1,318 @@
+---
+title: useBeforeUnload
+---
+
+# `useBeforeUnload`
+
+Sets up a callback to be fired on the window's `beforeunload` event. This is useful for saving data to `localStorage` or showing a confirmation dialog before the user leaves the page.
+
+```tsx
+import { useBeforeUnload } from "react-router";
+
+function MyForm() {
+  useBeforeUnload(
+    React.useCallback(() => {
+      localStorage.setItem("unsavedData", formData);
+    }, [formData])
+  );
+}
+```
+
+## Parameters
+
+<ParamField path="callback" type="(event: BeforeUnloadEvent) => any" required>
+  The callback function to execute when the `beforeunload` event fires. The function receives a `BeforeUnloadEvent` object.
+  
+  To show the browser's confirmation dialog, set `event.returnValue` to a string:
+  
+  ```tsx
+  useBeforeUnload((event) => {
+    event.preventDefault();
+    event.returnValue = ""; // Shows browser confirmation dialog
+  });
+  ```
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <ParamField path="capture" type="boolean" optional default={false}>
+    If `true`, the event will be captured during the capture phase instead of the bubbling phase.
+  </ParamField>
+</ParamField>
+
+## Type Declaration
+
+```tsx
+declare function useBeforeUnload(
+  callback: (event: BeforeUnloadEvent) => any,
+  options?: { capture?: boolean }
+): void;
+```
+
+## Usage Examples
+
+### Save Form Data Before Unload
+
+```tsx
+import { useBeforeUnload } from "react-router";
+import { useState, useCallback } from "react";
+
+function ArticleEditor() {
+  const [content, setContent] = useState("");
+
+  useBeforeUnload(
+    useCallback(() => {
+      // Save draft to localStorage before page unloads
+      localStorage.setItem("article-draft", content);
+    }, [content])
+  );
+
+  return (
+    <form>
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="Write your article..."
+      />
+      <button type="submit">Publish</button>
+    </form>
+  );
+}
+```
+
+### Warn About Unsaved Changes
+
+```tsx
+import { useBeforeUnload } from "react-router";
+import { useState, useCallback } from "react";
+
+function FormWithUnsavedChanges() {
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [formData, setFormData] = useState({ name: "", email: "" });
+
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        if (hasUnsavedChanges) {
+          event.preventDefault();
+          event.returnValue = ""; // Shows browser's default confirmation dialog
+        }
+      },
+      [hasUnsavedChanges]
+    )
+  );
+
+  return (
+    <form
+      onChange={() => setHasUnsavedChanges(true)}
+      onSubmit={() => setHasUnsavedChanges(false)}
+    >
+      <input
+        name="name"
+        value={formData.name}
+        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+      />
+      <input
+        name="email"
+        value={formData.email}
+        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+      />
+      <button type="submit">Save</button>
+    </form>
+  );
+}
+```
+
+### Analytics Before Page Unload
+
+```tsx
+import { useBeforeUnload } from "react-router";
+import { useCallback } from "react";
+
+function PageWithAnalytics() {
+  useBeforeUnload(
+    useCallback(() => {
+      // Send analytics data before user leaves
+      navigator.sendBeacon("/api/analytics", JSON.stringify({
+        event: "page_unload",
+        timestamp: Date.now(),
+        pathname: window.location.pathname,
+      }));
+    }, [])
+  );
+
+  return <div>{/* Page content */}</div>;
+}
+```
+
+### Persist User Session Data
+
+```tsx
+import { useBeforeUnload } from "react-router";
+import { useCallback } from "react";
+
+function UserSession({ sessionData }: { sessionData: any }) {
+  useBeforeUnload(
+    useCallback(() => {
+      // Save session state before refresh/close
+      sessionStorage.setItem("user-session", JSON.stringify(sessionData));
+    }, [sessionData])
+  );
+
+  return <div>{/* Session UI */}</div>;
+}
+```
+
+## Common Patterns
+
+### Conditional Warning
+
+```tsx
+import { useBeforeUnload } from "react-router";
+import { useState, useCallback } from "react";
+
+function ConditionalWarning() {
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        // Only warn if form is dirty and not currently submitting
+        if (isDirty && !isSubmitting) {
+          event.preventDefault();
+          event.returnValue = "";
+        }
+      },
+      [isDirty, isSubmitting]
+    )
+  );
+
+  return <div>{/* Form */}</div>;
+}
+```
+
+### Combining with useBlocker
+
+```tsx
+import { useBeforeUnload, useBlocker } from "react-router";
+import { useState, useCallback } from "react";
+
+function ProtectedForm() {
+  const [formState, setFormState] = useState({ modified: false });
+
+  // Block in-app navigation
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      formState.modified &&
+      currentLocation.pathname !== nextLocation.pathname
+  );
+
+  // Warn on page reload/close
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        if (formState.modified) {
+          event.preventDefault();
+          event.returnValue = "";
+        }
+      },
+      [formState.modified]
+    )
+  );
+
+  return <div>{/* Form with both protections */}</div>;
+}
+```
+
+### Auto-save Before Unload
+
+```tsx
+import { useBeforeUnload } from "react-router";
+import { useState, useCallback } from "react";
+
+function AutoSaveEditor() {
+  const [content, setContent] = useState("");
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  const saveContent = useCallback(async () => {
+    await fetch("/api/save", {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+    setLastSaved(new Date());
+  }, [content]);
+
+  useBeforeUnload(
+    useCallback(() => {
+      // Use sendBeacon for reliable delivery
+      const data = new FormData();
+      data.append("content", content);
+      navigator.sendBeacon("/api/save", data);
+    }, [content])
+  );
+
+  return (
+    <div>
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+      {lastSaved && <p>Last saved: {lastSaved.toLocaleTimeString()}</p>}
+    </div>
+  );
+}
+```
+
+## Important Notes
+
+### Browser Behavior
+
+- **Custom messages are not supported**: Modern browsers ignore custom messages and show their own default warning dialog
+- **Not all browsers support it consistently**: Some browsers may not fire the event in certain conditions
+- **Mobile browsers**: May not support `beforeunload` events reliably
+
+### Best Practices
+
+1. **Use `useCallback`**: Wrap your callback in `useCallback` to avoid adding/removing event listeners on every render
+
+   ```tsx
+   const callback = useCallback(() => {
+     // Save data
+   }, [dependencies]);
+   
+   useBeforeUnload(callback);
+   ```
+
+2. **Use `navigator.sendBeacon`**: For sending data, use `sendBeacon` instead of `fetch` for better reliability
+
+   ```tsx
+   useBeforeUnload(useCallback(() => {
+     navigator.sendBeacon("/api/analytics", data);
+   }, []));
+   ```
+
+3. **Don't rely on it for critical operations**: The event may not always fire (crashes, force quit, etc.)
+
+4. **Keep callbacks lightweight**: The browser may kill slow operations
+
+### Event Limitations
+
+```tsx
+// ❌ This custom message will be ignored by modern browsers
+useBeforeUnload((event) => {
+  event.returnValue = "Custom message"; // Ignored!
+});
+
+// ✅ This will show the browser's default dialog
+useBeforeUnload((event) => {
+  event.preventDefault();
+  event.returnValue = ""; // Shows default dialog
+});
+```
+
+## Related
+
+- [`useBlocker`](/api/hooks/use-blocker) - Block in-app navigation
+- [`usePrompt`](/api/hooks/use-prompt) - Show confirmation dialog for in-app navigation (deprecated)
+- [Form Guide](/how-to/forms) - Working with forms in React Router
+- [MDN: beforeunload event](https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event)

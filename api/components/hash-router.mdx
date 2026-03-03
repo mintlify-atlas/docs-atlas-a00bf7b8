@@ -1,0 +1,155 @@
+---
+title: HashRouter
+description: API reference for the HashRouter component in React Router
+---
+
+# HashRouter
+
+A declarative `<Router>` that stores the location in the hash portion of the URL (`window.location.hash`) so it is not sent to the server.
+
+This is useful for situations where you cannot configure your server to handle URLs properly, such as when deploying to static file hosts.
+
+## Import
+
+```tsx
+import { HashRouter } from "react-router";
+```
+
+## Type Declaration
+
+```tsx
+interface HashRouterProps {
+  basename?: string;
+  children?: React.ReactNode;
+  unstable_useTransitions?: boolean;
+  window?: Window;
+}
+
+function HashRouter(props: HashRouterProps): React.ReactElement;
+```
+
+## Props
+
+<ParamField path="basename" type="string">
+  The base URL for all locations. If your app is served from a subdirectory, set this to the subdirectory path.
+  
+  ```tsx
+  <HashRouter basename="/app">
+    <Routes>
+      <Route path="/" element={<Home />} /> {/* URL: /#/app/ */}
+    </Routes>
+  </HashRouter>
+  ```
+</ParamField>
+
+<ParamField path="children" type="React.ReactNode">
+  Your route configuration, typically `<Routes>` and `<Route>` elements.
+</ParamField>
+
+<ParamField path="unstable_useTransitions" type="boolean">
+  Control whether router state updates are wrapped in `React.startTransition`.
+  
+  - `undefined` (default): All state updates are wrapped in `startTransition`
+  - `true`: Link/Form navigations and all state updates use `startTransition`
+  - `false`: Router doesn't use `startTransition` at all
+  
+  See [React Transitions](/explanation/react-transitions) for more details.
+</ParamField>
+
+<ParamField path="window" type="Window">
+  Override the default `window` object. Useful for testing or iframe scenarios.
+</ParamField>
+
+## Examples
+
+### Basic Usage
+
+```tsx
+import { HashRouter, Routes, Route } from "react-router";
+
+function App() {
+  return (
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+      </Routes>
+    </HashRouter>
+  );
+}
+```
+
+The URLs will be:
+- Home: `http://example.com/#/`
+- About: `http://example.com/#/about`
+
+### With Basename
+
+```tsx
+<HashRouter basename="/app">
+  <Routes>
+    <Route path="/" element={<Home />} />
+    <Route path="/settings" element={<Settings />} />
+  </Routes>
+</HashRouter>
+```
+
+The URLs will be:
+- Home: `http://example.com/#/app/`
+- Settings: `http://example.com/#/app/settings`
+
+### Custom Window (Testing)
+
+```tsx
+import { HashRouter } from "react-router";
+import { render } from "@testing-library/react";
+
+test("renders with custom window", () => {
+  const customWindow = { ...window, location: { hash: "#/test" } };
+  
+  render(
+    <HashRouter window={customWindow}>
+      <Routes>
+        <Route path="/test" element={<div>Test Page</div>} />
+      </Routes>
+    </HashRouter>
+  );
+});
+```
+
+## When to Use
+
+Use `HashRouter` when:
+
+- You're deploying to static file hosts (GitHub Pages, AWS S3, Netlify without rewrites)
+- You cannot configure your server to handle client-side routing
+- You need all routing to happen purely on the client
+
+<Warning>
+Hash-based routing has several limitations:
+- URLs look less clean with the `#` symbol
+- Server-side rendering is not possible
+- SEO is more difficult since the hash is not sent to the server
+- Some analytics tools don't track hash changes properly
+</Warning>
+
+<Note>
+For modern deployments, prefer [`<BrowserRouter>`](/api/components/browser-router) with proper server configuration, or use [`createHashRouter()`](/api/routers/create-hash-router) for the Data Router API.
+</Note>
+
+## Comparison with BrowserRouter
+
+| Feature | HashRouter | BrowserRouter |
+|---------|------------|---------------|
+| URL Format | `example.com/#/path` | `example.com/path` |
+| Server Config | Not required | Required |
+| SSR Support | No | Yes |
+| SEO | Limited | Full |
+| Clean URLs | No | Yes |
+| Static Hosting | ✅ Works great | Requires rewrites |
+
+## See Also
+
+- [`<BrowserRouter>`](/api/components/browser-router) - For clean URLs with server support
+- [`createHashRouter()`](/api/routers/create-hash-router) - Hash routing with Data Router API
+- [Static Deployment Guide](/deployment/custom-server#static-file-hosts)

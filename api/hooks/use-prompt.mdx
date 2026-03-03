@@ -1,0 +1,312 @@
+---
+title: usePrompt
+---
+
+# `usePrompt`
+
+<docs-warning>This hook is deprecated. Use `useBlocker` instead for better control over navigation blocking.</docs-warning>
+
+Wrapper around `useBlocker` to show a `window.confirm` prompt to users instead of building a custom UI with `useBlocker`.
+
+```tsx
+import { usePrompt } from "react-router";
+
+function ImportantForm() {
+  const [value, setValue] = React.useState("");
+
+  usePrompt({
+    message: "Are you sure you want to leave?",
+    when: value !== "",
+  });
+
+  return <input value={value} onChange={(e) => setValue(e.target.value)} />;
+}
+```
+
+## Parameters
+
+<ParamField path="options" type="object" required>
+  <ParamField path="message" type="string" required>
+    The message to show in the browser's confirmation dialog when navigation is blocked.
+  </ParamField>
+  
+  <ParamField path="when" type="boolean | BlockerFunction" required>
+    A boolean or a function that returns a boolean indicating whether to block the navigation.
+    
+    If a function is provided, it receives an object with:
+    - `currentLocation` - The current location
+    - `nextLocation` - The location being navigated to
+    - `historyAction` - The type of navigation ("PUSH", "REPLACE", or "POP")
+    
+    ```tsx
+    usePrompt({
+      message: "Leave without saving?",
+      when: ({ currentLocation, nextLocation }) =>
+        isDirty && currentLocation.pathname !== nextLocation.pathname,
+    });
+    ```
+  </ParamField>
+</ParamField>
+
+## Type Declaration
+
+```tsx
+declare function usePrompt(options: {
+  when: boolean | BlockerFunction;
+  message: string;
+}): void;
+
+type BlockerFunction = (args: {
+  currentLocation: Location;
+  nextLocation: Location;
+  historyAction: "PUSH" | "REPLACE" | "POP";
+}) => boolean;
+```
+
+## Deprecation Notice
+
+The `unstable_` flag will not be removed because this technique has a lot of rough edges and behaves very differently (and incorrectly sometimes) across browsers if users click additional back/forward navigations while the confirmation is open.
+
+**Use `useBlocker` instead** for more reliable and customizable navigation blocking.
+
+### Migration to useBlocker
+
+#### Before (using usePrompt)
+
+```tsx
+import { usePrompt } from "react-router";
+
+function Form() {
+  const [isDirty, setIsDirty] = React.useState(false);
+
+  usePrompt({
+    message: "You have unsaved changes. Leave anyway?",
+    when: isDirty,
+  });
+
+  return <form>{/* ... */}</form>;
+}
+```
+
+#### After (using useBlocker)
+
+```tsx
+import { useBlocker } from "react-router";
+
+function Form() {
+  const [isDirty, setIsDirty] = React.useState(false);
+  const blocker = useBlocker(isDirty);
+
+  return (
+    <>
+      {blocker.state === "blocked" && (
+        <div className="modal">
+          <p>You have unsaved changes. Leave anyway?</p>
+          <button onClick={() => blocker.proceed()}>Leave</button>
+          <button onClick={() => blocker.reset()}>Stay</button>
+        </div>
+      )}
+      <form>{/* ... */}</form>
+    </>
+  );
+}
+```
+
+## Usage Examples (Legacy)
+
+### Basic Usage
+
+```tsx
+import { usePrompt } from "react-router";
+import { useState } from "react";
+
+function EditForm() {
+  const [formData, setFormData] = useState({ name: "", email: "" });
+  const [isDirty, setIsDirty] = useState(false);
+
+  usePrompt({
+    message: "You have unsaved changes. Are you sure you want to leave?",
+    when: isDirty,
+  });
+
+  return (
+    <form
+      onChange={() => setIsDirty(true)}
+      onSubmit={() => setIsDirty(false)}
+    >
+      <input
+        value={formData.name}
+        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+      />
+      <button type="submit">Save</button>
+    </form>
+  );
+}
+```
+
+### Conditional Blocking
+
+```tsx
+import { usePrompt } from "react-router";
+import { useState } from "react";
+
+function ConditionalPrompt() {
+  const [value, setValue] = useState("");
+
+  usePrompt({
+    message: "Are you sure?",
+    when: ({ currentLocation, nextLocation }) =>
+      value !== "" && currentLocation.pathname !== nextLocation.pathname,
+  });
+
+  return (
+    <input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      placeholder="Type something..."
+    />
+  );
+}
+```
+
+### With Form State
+
+```tsx
+import { usePrompt } from "react-router";
+import { useState } from "react";
+
+function ArticleEditor() {
+  const [content, setContent] = useState("");
+  const [isSaved, setIsSaved] = useState(true);
+
+  usePrompt({
+    message: "You have unsaved changes. Leave without saving?",
+    when: !isSaved,
+  });
+
+  const handleSave = async () => {
+    await saveArticle(content);
+    setIsSaved(true);
+  };
+
+  return (
+    <div>
+      <textarea
+        value={content}
+        onChange={(e) => {
+          setContent(e.target.value);
+          setIsSaved(false);
+        }}
+      />
+      <button onClick={handleSave}>Save</button>
+    </div>
+  );
+}
+```
+
+### Multiple Conditions
+
+```tsx
+import { usePrompt } from "react-router";
+import { useState } from "react";
+
+function MultiConditionForm() {
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isValid, setIsValid] = useState(true);
+
+  usePrompt({
+    message: "Leave with unsaved changes?",
+    when: ({ currentLocation, nextLocation }) => {
+      // Block if there are changes and we're leaving the form
+      return (
+        hasChanges &&
+        currentLocation.pathname !== nextLocation.pathname
+      );
+    },
+  });
+
+  return <form>{/* Form fields */}</form>;
+}
+```
+
+## Known Issues
+
+### Browser Inconsistencies
+
+1. **Multiple back/forward clicks**: If users click back/forward multiple times while the prompt is open, behavior varies across browsers
+2. **Mobile browsers**: May not show the confirmation dialog reliably
+3. **Browser dialogs**: Cannot be styled or customized (uses native `window.confirm`)
+
+### Limitations
+
+```tsx
+// ❌ Cannot customize the dialog appearance
+usePrompt({
+  message: "Custom styled prompt?", // Will use browser's default
+  when: true,
+});
+
+// ✅ Use useBlocker for custom UI
+const blocker = useBlocker(true);
+if (blocker.state === "blocked") {
+  // Render your own custom modal/dialog
+}
+```
+
+## Why It's Deprecated
+
+1. **Unreliable**: Browser behavior varies, especially with rapid navigation
+2. **Poor UX**: Native browser dialogs cannot be styled or customized
+3. **Better alternative**: `useBlocker` provides full control over the blocking experience
+4. **Accessibility**: Custom dialogs via `useBlocker` can be made more accessible
+
+## Recommended Alternative
+
+Use `useBlocker` for better control and reliability:
+
+```tsx
+import { useBlocker } from "react-router";
+import { useState } from "react";
+
+function ImprovedForm() {
+  const [isDirty, setIsDirty] = useState(false);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  return (
+    <>
+      <form onChange={() => setIsDirty(true)}>
+        {/* Form fields */}
+      </form>
+
+      {blocker.state === "blocked" && (
+        <div className="custom-modal">
+          <h2>Unsaved Changes</h2>
+          <p>You have unsaved changes. Are you sure you want to leave?</p>
+          <div>
+            <button onClick={() => blocker.proceed()}>Leave</button>
+            <button onClick={() => blocker.reset()}>Stay</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+```
+
+## Notes
+
+- **Deprecated**: Use `useBlocker` instead
+- Available in Framework and Data modes only
+- Only blocks in-app navigation (not page reloads or tab closes)
+- Use `useBeforeUnload` to warn about page reloads/closes
+- Cannot customize the appearance of the browser's confirmation dialog
+- Behavior is inconsistent across browsers
+
+## Related
+
+- [`useBlocker`](/api/hooks/use-blocker) - Recommended replacement with custom UI
+- [`useBeforeUnload`](/api/hooks/use-before-unload) - Warn before page reload/close
+- [Navigation Blocking Guide](/how-to/navigation-blocking) - Learn about blocking navigation

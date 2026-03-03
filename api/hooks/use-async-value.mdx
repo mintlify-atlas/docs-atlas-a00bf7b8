@@ -1,0 +1,271 @@
+---
+title: useAsyncValue
+---
+
+# `useAsyncValue`
+
+Returns the resolved promise value from the closest `<Await>` component.
+
+```tsx
+import { useAsyncValue, Await } from "react-router";
+
+function SomeDescendant() {
+  const value = useAsyncValue();
+  // Use the resolved value
+  return <div>{value}</div>;
+}
+
+// Somewhere in your app
+<Await resolve={somePromise}>
+  <SomeDescendant />
+</Await>;
+```
+
+## Return Value
+
+<ResponseField name="value" type="unknown">
+  The resolved value from the nearest `<Await>` component's promise. The type will match whatever your promise resolves to.
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useAsyncValue(): unknown;
+```
+
+## Usage Examples
+
+### Basic Usage with Await
+
+```tsx
+import { useAsyncValue, Await, useLoaderData } from "react-router";
+import { Suspense } from "react";
+
+export async function loader() {
+  // Return deferred data
+  return {
+    criticalData: await fetchCriticalData(),
+    deferredData: fetchSlowData(), // Don't await
+  };
+}
+
+function DeferredContent() {
+  const data = useAsyncValue();
+  return <div>{data.message}</div>;
+}
+
+export default function MyRoute() {
+  const { criticalData, deferredData } = useLoaderData();
+
+  return (
+    <div>
+      <h1>{criticalData.title}</h1>
+      <Suspense fallback={<p>Loading...</p>}>
+        <Await resolve={deferredData}>
+          <DeferredContent />
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Displaying User Data
+
+```tsx
+import { useAsyncValue, Await, defer } from "react-router";
+import { Suspense } from "react";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function loader() {
+  return defer({
+    user: fetchUser(), // Slow API call
+  });
+}
+
+function UserProfile() {
+  const user = useAsyncValue() as User;
+  
+  return (
+    <div>
+      <h2>{user.name}</h2>
+      <p>{user.email}</p>
+    </div>
+  );
+}
+
+export default function Profile() {
+  const { user } = useLoaderData();
+
+  return (
+    <Suspense fallback={<div>Loading user profile...</div>}>
+      <Await resolve={user}>
+        <UserProfile />
+      </Await>
+    </Suspense>
+  );
+}
+```
+
+### Multiple Deferred Values
+
+```tsx
+import { useAsyncValue, Await, defer } from "react-router";
+import { Suspense } from "react";
+
+export async function loader() {
+  return defer({
+    posts: fetchPosts(),
+    comments: fetchComments(),
+  });
+}
+
+function PostsList() {
+  const posts = useAsyncValue() as Post[];
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li key={post.id}>{post.title}</li>
+      ))}
+    </ul>
+  );
+}
+
+function CommentsList() {
+  const comments = useAsyncValue() as Comment[];
+  return (
+    <ul>
+      {comments.map((comment) => (
+        <li key={comment.id}>{comment.text}</li>
+      ))}
+    </ul>
+  );
+}
+
+export default function Dashboard() {
+  const { posts, comments } = useLoaderData();
+
+  return (
+    <div>
+      <section>
+        <h2>Posts</h2>
+        <Suspense fallback={<div>Loading posts...</div>}>
+          <Await resolve={posts}>
+            <PostsList />
+          </Await>
+        </Suspense>
+      </section>
+
+      <section>
+        <h2>Comments</h2>
+        <Suspense fallback={<div>Loading comments...</div>}>
+          <Await resolve={comments}>
+            <CommentsList />
+          </Await>
+        </Suspense>
+      </section>
+    </div>
+  );
+}
+```
+
+## Type Safety
+
+### Using TypeScript
+
+```tsx
+import { useAsyncValue } from "react-router";
+
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+}
+
+function ProductDetails() {
+  // Type assertion for better type safety
+  const product = useAsyncValue() as Product;
+
+  return (
+    <div>
+      <h3>{product.name}</h3>
+      <p>${product.price}</p>
+    </div>
+  );
+}
+```
+
+### With Generic Type Inference
+
+```tsx
+import { useAsyncValue, Await } from "react-router";
+
+function TypedAwaitContent<T>() {
+  const value = useAsyncValue() as T;
+  return value;
+}
+
+// Usage
+<Await resolve={userPromise}>
+  <TypedAwaitContent<User> />
+</Await>;
+```
+
+## Common Patterns
+
+### Nested Await Components
+
+```tsx
+function OuterContent() {
+  const outerValue = useAsyncValue();
+  
+  return (
+    <div>
+      <h2>{outerValue.title}</h2>
+      <Suspense fallback={<p>Loading details...</p>}>
+        <Await resolve={outerValue.nestedPromise}>
+          <InnerContent />
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+
+function InnerContent() {
+  const innerValue = useAsyncValue();
+  return <div>{innerValue.details}</div>;
+}
+```
+
+## Error Handling
+
+For error handling with deferred data, use [`useAsyncError`](/api/hooks/use-async-error) or provide an `errorElement` prop to the `<Await>` component:
+
+```tsx
+<Await 
+  resolve={promiseThatMightReject}
+  errorElement={<ErrorComponent />}
+>
+  <SuccessComponent />
+</Await>
+```
+
+## Notes
+
+- This hook must be used within a component rendered by an `<Await>` component
+- The hook returns the resolved value, not the promise itself
+- Available in Framework and Data modes only
+- The returned value is `unknown` by default - use type assertions for type safety
+- This hook does not handle errors - use `useAsyncError` or `errorElement` for error handling
+
+## Related
+
+- [`useAsyncError`](/api/hooks/use-async-error) - Get the error from a rejected promise
+- [`<Await>`](/api/components/await) - Component for rendering deferred data
+- [`defer`](/api/utilities/defer) - Utility for creating deferred data
+- [Deferred Data Guide](/how-to/deferred) - Learn about streaming with deferred data

@@ -1,0 +1,435 @@
+---
+title: useOutletContext
+---
+
+# `useOutletContext`
+
+Returns the context value passed to the parent route's `<Outlet>` component.
+
+```tsx
+import { useOutletContext } from "react-router";
+
+function Child() {
+  const context = useOutletContext();
+  return <div>{context.value}</div>;
+}
+```
+
+## Return Value
+
+<ResponseField name="context" type="unknown">
+  The context value passed to the parent `<Outlet>` component. The type is `unknown` by default but can be typed using TypeScript generics.
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useOutletContext<Context = unknown>(): Context;
+```
+
+## Usage Examples
+
+### Basic Usage
+
+```tsx
+import { Outlet, useOutletContext } from "react-router";
+
+// Parent route
+function Parent() {
+  const [count, setCount] = React.useState(0);
+  return <Outlet context={{ count, setCount }} />;
+}
+
+// Child route
+function Child() {
+  const { count, setCount } = useOutletContext();
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      Count: {count}
+    </button>
+  );
+}
+```
+
+### Sharing State Between Parent and Child Routes
+
+```tsx
+import { Outlet, useOutletContext } from "react-router";
+import { useState } from "react";
+
+// Parent route component
+function DashboardLayout() {
+  const [user, setUser] = useState(null);
+  const [theme, setTheme] = useState("light");
+
+  return (
+    <div className={`dashboard ${theme}`}>
+      <nav>{/* Navigation */}</nav>
+      <Outlet context={{ user, setUser, theme, setTheme }} />
+    </div>
+  );
+}
+
+// Child route component
+function DashboardHome() {
+  const { user, theme, setTheme } = useOutletContext();
+
+  return (
+    <div>
+      <h1>Welcome, {user?.name}!</h1>
+      <button onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
+        Toggle Theme
+      </button>
+    </div>
+  );
+}
+```
+
+### TypeScript Usage with Custom Hook
+
+```tsx
+import { Outlet, useOutletContext } from "react-router";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+type DashboardContextType = {
+  user: User | null;
+  setUser: (user: User | null) => void;
+};
+
+// Parent route
+export default function Dashboard() {
+  const [user, setUser] = useState<User | null>(null);
+
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      <Outlet context={{ user, setUser } satisfies DashboardContextType} />
+    </div>
+  );
+}
+
+// Create a custom hook for type-safe context access
+export function useDashboard() {
+  return useOutletContext<DashboardContextType>();
+}
+
+// Child route using the custom hook
+import { useDashboard } from "../dashboard";
+
+export default function DashboardMessages() {
+  const { user } = useDashboard();
+  // TypeScript knows user is User | null
+  
+  return (
+    <div>
+      <h2>Messages</h2>
+      {user && <p>Hello, {user.name}!</p>}
+    </div>
+  );
+}
+```
+
+### Passing Multiple Values
+
+```tsx
+import { Outlet, useOutletContext } from "react-router";
+
+interface LayoutContext {
+  theme: string;
+  user: User;
+  notifications: Notification[];
+  updateUser: (user: User) => void;
+  addNotification: (notification: Notification) => void;
+}
+
+function Layout() {
+  const [theme, setTheme] = useState("light");
+  const [user, setUser] = useState<User>(initialUser);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const context: LayoutContext = {
+    theme,
+    user,
+    notifications,
+    updateUser: setUser,
+    addNotification: (notification) =>
+      setNotifications([...notifications, notification]),
+  };
+
+  return (
+    <div className={theme}>
+      <Outlet context={context} />
+    </div>
+  );
+}
+
+function ChildRoute() {
+  const { theme, user, notifications, updateUser } =
+    useOutletContext<LayoutContext>();
+
+  return (
+    <div>
+      <h2>Profile</h2>
+      <p>Theme: {theme}</p>
+      <p>User: {user.name}</p>
+      <p>Notifications: {notifications.length}</p>
+    </div>
+  );
+}
+```
+
+## Common Patterns
+
+### Authentication Context
+
+```tsx
+import { Outlet, Navigate, useOutletContext } from "react-router";
+
+interface AuthContext {
+  user: User | null;
+  login: (credentials: Credentials) => Promise<void>;
+  logout: () => void;
+}
+
+function AuthLayout() {
+  const [user, setUser] = useState<User | null>(null);
+
+  const login = async (credentials: Credentials) => {
+    const user = await loginAPI(credentials);
+    setUser(user);
+  };
+
+  const logout = () => {
+    setUser(null);
+  };
+
+  return <Outlet context={{ user, login, logout }} />;
+}
+
+function useAuth() {
+  return useOutletContext<AuthContext>();
+}
+
+// In child routes
+function Profile() {
+  const { user, logout } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <button onClick={logout}>Logout</button>
+    </div>
+  );
+}
+```
+
+### Form Context
+
+```tsx
+import { Outlet, useOutletContext } from "react-router";
+import { useForm } from "react-hook-form";
+
+type FormData = {
+  name: string;
+  email: string;
+  // ...
+};
+
+interface FormContext {
+  form: ReturnType<typeof useForm<FormData>>;
+  onSubmit: (data: FormData) => void;
+}
+
+function MultiStepForm() {
+  const form = useForm<FormData>();
+
+  const onSubmit = (data: FormData) => {
+    console.log("Form submitted:", data);
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <Outlet context={{ form, onSubmit }} />
+    </form>
+  );
+}
+
+function useFormContext() {
+  return useOutletContext<FormContext>();
+}
+
+// Step 1
+function PersonalInfo() {
+  const { form } = useFormContext();
+  return (
+    <div>
+      <input {...form.register("name")} />
+      <input {...form.register("email")} />
+    </div>
+  );
+}
+```
+
+### API Client Context
+
+```tsx
+import { Outlet, useOutletContext } from "react-router";
+
+interface APIContext {
+  api: APIClient;
+  isLoading: boolean;
+  error: Error | null;
+}
+
+function AppLayout() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const api = useMemo(() => new APIClient(), []);
+
+  return (
+    <Outlet
+      context={{
+        api,
+        isLoading,
+        error,
+      }}
+    />
+  );
+}
+
+function useAPI() {
+  return useOutletContext<APIContext>();
+}
+
+// In child route
+function Posts() {
+  const { api, isLoading } = useAPI();
+  const [posts, setPosts] = useState([]);
+
+  useEffect(() => {
+    api.fetchPosts().then(setPosts);
+  }, [api]);
+
+  return <div>{/* Render posts */}</div>;
+}
+```
+
+### Modal Context
+
+```tsx
+import { Outlet, useOutletContext } from "react-router";
+
+interface ModalContext {
+  openModal: (content: React.ReactNode) => void;
+  closeModal: () => void;
+}
+
+function LayoutWithModal() {
+  const [modalContent, setModalContent] = useState<React.ReactNode>(null);
+
+  const openModal = (content: React.ReactNode) => {
+    setModalContent(content);
+  };
+
+  const closeModal = () => {
+    setModalContent(null);
+  };
+
+  return (
+    <>
+      <Outlet context={{ openModal, closeModal }} />
+      {modalContent && (
+        <div className="modal">
+          {modalContent}
+          <button onClick={closeModal}>Close</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function useModal() {
+  return useOutletContext<ModalContext>();
+}
+
+// Child route
+function ProductList() {
+  const { openModal } = useModal();
+
+  const handleProductClick = (product: Product) => {
+    openModal(<ProductDetails product={product} />);
+  };
+
+  return <div>{/* Product list */}</div>;
+}
+```
+
+## Type Safety Best Practices
+
+### Export Custom Hook from Parent
+
+```tsx
+// routes/dashboard.tsx
+import { Outlet, useOutletContext } from "react-router";
+
+type ContextType = { user: User | null };
+
+export default function Dashboard() {
+  const [user, setUser] = useState<User | null>(null);
+  return <Outlet context={{ user } satisfies ContextType} />;
+}
+
+// Export custom hook for type safety
+export function useDashboardContext() {
+  return useOutletContext<ContextType>();
+}
+
+// routes/dashboard/profile.tsx
+import { useDashboardContext } from "../dashboard";
+
+export default function Profile() {
+  const { user } = useDashboardContext(); // Fully typed!
+  return <div>{user?.name}</div>;
+}
+```
+
+### Using satisfies for Type Safety
+
+```tsx
+type ContextType = {
+  value: string;
+  count: number;
+};
+
+function Parent() {
+  const context = {
+    value: "hello",
+    count: 42,
+  } satisfies ContextType;
+
+  return <Outlet context={context} />;
+}
+```
+
+## Notes
+
+- The context is `unknown` by default - use TypeScript generics for type safety
+- Context is only available to direct child routes rendered by the `<Outlet>`
+- Prefer creating custom hooks that wrap `useOutletContext` for better type safety
+- Context is passed down only one level - nested outlets need to pass context again
+- This is often a better alternative to React Context API for route-specific state
+
+## Related
+
+- [`<Outlet>`](/api/components/outlet) - Renders child routes and accepts context
+- [Layout Routes](/start/concepts/layout-routes) - Understanding route hierarchy
+- [React Context](https://react.dev/reference/react/useContext) - Alternative for app-wide state

@@ -1,0 +1,273 @@
+---
+title: useInRouterContext
+---
+
+# `useInRouterContext`
+
+Returns `true` if the component is a descendant of a `<Router>`. This is useful to ensure a component is used within a Router context.
+
+```tsx
+import { useInRouterContext } from "react-router";
+
+function MyComponent() {
+  const isInRouter = useInRouterContext();
+  
+  if (!isInRouter) {
+    return <div>This component must be used within a Router</div>;
+  }
+  
+  return <div>{/* Router-dependent code */}</div>;
+}
+```
+
+## Return Value
+
+<ResponseField name="inRouterContext" type="boolean">
+  `true` if the component is within a `<Router>` context, `false` otherwise.
+</ResponseField>
+
+## Type Declaration
+
+```tsx
+declare function useInRouterContext(): boolean;
+```
+
+## Usage Examples
+
+### Conditional Rendering
+
+```tsx
+import { useInRouterContext } from "react-router";
+
+function NavigationMenu() {
+  const inRouterContext = useInRouterContext();
+
+  if (!inRouterContext) {
+    // Render a static menu without router features
+    return (
+      <nav>
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+      </nav>
+    );
+  }
+
+  // Use router-specific components
+  return (
+    <nav>
+      <Link to="/">Home</Link>
+      <Link to="/about">About</Link>
+    </nav>
+  );
+}
+```
+
+### Validation in Custom Hook
+
+```tsx
+import { useInRouterContext, useLocation } from "react-router";
+
+function useCurrentPath() {
+  const inRouterContext = useInRouterContext();
+
+  if (!inRouterContext) {
+    throw new Error(
+      "useCurrentPath must be used within a Router component"
+    );
+  }
+
+  const location = useLocation();
+  return location.pathname;
+}
+```
+
+### Creating Router-Aware Components
+
+```tsx
+import { useInRouterContext, useNavigate } from "react-router";
+
+interface ButtonProps {
+  to?: string;
+  href?: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}
+
+function SmartButton({ to, href, onClick, children }: ButtonProps) {
+  const inRouterContext = useInRouterContext();
+  const navigate = inRouterContext ? useNavigate() : null;
+
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else if (to && navigate) {
+      navigate(to);
+    } else if (href) {
+      window.location.href = href;
+    }
+  };
+
+  return <button onClick={handleClick}>{children}</button>;
+}
+
+// Works both inside and outside Router
+<SmartButton to="/profile">Profile</SmartButton>; // Inside router
+<SmartButton href="/profile">Profile</SmartButton>; // Outside router
+```
+
+### Library Component Safety
+
+```tsx
+import { useInRouterContext } from "react-router";
+
+function LibraryComponent() {
+  const inRouterContext = useInRouterContext();
+
+  return (
+    <div>
+      {inRouterContext ? (
+        <p>Router is available - using enhanced navigation</p>
+      ) : (
+        <p>Router is not available - using basic navigation</p>
+      )}
+    </div>
+  );
+}
+```
+
+## Common Patterns
+
+### Fallback Behavior
+
+```tsx
+import { useInRouterContext, Link } from "react-router";
+
+function NavigationLink({ to, children }: { to: string; children: React.ReactNode }) {
+  const inRouterContext = useInRouterContext();
+
+  if (!inRouterContext) {
+    // Fallback to regular anchor tag
+    return <a href={to}>{children}</a>;
+  }
+
+  return <Link to={to}>{children}</Link>;
+}
+```
+
+### Error Boundary
+
+```tsx
+import { useInRouterContext } from "react-router";
+
+function RouterDependentFeature() {
+  const inRouterContext = useInRouterContext();
+
+  if (!inRouterContext) {
+    console.warn(
+      "RouterDependentFeature is not within a Router context. Some features may not work."
+    );
+  }
+
+  return <div>{/* Component content */}</div>;
+}
+```
+
+### Testing Utility
+
+```tsx
+import { useInRouterContext } from "react-router";
+
+export function DebugRouterContext() {
+  const inRouterContext = useInRouterContext();
+
+  return (
+    <div data-testid="router-context-status">
+      Router Context: {inRouterContext ? "Active" : "Inactive"}
+    </div>
+  );
+}
+```
+
+## Type Safety
+
+```tsx
+import { useInRouterContext, useNavigate } from "react-router";
+
+function TypeSafeNavigation() {
+  const inRouterContext = useInRouterContext();
+  
+  // TypeScript knows navigate might be null
+  const navigate = inRouterContext ? useNavigate() : null;
+
+  const handleNavigate = (path: string) => {
+    if (navigate) {
+      navigate(path);
+    } else {
+      console.warn("Navigation not available outside Router context");
+    }
+  };
+
+  return <button onClick={() => handleNavigate("/home")}>Go Home</button>;
+}
+```
+
+## Advanced Usage
+
+### Context Provider Check
+
+```tsx
+import { useInRouterContext } from "react-router";
+import { createContext, useContext } from "react";
+
+const CustomContext = createContext(null);
+
+function ComponentRequiringBothContexts() {
+  const inRouterContext = useInRouterContext();
+  const customContext = useContext(CustomContext);
+
+  if (!inRouterContext) {
+    throw new Error("Must be used within Router");
+  }
+
+  if (!customContext) {
+    throw new Error("Must be used within CustomContext.Provider");
+  }
+
+  return <div>{/* Component using both contexts */}</div>;
+}
+```
+
+### Progressive Enhancement
+
+```tsx
+import { useInRouterContext } from "react-router";
+
+function ProgressivelyEnhancedComponent() {
+  const hasRouter = useInRouterContext();
+
+  return (
+    <div>
+      <h1>Features</h1>
+      <ul>
+        <li>Basic Feature</li>
+        {hasRouter && <li>Router-Enhanced Feature</li>}
+      </ul>
+    </div>
+  );
+}
+```
+
+## Notes
+
+- This hook returns a simple boolean - it doesn't throw errors
+- Available in all React Router modes (Declarative, Data, and Framework)
+- Useful for building reusable components that may or may not be used within a Router
+- Does not require the component to be within a `<Route>`, only within a `<Router>`
+- Commonly used internally by other React Router hooks to validate context
+
+## Related
+
+- [`<Router>`](/api/routers/router) - Base router component
+- [`<BrowserRouter>`](/api/routers/browser-router) - Browser-based router
+- [`<RouterProvider>`](/api/routers/router-provider) - Data router provider
+- [Router Concepts](/start/concepts/routing) - Understanding React Router architecture
