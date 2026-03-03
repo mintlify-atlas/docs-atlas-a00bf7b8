@@ -1,0 +1,369 @@
+---
+title: Server Rendering
+---
+
+# Server Rendering
+
+React Router Framework Mode includes built-in server-side rendering (SSR) support through the Vite plugin.
+
+## Overview
+
+SSR is enabled by default in Framework Mode. The Vite plugin handles:
+
+- Rendering React components to HTML on the server
+- Loading data via route `loader` functions before rendering
+- Hydrating the client-side application
+- Handling navigation on both server and client
+
+## Entry Files
+
+### Server Entry
+
+Create `app/entry.server.tsx`:
+
+```typescript
+import { renderToString } from "react-dom/server";
+import { ServerRouter } from "react-router";
+import type { EntryContext } from "react-router";
+
+export default function handleRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  routerContext: EntryContext,
+) {
+  const html = renderToString(
+    <ServerRouter
+      context={routerContext}
+      url={request.url}
+    />
+  );
+
+  return new Response("<!DOCTYPE html>" + html, {
+    status: responseStatusCode,
+    headers: {
+      "Content-Type": "text/html",
+      ...Object.fromEntries(responseHeaders),
+    },
+  });
+}
+```
+
+### Client Entry
+
+Create `app/entry.client.tsx`:
+
+```typescript
+import { startTransition, StrictMode } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { HydratedRouter } from "react-router/dom";
+
+startTransition(() => {
+  hydrateRoot(
+    document,
+    <StrictMode>
+      <HydratedRouter />
+    </StrictMode>
+  );
+});
+```
+
+## SSR Configuration
+
+Configure SSR in `react-router.config.ts`:
+
+```typescript
+export default {
+  // Enable/disable SSR (default: true)
+  ssr: true,
+
+  // Server module format (default: "esm")
+  serverModuleFormat: "esm", // or "cjs"
+
+  // Server build output file (default: "index.js")
+  serverBuildFile: "index.js",
+} satisfies Config;
+```
+
+## Development Server
+
+The dev server handles SSR automatically:
+
+```bash
+npx react-router dev
+```
+
+The Vite plugin:
+1. Intercepts incoming requests
+2. Loads the server build
+3. Executes route `loader` functions
+4. Renders the React tree to HTML
+5. Returns the HTML response
+
+## Production Server
+
+### Using @react-router/serve
+
+The simplest way to run your SSR app:
+
+```bash
+npx react-router build
+npx react-router-serve ./build/server/index.js
+```
+
+### Custom Server
+
+Create a custom server with Express:
+
+```typescript
+import express from "express";
+import { createRequestHandler } from "@react-router/express";
+import * as build from "./build/server/index.js";
+
+const app = express();
+
+// Serve static assets
+app.use(
+  "/assets",
+  express.static("build/client/assets", {
+    immutable: true,
+    maxAge: "1y",
+  })
+);
+
+app.use(express.static("build/client", { maxAge: "1h" }));
+
+// SSR request handler
+app.all("*", createRequestHandler({ build }));
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server listening at http://localhost:${port}`);
+});
+```
+
+### Node.js Adapter
+
+Convert Node.js requests to Web Fetch API:
+
+```typescript
+import { fromNodeRequest } from "@react-router/node";
+import type { RequestHandler } from "react-router";
+
+const handler: RequestHandler = async (request) => {
+  // Handle Web Request
+  return new Response("Hello");
+};
+
+// In your Node.js server
+server.on("request", async (req, res) => {
+  const request = await fromNodeRequest(req, res);
+  const response = await handler(request);
+  // Send response back to Node.js
+});
+```
+
+## SPA Mode
+
+Disable SSR for Single Page Application mode:
+
+```typescript
+export default {
+  ssr: false,
+} satisfies Config;
+```
+
+In SPA mode:
+- Only the root route and `HydrateFallback` are rendered at build time
+- An `index.html` file is generated
+- All navigation happens client-side
+- No server is needed in production
+
+## Server vs. Client Code
+
+### Server-Only Modules
+
+Code that should only run on the server:
+
+```typescript
+// utils/server.server.ts
+import { db } from "~/db.server";
+
+export async function getUser(id: string) {
+  return db.user.findUnique({ where: { id } });
+}
+```
+
+The `.server.ts` suffix ensures this code is excluded from client bundles.
+
+### Client-Only Code
+
+Use client-only imports:
+
+```typescript
+import { useEffect, useState } from "react";
+
+export default function Component() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  return <ClientOnlyComponent />;
+}
+```
+
+## Streaming SSR
+
+Use React streaming APIs for better performance:
+
+```typescript
+import { renderToPipeableStream } from "react-dom/server";
+import { ServerRouter } from "react-router";
+import type { EntryContext } from "react-router";
+
+export default function handleRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  routerContext: EntryContext,
+) {
+  return new Promise((resolve, reject) => {
+    let didError = false;
+
+    const { pipe } = renderToPipeableStream(
+      <ServerRouter
+        context={routerContext}
+        url={request.url}
+      />,
+      {
+        onShellReady() {
+          const body = new PassThrough();
+          pipe(body);
+
+          resolve(
+            new Response(body as any, {
+              status: didError ? 500 : responseStatusCode,
+              headers: {
+                "Content-Type": "text/html",
+                ...Object.fromEntries(responseHeaders),
+              },
+            })
+          );
+        },
+        onShellError(error) {
+          reject(error);
+        },
+        onError(error) {
+          didError = true;
+          console.error(error);
+        },
+      }
+    );
+  });
+}
+```
+
+## Middleware Mode
+
+Integrate with existing servers:
+
+```typescript
+import { defineConfig } from "vite";
+import { reactRouter } from "@react-router/dev/vite";
+
+export default defineConfig({
+  plugins: [reactRouter()],
+  server: {
+    middlewareMode: true,
+  },
+});
+```
+
+Then in your server:
+
+```typescript
+import express from "express";
+import { createServer } from "vite";
+
+const app = express();
+
+const vite = await createServer({
+  server: { middlewareMode: true },
+});
+
+app.use(vite.middlewares);
+```
+
+## Environment Variables
+
+Environment variables are handled automatically:
+
+```typescript
+// Server-side
+export async function loader() {
+  const apiKey = process.env.API_KEY; // Available
+  return { data: "..." };
+}
+
+// Client-side
+export default function Component() {
+  // Only VITE_* vars available here
+  const publicKey = import.meta.env.VITE_PUBLIC_KEY;
+}
+```
+
+## Server Build Output
+
+After building, the server output is in `build/server/`:
+
+```
+build/
+├── client/           # Client assets
+│   ├── assets/       # Hashed JS/CSS
+│   └── .vite/        # Vite manifest
+└── server/           # Server build
+    └── index.js      # Server entry point
+```
+
+## Load Context
+
+Pass server context to loaders:
+
+```typescript
+// In your server
+import { createRequestHandler } from "@react-router/express";
+
+app.all(
+  "*",
+  createRequestHandler({
+    build,
+    getLoadContext(req, res) {
+      return {
+        user: req.user,
+        db: req.db,
+      };
+    },
+  })
+);
+```
+
+Access in routes:
+
+```typescript
+import type { LoaderFunctionArgs } from "react-router";
+
+export async function loader({ context }: LoaderFunctionArgs) {
+  const user = context.user;
+  return { user };
+}
+```
+
+## See Also
+
+- [Vite Plugin](/framework/vite-plugin)
+- [Server Bundles](/framework/server-bundles)
+- [Middleware](/framework/middleware)

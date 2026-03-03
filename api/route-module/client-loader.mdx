@@ -1,0 +1,380 @@
+---
+title: clientLoader
+---
+
+# clientLoader
+
+A client-side data loading function that runs in the browser, allowing you to fetch data from APIs, access browser storage, or augment server loader data.
+
+## Signature
+
+```tsx
+export function clientLoader(args: ClientLoaderFunctionArgs): Promise<Data> | Data
+```
+
+<ParamField path="args" type="ClientLoaderFunctionArgs" required>
+  Arguments passed to the clientLoader function
+
+  <Expandable title="properties">
+    <ParamField path="request" type="Request" required>
+      A Fetch Request instance for the navigation
+    </ParamField>
+
+    <ParamField path="params" type="Params" required>
+      Dynamic route params for the current route
+    </ParamField>
+
+    <ParamField path="serverLoader" type="<T>() => Promise<T>" required>
+      Function to call the server loader and get its data
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Data | Promise<Data>">
+  Data to be used by the route component (accessible via `useLoaderData()`)
+</ResponseField>
+
+## Basic Example
+
+```tsx
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  const product = await fetch(`/api/products/${params.id}`).then(r => r.json());
+  return { product };
+}
+
+export default function Product() {
+  const { product } = useLoaderData<typeof clientLoader>();
+  return <h1>{product.name}</h1>;
+}
+```
+
+## Calling Server Loader
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  const product = await db.product.findUnique({ where: { id: params.id } });
+  return { product };
+}
+
+export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
+  // Get data from server
+  const serverData = await serverLoader<typeof loader>();
+  
+  // Augment with client-only data
+  const reviews = await fetchReviewsFromAPI(serverData.product.id);
+  
+  return {
+    ...serverData,
+    reviews,
+  };
+}
+```
+
+## Skipping Server Loader
+
+```tsx
+// Only run on client - no server loader
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  const data = await fetch(`https://api.example.com/data/${params.id}`)
+    .then(r => r.json());
+  return { data };
+}
+
+export default function Component() {
+  const { data } = useLoaderData<typeof clientLoader>();
+  return <div>{data.title}</div>;
+}
+```
+
+## Hydrate Option
+
+Control whether clientLoader runs on initial page load:
+
+```tsx
+// Run on hydration (initial page load)
+export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
+  const data = await serverLoader();
+  // Add client-side data
+  return { ...data, timestamp: Date.now() };
+}
+clientLoader.hydrate = true;
+
+export function HydrateFallback() {
+  return <div>Loading...</div>;
+}
+```
+
+Without `hydrate = true`, clientLoader only runs on client-side navigation:
+
+```tsx
+export async function loader() {
+  return { data: await fetchFromDB() };
+}
+
+// Only runs on client navigation, not initial load
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  return { data: await fetchFromAPI(params.id) };
+}
+```
+
+## HydrateFallback
+
+Show a loading state during hydration:
+
+```tsx
+export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
+  const data = await serverLoader();
+  // Do some client-side processing
+  await new Promise(r => setTimeout(r, 1000));
+  return data;
+}
+clientLoader.hydrate = true;
+
+export function HydrateFallback() {
+  return (
+    <div className="loading">
+      <Spinner />
+      <p>Loading product details...</p>
+    </div>
+  );
+}
+
+export default function Product() {
+  const data = useLoaderData<typeof clientLoader>();
+  return <div>{data.product.name}</div>;
+}
+```
+
+## Client-Side Caching
+
+```tsx
+const cache = new Map();
+
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  const cacheKey = params.id;
+  
+  // Check cache first
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+  
+  // Fetch and cache
+  const product = await fetch(`/api/products/${params.id}`).then(r => r.json());
+  cache.set(cacheKey, { product });
+  
+  return { product };
+}
+```
+
+## Accessing Browser APIs
+
+```tsx
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  // Access localStorage
+  const preferences = JSON.parse(
+    localStorage.getItem("preferences") || "{}"
+  );
+  
+  // Access IndexedDB
+  const cachedData = await idb.get(params.id);
+  
+  // Use browser-only APIs
+  const online = navigator.onLine;
+  
+  return {
+    preferences,
+    cachedData,
+    online,
+  };
+}
+```
+
+## Combining Server and Client Data
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  // Server-side: fetch from database
+  const article = await db.article.findUnique({
+    where: { slug: params.slug }
+  });
+  return { article };
+}
+
+export async function clientLoader({ 
+  params, 
+  serverLoader 
+}: Route.ClientLoaderArgs) {
+  // Get server data
+  const { article } = await serverLoader<typeof loader>();
+  
+  // Add client-only data
+  const [viewCount, userBookmarked] = await Promise.all([
+    fetch(`/api/views/${article.id}`).then(r => r.json()),
+    checkIfBookmarked(article.id),
+  ]);
+  
+  return {
+    article,
+    viewCount,
+    userBookmarked,
+  };
+}
+clientLoader.hydrate = true;
+```
+
+## Progressive Enhancement
+
+```tsx
+// Server loader for SSR and no-JS
+export async function loader({ params }: Route.LoaderArgs) {
+  return { products: await db.product.findMany() };
+}
+
+// Client loader for enhanced experience
+export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
+  const { products } = await serverLoader<typeof loader>();
+  
+  // Add real-time prices from external API
+  const prices = await fetch("/api/prices").then(r => r.json());
+  
+  const enrichedProducts = products.map(product => ({
+    ...product,
+    currentPrice: prices[product.id],
+  }));
+  
+  return { products: enrichedProducts };
+}
+clientLoader.hydrate = true;
+```
+
+## Error Handling
+
+```tsx
+export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
+  try {
+    // Try to get fresh data from server
+    return await serverLoader();
+  } catch (error) {
+    // Fall back to cached data
+    const cached = await getCachedData();
+    
+    if (cached) {
+      return { ...cached, fromCache: true };
+    }
+    
+    // Re-throw if no cache available
+    throw error;
+  }
+}
+```
+
+## Conditional Server Calls
+
+```tsx
+export async function clientLoader({ 
+  params, 
+  serverLoader 
+}: Route.ClientLoaderArgs) {
+  // Check if we have fresh cache
+  const cached = cache.get(params.id);
+  const isFresh = cached && Date.now() - cached.timestamp < 60000;
+  
+  if (isFresh) {
+    return cached.data;
+  }
+  
+  // Cache miss or stale - call server
+  const data = await serverLoader();
+  cache.set(params.id, { data, timestamp: Date.now() });
+  
+  return data;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use for client-only features">
+    clientLoader is perfect for features that require browser APIs:
+
+    ```tsx
+    export async function clientLoader() {
+      return {
+        userPreferences: JSON.parse(localStorage.getItem("prefs") || "{}"),
+        deviceInfo: {
+          online: navigator.onLine,
+          battery: await navigator.getBattery(),
+        },
+      };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Set hydrate = true when augmenting server data">
+    If you need both server and client data on initial load:
+
+    ```tsx
+    export async function loader() {
+      return { serverData: await fetchFromDB() };
+    }
+
+    export async function clientLoader({ serverLoader }) {
+      const server = await serverLoader();
+      const client = await fetchFromAPI();
+      return { ...server, ...client };
+    }
+    clientLoader.hydrate = true; // ✅ Run on initial load
+    ```
+  </Accordion>
+
+  <Accordion title="Don't duplicate server logic unnecessarily">
+    Use clientLoader to enhance, not replace:
+
+    ```tsx
+    // ❌ Bad - duplicating server logic
+    export async function loader({ params }) {
+      return { user: await db.user.find(params.id) };
+    }
+
+    export async function clientLoader({ params }) {
+      return { user: await fetch(`/api/users/${params.id}`).then(r => r.json()) };
+    }
+
+    // ✅ Good - augmenting server data
+    export async function loader({ params }) {
+      return { user: await db.user.find(params.id) };
+    }
+
+    export async function clientLoader({ serverLoader }) {
+      const { user } = await serverLoader();
+      const activity = await fetchUserActivity(user.id);
+      return { user, activity };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle offline scenarios">
+    Provide fallbacks when server is unreachable:
+
+    ```tsx
+    export async function clientLoader({ serverLoader }) {
+      try {
+        return await serverLoader();
+      } catch (error) {
+        // Return cached data or offline message
+        const cached = await getFromIndexedDB();
+        if (cached) {
+          return { ...cached, offline: true };
+        }
+        throw new Response("Offline", { status: 503 });
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [loader](/api/route-module/loader) - Server-side data loading
+- [clientAction](/api/route-module/client-action) - Client-side mutations
+- [useLoaderData](/api/hooks/use-loader-data) - Access loader data

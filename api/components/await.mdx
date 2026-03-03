@@ -1,0 +1,327 @@
+---
+title: Await
+---
+
+<Modes modes={["data", "framework"]} />
+
+Used to render promise values with automatic error handling. `<Await>` expects to be rendered inside a `<React.Suspense>` boundary.
+
+```tsx
+import { Await, useLoaderData } from "react-router";
+import { Suspense } from "react";
+
+export async function loader() {
+  const reviewsPromise = getReviews(); // not awaited
+  const book = await getBook(); // awaited
+  return { book, reviews: reviewsPromise };
+}
+
+function Book() {
+  const { book, reviews } = useLoaderData();
+
+  return (
+    <div>
+      <h1>{book.title}</h1>
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Await resolve={reviews}>
+          {(resolvedReviews) => <Reviews items={resolvedReviews} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Type Declaration
+
+```tsx
+export interface AwaitProps<Resolve> {
+  children: React.ReactNode | AwaitResolveRenderFunction<Resolve>;
+  errorElement?: React.ReactNode;
+  resolve: Promise<Resolve> | Resolve;
+}
+
+export function Await<Resolve>({
+  children,
+  errorElement,
+  resolve,
+}: AwaitProps<Resolve>): React.ReactElement;
+
+interface AwaitResolveRenderFunction<Resolve = any> {
+  (data: Awaited<Resolve>): React.ReactNode;
+}
+```
+
+## Props
+
+<ParamField path="resolve" type="Promise<T> | T" required>
+  Takes a Promise returned from a loader to be resolved and rendered.
+
+  ```tsx
+  export async function loader() {
+    let reviews = getReviews(); // not awaited
+    let book = await getBook();
+    return {
+      book,
+      reviews, // this is a promise
+    };
+  }
+
+  export default function Book() {
+    const { book, reviews } = useLoaderData();
+
+    return (
+      <div>
+        <h1>{book.title}</h1>
+        <Suspense fallback={<ReviewsSkeleton />}>
+          <Await resolve={reviews}>
+            <Reviews />
+          </Await>
+        </Suspense>
+      </div>
+    );
+  }
+  ```
+</ParamField>
+
+<ParamField path="children" type="React.ReactNode | AwaitResolveRenderFunction">
+  When using a function, the resolved value is provided as the parameter:
+
+  ```tsx
+  <Await resolve={reviewsPromise}>
+    {(resolvedReviews) => <Reviews items={resolvedReviews} />}
+  </Await>
+  ```
+
+  When using React elements, `useAsyncValue` will provide the resolved value:
+
+  ```tsx
+  <Await resolve={reviewsPromise}>
+    <Reviews />
+  </Await>
+
+  function Reviews() {
+    const resolvedReviews = useAsyncValue();
+    return <div>...</div>;
+  }
+  ```
+</ParamField>
+
+<ParamField path="errorElement" type="React.ReactNode">
+  The error element renders instead of the `children` when the Promise rejects.
+
+  ```tsx
+  <Await
+    errorElement={<div>Could not load reviews</div>}
+    resolve={reviewsPromise}
+  >
+    <Reviews />
+  </Await>
+  ```
+
+  To provide a more contextual error, you can use the `useAsyncError` hook in a child component:
+
+  ```tsx
+  <Await errorElement={<ReviewsError />} resolve={reviewsPromise}>
+    <Reviews />
+  </Await>
+
+  function ReviewsError() {
+    const error = useAsyncError();
+    return <div>Error loading reviews: {error.message}</div>;
+  }
+  ```
+
+  If you do not provide an `errorElement`, the rejected value will bubble up to the nearest route-level ErrorBoundary and be accessible via the `useRouteError` hook.
+</ParamField>
+
+## Examples
+
+### Basic Usage with Render Function
+
+```tsx
+import { Await, useLoaderData } from "react-router";
+import { Suspense } from "react";
+
+export async function loader() {
+  const dataPromise = fetchData();
+  return { data: dataPromise };
+}
+
+export default function Page() {
+  const { data } = useLoaderData();
+
+  return (
+    <Suspense fallback={<Spinner />}>
+      <Await resolve={data}>
+        {(resolvedData) => <DataDisplay data={resolvedData} />}
+      </Await>
+    </Suspense>
+  );
+}
+```
+
+### With useAsyncValue
+
+```tsx
+import { Await, useLoaderData, useAsyncValue } from "react-router";
+import { Suspense } from "react";
+
+export async function loader() {
+  return { data: fetchData() };
+}
+
+function DataDisplay() {
+  const data = useAsyncValue();
+  return <div>{data.content}</div>;
+}
+
+export default function Page() {
+  const { data } = useLoaderData();
+
+  return (
+    <Suspense fallback={<Spinner />}>
+      <Await resolve={data}>
+        <DataDisplay />
+      </Await>
+    </Suspense>
+  );
+}
+```
+
+### With Error Handling
+
+```tsx
+import { Await, useLoaderData } from "react-router";
+import { Suspense } from "react";
+
+export async function loader() {
+  return {
+    critical: await getCriticalData(),
+    optional: getOptionalData(), // may fail
+  };
+}
+
+export default function Page() {
+  const { critical, optional } = useLoaderData();
+
+  return (
+    <div>
+      <h1>{critical.title}</h1>
+
+      <Suspense fallback={<Skeleton />}>
+        <Await
+          resolve={optional}
+          errorElement={<p>Could not load optional content</p>}
+        >
+          {(data) => <OptionalContent data={data} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Multiple Deferred Values
+
+```tsx
+export async function loader() {
+  return {
+    critical: await getCriticalData(),
+    reviews: getReviews(),
+    recommendations: getRecommendations(),
+  };
+}
+
+export default function Product() {
+  const { critical, reviews, recommendations } = useLoaderData();
+
+  return (
+    <div>
+      <h1>{critical.name}</h1>
+      <p>{critical.description}</p>
+
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Await resolve={reviews} errorElement={<ReviewsError />}>
+          {(resolvedReviews) => <Reviews items={resolvedReviews} />}
+        </Await>
+      </Suspense>
+
+      <Suspense fallback={<RecommendationsSkeleton />}>
+        <Await resolve={recommendations}>
+          {(items) => <Recommendations items={items} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Streaming with useAsyncError
+
+```tsx
+import { Await, useAsyncValue, useAsyncError } from "react-router";
+import { Suspense } from "react";
+
+function ReviewsError() {
+  const error = useAsyncError();
+
+  if (error.status === 404) {
+    return <p>No reviews yet. Be the first to review!</p>;
+  }
+
+  return (
+    <div>
+      <p>Error loading reviews: {error.message}</p>
+      <button onClick={() => window.location.reload()}>
+        Try Again
+      </button>
+    </div>
+  );
+}
+
+function Reviews() {
+  const reviews = useAsyncValue();
+  return (
+    <ul>
+      {reviews.map((review) => (
+        <li key={review.id}>{review.text}</li>
+      ))}
+    </ul>
+  );
+}
+
+export default function Product() {
+  const { reviewsPromise } = useLoaderData();
+
+  return (
+    <Suspense fallback={<ReviewsSkeleton />}>
+      <Await resolve={reviewsPromise} errorElement={<ReviewsError />}>
+        <Reviews />
+      </Await>
+    </Suspense>
+  );
+}
+```
+
+## Behavior
+
+- Must be rendered inside a `<React.Suspense>` boundary
+- Suspends rendering until the promise resolves
+- If the promise rejects and no `errorElement` is provided, the error bubbles to the nearest route ErrorBoundary
+- Works with streaming SSR to progressively enhance the page
+- Can be used multiple times for multiple deferred values
+
+## Use Cases
+
+- **Slow data sources**: Load fast data immediately and stream slow data later
+- **Progressive enhancement**: Show critical content first, load optional content in the background
+- **Improved perceived performance**: Don't block the entire page for slow data
+- **Waterfall prevention**: Load multiple slow resources in parallel
+
+## Notes
+
+- The promise is automatically tracked - don't create new promises on each render
+- Combine with streaming SSR for optimal performance
+- Use for non-critical data that doesn't block page render
+- Critical data should still be awaited in the loader

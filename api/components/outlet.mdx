@@ -1,0 +1,198 @@
+---
+title: Outlet
+---
+
+Renders the matching child route of a parent route or nothing if no child route matches.
+
+```tsx
+import { Outlet } from "react-router";
+
+export default function Dashboard() {
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      <Outlet />
+    </div>
+  );
+}
+```
+
+## Type Declaration
+
+```tsx
+export interface OutletProps {
+  context?: unknown;
+}
+
+export function Outlet(props: OutletProps): React.ReactElement | null;
+```
+
+## Props
+
+<ParamField path="context" type="unknown">
+  Provides a context value to the element tree below the outlet. Use when the parent route needs to provide values to child routes.
+
+  ```tsx
+  <Outlet context={{ user, permissions }} />
+  ```
+
+  Access the context with `useOutletContext`:
+
+  ```tsx
+  function ChildRoute() {
+    const { user, permissions } = useOutletContext();
+    return <div>{user.name}</div>;
+  }
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Layout
+
+```tsx
+// routes
+<Route path="dashboard" element={<DashboardLayout />}>
+  <Route index element={<Overview />} />
+  <Route path="settings" element={<Settings />} />
+  <Route path="profile" element={<Profile />} />
+</Route>
+
+// DashboardLayout.tsx
+import { Outlet, Link } from "react-router";
+
+export default function DashboardLayout() {
+  return (
+    <div>
+      <nav>
+        <Link to="/dashboard">Overview</Link>
+        <Link to="/dashboard/settings">Settings</Link>
+        <Link to="/dashboard/profile">Profile</Link>
+      </nav>
+      <main>
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+```
+
+### Passing Context
+
+```tsx
+// ParentRoute.tsx
+import { Outlet } from "react-router";
+
+interface OutletContext {
+  user: User;
+  updateUser: (user: User) => void;
+}
+
+export default function ParentRoute() {
+  const [user, setUser] = useState<User>();
+
+  return (
+    <div>
+      <h1>Account Settings</h1>
+      <Outlet context={{ user, updateUser: setUser }} />
+    </div>
+  );
+}
+
+// ChildRoute.tsx
+import { useOutletContext } from "react-router";
+
+export default function ChildRoute() {
+  const { user, updateUser } = useOutletContext<OutletContext>();
+
+  return (
+    <div>
+      <p>Name: {user?.name}</p>
+      <button onClick={() => updateUser({ ...user, name: "New Name" })}>
+        Update Name
+      </button>
+    </div>
+  );
+}
+```
+
+### Nested Outlets
+
+```tsx
+// App.tsx
+<Route path="/" element={<Root />}>
+  <Route path="dashboard" element={<Dashboard />}>
+    <Route path="settings" element={<Settings />}>
+      <Route path="profile" element={<Profile />} />
+      <Route path="security" element={<Security />} />
+    </Route>
+  </Route>
+</Route>
+
+// Root.tsx
+export default function Root() {
+  return (
+    <div>
+      <Header />
+      <Outlet />
+      <Footer />
+    </div>
+  );
+}
+
+// Dashboard.tsx
+export default function Dashboard() {
+  return (
+    <div>
+      <Sidebar />
+      <Outlet />
+    </div>
+  );
+}
+
+// Settings.tsx
+export default function Settings() {
+  return (
+    <div>
+      <SettingsNav />
+      <Outlet />
+    </div>
+  );
+}
+```
+
+### Conditional Outlet
+
+```tsx
+import { Outlet, useOutlet } from "react-router";
+
+export default function Layout() {
+  const outlet = useOutlet();
+
+  return (
+    <div>
+      <Header />
+      {outlet ? (
+        <main>
+          <Outlet />
+        </main>
+      ) : (
+        <p>Select a page from the navigation</p>
+      )}
+      <Footer />
+    </div>
+  );
+}
+```
+
+## Behavior
+
+- Returns `null` if there is no child route that matches
+- Renders the element of the child route that matches the current location
+- Can be used multiple times in nested route hierarchies
+- Context is type-safe when used with TypeScript and proper typing
+
+## Related Hooks
+
+- [`useOutlet`](../hooks/use-outlet) - Returns the outlet element
+- [`useOutletContext`](../hooks/use-outlet-context) - Access context passed to the outlet

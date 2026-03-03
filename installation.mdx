@@ -1,0 +1,228 @@
+---
+title: "Installation"
+description: "Install React Router for Framework, Data, or Declarative mode"
+---
+
+# Installation
+
+Install React Router based on which mode you want to use. Each mode has different dependencies and setup requirements.
+
+<Tabs>
+  <Tab title="Framework Mode">
+    ## Framework Mode Installation
+
+    Framework Mode provides the full-stack experience with Vite integration, automatic type generation, and SSR support.
+
+    ### Install Dependencies
+
+    <CodeGroup>
+    ```bash npm
+    npm install react-router@latest
+    npm install -D @react-router/dev@latest
+    npm install @react-router/node@latest @react-router/serve@latest
+    ```
+
+    ```bash yarn
+    yarn add react-router@latest
+    yarn add -D @react-router/dev@latest
+    yarn add @react-router/node@latest @react-router/serve@latest
+    ```
+
+    ```bash pnpm
+    pnpm add react-router@latest
+    pnpm add -D @react-router/dev@latest
+    pnpm add @react-router/node@latest @react-router/serve@latest
+    ```
+    </CodeGroup>
+
+    ### Configure Vite
+
+    Update your `vite.config.ts`:
+
+    ```typescript vite.config.ts
+    import { reactRouter } from "@react-router/dev/vite";
+    import { defineConfig } from "vite";
+
+    export default defineConfig({
+      plugins: [reactRouter()],
+    });
+    ```
+
+    ### Add Scripts
+
+    Update your `package.json`:
+
+    ```json package.json
+    {
+      "scripts": {
+        "dev": "react-router dev",
+        "build": "react-router build",
+        "start": "react-router-serve ./build/server/index.js",
+        "typecheck": "react-router typegen && tsc"
+      }
+    }
+    ```
+
+    <Note>
+      Framework Mode requires Node.js 20 or higher.
+    </Note>
+
+  </Tab>
+
+  <Tab title="Data Mode">
+    ## Data Mode Installation
+
+    Data Mode uses `createBrowserRouter` for powerful data loading with loaders and actions.
+
+    ### Install Dependencies
+
+    <CodeGroup>
+    ```bash npm
+    npm install react-router@latest
+    ```
+
+    ```bash yarn
+    yarn add react-router@latest
+    ```
+
+    ```bash pnpm
+    pnpm add react-router@latest
+    ```
+    </CodeGroup>
+
+    ### Setup Vite (Optional)
+
+    If you're using Vite, add React plugin:
+
+    ```typescript vite.config.ts
+    import react from "@vitejs/plugin-react";
+    import { defineConfig } from "vite";
+
+    export default defineConfig({
+      plugins: [react()],
+    });
+    ```
+
+    <Info>
+      Data Mode works with any bundler - Vite, Webpack, Rollup, or esbuild.
+    </Info>
+
+  </Tab>
+
+  <Tab title="Declarative Mode">
+    ## Declarative Mode Installation
+
+    Declarative Mode uses the classic JSX-based routing with `<Routes>` and `<Route>` components.
+
+    ### Install Dependencies
+
+    <CodeGroup>
+    ```bash npm
+    npm install react-router@latest
+    ```
+
+    ```bash yarn
+    yarn add react-router@latest
+    ```
+
+    ```bash pnpm
+    pnpm add react-router@latest
+    ```
+    </CodeGroup>
+
+    ### Upgrading from v6?
+
+    If you're upgrading from React Router v6, you can also install the compatibility package:
+
+    <CodeGroup>
+    ```bash npm
+    npm install react-router-dom@latest
+    ```
+
+    ```bash yarn
+    yarn add react-router-dom@latest
+    ```
+
+    ```bash pnpm
+    pnpm add react-router-dom@latest
+    ```
+    </CodeGroup>
+
+    <Warning>
+      `react-router-dom` simply re-exports from `react-router` for v6 compatibility. New projects should import directly from `react-router`.
+    </Warning>
+
+  </Tab>
+</Tabs>
+
+## Server Adapters
+
+For Framework Mode with SSR, choose a server adapter based on your deployment target:
+
+<CardGroup cols={3}>
+  <Card title="Node.js" icon="node-js">
+    ```bash
+    npm install @react-router/node
+    ```
+    For Node.js environments like Express or standalone servers
+  </Card>
+  <Card title="Cloudflare" icon="cloud">
+    ```bash
+    npm install @react-router/cloudflare
+    ```
+    For Cloudflare Workers and Pages
+  </Card>
+  <Card title="Express" icon="server">
+    ```bash
+    npm install @react-router/express
+    ```
+    For Express.js integration
+  </Card>
+</CardGroup>
+
+## Optional Packages
+
+### File-based Routing
+
+Use `flatRoutes()` for automatic route generation from your file system:
+
+<CodeGroup>
+```bash npm
+npm install @react-router/fs-routes
+```
+
+```bash yarn
+yarn add @react-router/fs-routes
+```
+
+```bash pnpm
+pnpm add @react-router/fs-routes
+```
+</CodeGroup>
+
+```typescript app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes() satisfies RouteConfig;
+```
+
+## Verify Installation
+
+<Steps>
+  <Step title="Check package.json">
+    Verify that `react-router` appears in your dependencies with the correct version.
+  </Step>
+  <Step title="Run type check">
+    For Framework Mode, run `npm run typecheck` to generate types and verify setup.
+  </Step>
+  <Step title="Start dev server">
+    Run your dev command (`npm run dev`) to ensure everything is configured correctly.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Build your first React Router application
+</Card>

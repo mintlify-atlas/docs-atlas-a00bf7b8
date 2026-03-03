@@ -1,0 +1,331 @@
+---
+title: useRouteLoaderData
+---
+
+# useRouteLoaderData
+
+Returns the `loader` data for a given route by route ID.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useRouteLoaderData<T = any>(
+  routeId: string
+): SerializeFrom<T> | undefined
+```
+
+## Parameters
+
+<ParamField path="routeId" type="string" required>
+  The ID of the route to return loader data from. In Framework mode, route IDs are the path of the route file relative to the app folder without the extension.
+</ParamField>
+
+## Returns
+
+<ResponseField name="data" type="SerializeFrom<T> | undefined">
+  The data returned from the specified route's `loader` function, or `undefined` if not found.
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+Access parent route data from a child route:
+
+```tsx
+// app/routes/dashboard.tsx
+export async function loader() {
+  const user = await getUser();
+  return { user };
+}
+
+export default function Dashboard() {
+  return <Outlet />;
+}
+
+// app/routes/dashboard.settings.tsx
+import { useRouteLoaderData } from "react-router";
+
+export default function Settings() {
+  const data = useRouteLoaderData("routes/dashboard");
+  
+  return <h1>Settings for {data.user.name}</h1>;
+}
+```
+
+### Framework mode route IDs
+
+In Framework mode, route IDs are automatically generated from file paths:
+
+| Route Filename               | Route ID               |
+| ---------------------------- | ---------------------- |
+| `app/root.tsx`               | `"root"`               |
+| `app/routes/teams.tsx`       | `"routes/teams"`       |
+| `app/routes/teams.$id.tsx`   | `"routes/teams.$id"`   |
+| `app/whatever/teams.$id.tsx` | `"whatever/teams.$id"` |
+
+```tsx
+// Access root loader data from anywhere
+const rootData = useRouteLoaderData("root");
+```
+
+### Custom route IDs
+
+You can specify custom route IDs in `routes.ts`:
+
+```tsx
+// app/routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("/", "containers/app.tsx", { id: "app" }),
+];
+
+// In any component
+const appData = useRouteLoaderData("app");
+```
+
+### Access user data globally
+
+Common pattern for accessing authenticated user data:
+
+```tsx
+// app/root.tsx
+export async function loader({ request }) {
+  const user = await authenticator.isAuthenticated(request);
+  return { user };
+}
+
+// Any nested route
+import { useRouteLoaderData } from "react-router";
+
+function UserMenu() {
+  const data = useRouteLoaderData("root");
+  
+  if (!data?.user) {
+    return <LoginButton />;
+  }
+  
+  return (
+    <div>
+      <img src={data.user.avatar} />
+      <span>{data.user.name}</span>
+    </div>
+  );
+}
+```
+
+### Type-safe wrapper
+
+Create a custom hook for type safety:
+
+```tsx
+// app/routes/dashboard.tsx
+import type { loader } from "./+types.dashboard";
+
+export { loader };
+
+// utils/hooks.ts
+import { useRouteLoaderData } from "react-router";
+import type { loader as dashboardLoader } from "~/routes/dashboard";
+
+export function useDashboard() {
+  const data = useRouteLoaderData<typeof dashboardLoader>(
+    "routes/dashboard"
+  );
+  
+  if (!data) {
+    throw new Error("Must be used within dashboard routes");
+  }
+  
+  return data;
+}
+
+// Any child route
+import { useDashboard } from "~/utils/hooks";
+
+export default function DashboardSettings() {
+  const { user, preferences } = useDashboard();
+  return <SettingsForm user={user} preferences={preferences} />;
+}
+```
+
+### Access layout data
+
+```tsx
+// app/routes/_auth.tsx (layout route)
+export async function loader() {
+  const permissions = await getPermissions();
+  return { permissions };
+}
+
+export default function AuthLayout() {
+  return <Outlet />;
+}
+
+// app/routes/_auth.admin.tsx
+import { useRouteLoaderData } from "react-router";
+
+export default function Admin() {
+  const data = useRouteLoaderData("routes/_auth");
+  
+  if (!data?.permissions.isAdmin) {
+    return <Forbidden />;
+  }
+  
+  return <AdminPanel />;
+}
+```
+
+### Share data between sibling routes
+
+```tsx
+// Parent route loads shared data
+// app/routes/products.tsx
+export async function loader() {
+  const categories = await db.categories.findAll();
+  return { categories };
+}
+
+export default function ProductsLayout() {
+  return <Outlet />;
+}
+
+// Child route 1: app/routes/products._index.tsx
+import { useRouteLoaderData } from "react-router";
+
+export default function ProductsList() {
+  const data = useRouteLoaderData("routes/products");
+  return <CategoryFilter categories={data.categories} />;
+}
+
+// Child route 2: app/routes/products.new.tsx
+import { useRouteLoaderData } from "react-router";
+
+export default function NewProduct() {
+  const data = useRouteLoaderData("routes/products");
+  return <CategorySelect categories={data.categories} />;
+}
+```
+
+## Common Patterns
+
+### Check if data exists
+
+```tsx
+const data = useRouteLoaderData("routes/dashboard");
+
+if (!data) {
+  // Route hasn't loaded yet or doesn't exist
+  return null;
+}
+
+// Safe to use data
+return <div>{data.user.name}</div>;
+```
+
+### Breadcrumbs
+
+```tsx
+import { useMatches, useRouteLoaderData } from "react-router";
+
+function Breadcrumbs() {
+  const matches = useMatches();
+  
+  return (
+    <nav>
+      {matches.map((match) => {
+        const data = useRouteLoaderData(match.id);
+        const crumb = data?.breadcrumb;
+        
+        if (!crumb) return null;
+        
+        return (
+          <Link key={match.id} to={match.pathname}>
+            {crumb}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+// In route loaders
+export async function loader({ params }) {
+  const project = await getProject(params.id);
+  return {
+    project,
+    breadcrumb: project.name,
+  };
+}
+```
+
+### Conditional rendering
+
+```tsx
+function Header() {
+  const rootData = useRouteLoaderData("root");
+  const dashboardData = useRouteLoaderData("routes/dashboard");
+  
+  // Show different header based on available data
+  if (dashboardData) {
+    return <DashboardHeader data={dashboardData} />;
+  }
+  
+  return <DefaultHeader user={rootData?.user} />;
+}
+```
+
+## Comparison with useLoaderData
+
+| Feature | `useLoaderData` | `useRouteLoaderData` |
+|---------|----------------|---------------------|
+| Scope | Current route only | Any route by ID |
+| Parameters | None | Route ID required |
+| Return type | Always defined | May be `undefined` |
+| Use case | Access own data | Access parent/other route data |
+
+## Type Safety
+
+### With TypeScript (Framework mode)
+
+```tsx
+import type { loader as rootLoader } from "~/root";
+
+function Component() {
+  const data = useRouteLoaderData<typeof rootLoader>("root");
+  
+  // TypeScript knows the shape, but it's optional
+  if (data) {
+    data.user.name;  // Typed correctly
+  }
+}
+```
+
+### With TypeScript (Data mode)
+
+```tsx
+interface RootLoaderData {
+  user: User | null;
+  env: Env;
+}
+
+function Component() {
+  const data = useRouteLoaderData<RootLoaderData>("root");
+  
+  if (data?.user) {
+    console.log(data.user.name);
+  }
+}
+```
+
+## Related
+
+- [`useLoaderData`](/api/hooks/use-loader-data) - Access current route's loader data
+- [`useMatches`](/api/hooks/use-matches) - Get all active route matches
+- [`loader`](/start/framework/route-module#loader) - Define route loader
+- [`Outlet`](/api/components/outlet) - Render child routes

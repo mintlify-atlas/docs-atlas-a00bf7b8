@@ -1,0 +1,243 @@
+---
+title: Custom Data Strategies
+description: Customize how React Router loads data with the dataStrategy API
+---
+
+# Custom Data Strategies
+
+The `dataStrategy` API allows you to customize how React Router executes loaders and actions, giving you control over when and how data is fetched.
+
+## Overview
+
+By default, React Router calls loaders in parallel and actions individually. The `dataStrategy` function lets you override this behavior to implement patterns like:
+
+- Sequential loader execution
+- Single fetch requests for all loaders (like Remix's Single Fetch)
+- Middleware patterns with context passing
+- Custom error handling and response decoding
+
+## Basic Usage
+
+```tsx
+import { createBrowserRouter } from "react-router";
+
+const router = createBrowserRouter(routes, {
+  dataStrategy({ matches }) {
+    // Default behavior: call all loaders in parallel
+    return Promise.all(
+      matches.map((match) => match.resolve())
+    );
+  },
+});
+```
+
+## The dataStrategy Function
+
+The `dataStrategy` receives a `DataStrategyFunctionArgs` object:
+
+```tsx
+interface DataStrategyFunctionArgs {
+  request: Request;
+  params: Params;
+  context?: unknown;
+  matches: DataStrategyMatch[];
+}
+```
+
+### Matches and resolve()
+
+Each match in the `matches` array has a `resolve()` method that:
+
+- Waits for `route.lazy` to load if needed
+- Determines whether to call the loader or action
+- Handles `shouldRevalidate` logic internally
+- Returns a `HandlerResult` with the data or error
+
+```tsx
+interface HandlerResult {
+  type: 'data' | 'error';
+  result: unknown;
+  status?: number;
+}
+```
+
+## Sequential Loaders
+
+Execute loaders one at a time, passing context between them:
+
+```tsx
+async function dataStrategy({ matches }) {
+  let context = {};
+  let results = [];
+
+  for (let match of matches) {
+    let result = await match.resolve((handler) => {
+      // Handler receives context as second argument
+      return handler(context);
+    });
+    results.push(result);
+    
+    // Update context for next loader
+    if (result.type === 'data') {
+      context = { ...context, ...result.result };
+    }
+  }
+
+  return results;
+}
+```
+
+## Middleware Pattern
+
+Implement middleware that runs before loaders:
+
+```tsx
+async function dataStrategy({ matches }) {
+  // Run middlewares sequentially
+  let context = {};
+  for (let match of matches) {
+    if (match.route.handle?.middleware) {
+      await match.route.handle.middleware(context);
+    }
+  }
+
+  // Run loaders in parallel with context
+  return Promise.all(
+    matches.map((match) =>
+      match.resolve((handler) => handler(context))
+    )
+  );
+}
+```
+
+Define middleware in your routes:
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    handle: {
+      async middleware(context) {
+        context.user = await getUser();
+      },
+    },
+    loader({ request }, context) {
+      // Access context.user
+      return { data: context.user };
+    },
+  },
+];
+```
+
+## Single Fetch Pattern
+
+Make one request for all loaders:
+
+```tsx
+async function dataStrategy({ matches, request }) {
+  // Build a single fetch request
+  const url = new URL(request.url);
+  url.searchParams.set(
+    'routes',
+    matches.map(m => m.route.id).join(',')
+  );
+
+  const response = await fetch(url);
+  const allData = await response.json();
+
+  // Map data back to routes
+  return matches.map((match) =>
+    match.resolve(() => ({
+      type: 'data',
+      result: allData[match.route.id],
+    }))
+  );
+}
+```
+
+## Custom Response Decoding
+
+Decode responses using custom formats:
+
+```tsx
+import { decode } from 'turbo-stream';
+
+async function dataStrategy({ matches }) {
+  return Promise.all(
+    matches.map(async (match) =>
+      match.resolve(async (handler) => {
+        const response = await handler();
+        
+        if (response instanceof Response) {
+          return {
+            type: 'data',
+            result: await decode(response.body),
+          };
+        }
+        
+        return response;
+      })
+    )
+  );
+}
+```
+
+## Error Handling
+
+The `resolve()` method never throws. Errors are returned in the result:
+
+```tsx
+const result = await match.resolve();
+
+if (result.type === 'error') {
+  console.error('Loader failed:', result.result);
+  // Log to error tracking service
+}
+```
+
+## Working with Actions and Fetchers
+
+The `dataStrategy` handles actions and fetchers too. For single-match operations, you'll receive a single-item array:
+
+```tsx
+async function dataStrategy({ matches }) {
+  // matches.length === 1 for actions and fetchers
+  // matches.length > 1 for navigation loaders
+  
+  return Promise.all(
+    matches.map((match) => match.resolve())
+  );
+}
+```
+
+## Framework Mode
+
+In framework mode, configure `dataStrategy` via `createRequestHandler`:
+
+```tsx
+import { createRequestHandler } from "@react-router/express";
+
+app.all(
+  "*",
+  createRequestHandler({
+    build: await import("./build/server"),
+    dataStrategy: async ({ matches }) => {
+      // Custom strategy
+    },
+  })
+);
+```
+
+## Best Practices
+
+1. **Don't modify request/params**: The handler receives its own arguments
+2. **Use resolve() callbacks sparingly**: Only when you need custom logic
+3. **Handle shouldRevalidate**: It's already handled by `resolve()`
+4. **Consider performance**: Sequential loading can slow down your app
+5. **Test both states**: With and without interruptions
+
+## Related
+
+- [Middleware](../how-to/middleware)
+- [Data Loading](../start/data/route-object#loader)
+- [Actions](../start/data/route-object#action)

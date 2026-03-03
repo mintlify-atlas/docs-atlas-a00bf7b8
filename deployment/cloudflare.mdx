@@ -1,0 +1,244 @@
+---
+title: "Cloudflare Deployment"
+description: "Deploy React Router applications to Cloudflare Pages and Workers"
+---
+
+## Overview
+
+The `@react-router/cloudflare` package provides Cloudflare platform abstractions for React Router, enabling deployment to Cloudflare Pages and Workers.
+
+## Installation
+
+```bash
+npm install @react-router/cloudflare @cloudflare/workers-types
+```
+
+## Cloudflare Pages
+
+Deploy your React Router app as a Cloudflare Pages Function.
+
+### Basic Setup
+
+Create a `functions/[[path]].ts` file in your project:
+
+```ts
+import { createPagesFunctionHandler } from "@react-router/cloudflare";
+import * as build from "../build/server";
+
+export const onRequest = createPagesFunctionHandler({ build });
+```
+
+### With Custom Load Context
+
+Pass environment bindings and Cloudflare-specific context to your routes:
+
+```ts
+import { createPagesFunctionHandler } from "@react-router/cloudflare";
+import * as build from "../build/server";
+
+export const onRequest = createPagesFunctionHandler({
+  build,
+  getLoadContext: ({ context }) => ({
+    cloudflare: {
+      env: context.env,
+      cf: context.request.cf,
+      ctx: {
+        waitUntil: context.waitUntil.bind(context),
+        passThroughOnException: context.passThroughOnException.bind(context),
+      },
+      caches,
+    },
+  }),
+});
+```
+
+## Cloudflare Workers
+
+For standalone Workers deployments, use the `createRequestHandler` function.
+
+### Basic Worker
+
+```ts
+import { createRequestHandler } from "@react-router/cloudflare";
+import * as build from "./build/server";
+
+const handleRequest = createRequestHandler({ build });
+
+export default {
+  async fetch(request, env, ctx) {
+    return handleRequest({
+      request,
+      env,
+      waitUntil: ctx.waitUntil.bind(ctx),
+      passThroughOnException: ctx.passThroughOnException.bind(ctx),
+    });
+  },
+};
+```
+
+### With Environment Bindings
+
+Access KV namespaces, Durable Objects, and other bindings:
+
+```ts
+import { createRequestHandler } from "@react-router/cloudflare";
+import * as build from "./build/server";
+
+interface Env {
+  MY_KV: KVNamespace;
+  MY_DURABLE_OBJECT: DurableObjectNamespace;
+  API_KEY: string;
+}
+
+const handleRequest = createRequestHandler<Env>({
+  build,
+  getLoadContext: ({ context }) => ({
+    kv: context.cloudflare.env.MY_KV,
+    durableObject: context.cloudflare.env.MY_DURABLE_OBJECT,
+    apiKey: context.cloudflare.env.API_KEY,
+  }),
+});
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    return handleRequest({
+      request,
+      env,
+      waitUntil: ctx.waitUntil.bind(ctx),
+      passThroughOnException: ctx.passThroughOnException.bind(ctx),
+    });
+  },
+};
+```
+
+## Session Storage
+
+Use Cloudflare Workers KV for session storage:
+
+```ts
+import { createWorkersKVSessionStorage } from "@react-router/cloudflare";
+
+interface Env {
+  SESSION_KV: KVNamespace;
+}
+
+export function createSessionStorage(env: Env) {
+  return createWorkersKVSessionStorage({
+    kv: env.SESSION_KV,
+    cookie: {
+      name: "__session",
+      httpOnly: true,
+      secure: true,
+      secrets: ["s3cr3t"],
+      sameSite: "lax",
+    },
+  });
+}
+```
+
+Use in your routes:
+
+```ts
+import type { Route } from "./+types/login";
+import { createSessionStorage } from "../session.server";
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const sessionStorage = createSessionStorage(context.cloudflare.env);
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  return {
+    user: session.get("user"),
+  };
+}
+```
+
+## Load Context API
+
+The Cloudflare load context includes:
+
+- **`env`**: Environment bindings (KV, Durable Objects, secrets, etc.)
+- **`cf`**: Request metadata (geolocation, colo, etc.)
+- **`ctx.waitUntil`**: Extend request lifetime for background tasks
+- **`ctx.passThroughOnException`**: Fail open on errors
+- **`caches`**: Cache API for Workers
+
+Access these in your loaders and actions:
+
+```ts
+export async function loader({ context }: Route.LoaderArgs) {
+  const { env, cf, ctx } = context.cloudflare;
+  
+  // Use KV
+  const data = await env.MY_KV.get("key");
+  
+  // Background task
+  ctx.waitUntil(
+    fetch("https://analytics.example.com/track", { method: "POST" })
+  );
+  
+  // Geolocation
+  const country = cf?.country;
+  
+  return { data, country };
+}
+```
+
+## wrangler.toml Configuration
+
+Configure your Worker in `wrangler.toml`:
+
+```toml
+name = "my-app"
+main = "./build/worker/index.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "your-namespace-id"
+
+[env.production]
+route = "https://example.com/*"
+
+[site]
+bucket = "./build/client"
+```
+
+## Deployment
+
+### Cloudflare Pages
+
+1. Build your application:
+   ```bash
+   npm run build
+   ```
+
+2. Deploy with Wrangler:
+   ```bash
+   npx wrangler pages deploy build/client
+   ```
+
+### Cloudflare Workers
+
+1. Build your application:
+   ```bash
+   npm run build
+   ```
+
+2. Deploy with Wrangler:
+   ```bash
+   npx wrangler deploy
+   ```
+
+## Best Practices
+
+- Store secrets in environment variables, not in code
+- Use KV namespaces for session storage and caching
+- Leverage `ctx.waitUntil` for analytics and non-blocking operations
+- Enable Cloudflare caching for static assets
+- Use Durable Objects for stateful applications
+
+<Note>
+  The Cloudflare runtime has different APIs than Node.js. Use Web APIs (fetch, streams, etc.) instead of Node.js-specific modules.
+</Note>

@@ -1,0 +1,471 @@
+---
+title: useRoutes
+---
+
+# useRoutes
+
+Hook version of `<Routes>` that uses objects instead of components. These objects have the same properties as the component props. The return value of `useRoutes` is either a valid React element you can use to render the route tree, or `null` if nothing matched.
+
+## Signature
+
+```tsx
+function useRoutes(
+  routes: RouteObject[],
+  locationArg?: Partial<Location> | string
+): React.ReactElement | null
+
+interface RouteObject {
+  path?: string;
+  index?: boolean;
+  element?: React.ReactNode;
+  Component?: React.ComponentType;
+  children?: RouteObject[];
+  caseSensitive?: boolean;
+  loader?: LoaderFunction;
+  action?: ActionFunction;
+  errorElement?: React.ReactNode;
+  ErrorBoundary?: React.ComponentType;
+  handle?: unknown;
+}
+```
+
+## Parameters
+
+<ParamField path="routes" type="RouteObject[]" required>
+  An array of route objects that define the route hierarchy.
+</ParamField>
+
+<ParamField path="locationArg" type="Partial<Location> | string">
+  An optional location object or pathname string to use instead of the current location. Useful for testing or SSR.
+</ParamField>
+
+## Returns
+
+<ResponseField name="element" type="React.ReactElement | null">
+  A React element to render the matched route, or `null` if no routes matched.
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+```tsx
+import { useRoutes } from "react-router";
+
+function App() {
+  const element = useRoutes([
+    {
+      path: "/",
+      element: <Dashboard />,
+      children: [
+        {
+          path: "messages",
+          element: <Messages />,
+        },
+        {
+          path: "tasks",
+          element: <Tasks />,
+        },
+      ],
+    },
+    {
+      path: "team",
+      element: <Team />,
+    },
+  ]);
+  
+  return element;
+}
+```
+
+This is equivalent to:
+
+```tsx
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Dashboard />}>
+        <Route path="messages" element={<Messages />} />
+        <Route path="tasks" element={<Tasks />} />
+      </Route>
+      <Route path="team" element={<Team />} />
+    </Routes>
+  );
+}
+```
+
+### With data loading
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    element: <Layout />,
+    loader: rootLoader,
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: "posts/:id",
+        element: <Post />,
+        loader: postLoader,
+      },
+    ],
+  },
+];
+
+function App() {
+  return useRoutes(routes);
+}
+```
+
+### Dynamic routes
+
+```tsx
+function App({ user }) {
+  const routes = [
+    {
+      path: "/",
+      element: <Layout />,
+      children: user.isAdmin
+        ? [
+            { path: "dashboard", element: <Dashboard /> },
+            { path: "admin", element: <Admin /> },
+          ]
+        : [
+            { path: "dashboard", element: <Dashboard /> },
+          ],
+    },
+  ];
+  
+  return useRoutes(routes);
+}
+```
+
+### With custom location
+
+```tsx
+function App() {
+  const element = useRoutes(
+    [
+      { path: "/", element: <Home /> },
+      { path: "/about", element: <About /> },
+    ],
+    "/about" // Override location
+  );
+  
+  // Always renders <About /> regardless of actual URL
+  return element;
+}
+```
+
+### Error boundaries
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    element: <Layout />,
+    errorElement: <ErrorBoundary />,
+    children: [
+      {
+        path: "posts/:id",
+        element: <Post />,
+        loader: postLoader,
+        errorElement: <PostError />,
+      },
+    ],
+  },
+];
+
+function App() {
+  return useRoutes(routes);
+}
+```
+
+## Common Patterns
+
+### Route configuration file
+
+```tsx
+// routes.ts
+export const routes = [
+  {
+    path: "/",
+    element: <Root />,
+    loader: rootLoader,
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: "about",
+        element: <About />,
+      },
+    ],
+  },
+];
+
+// App.tsx
+import { routes } from "./routes";
+
+function App() {
+  return useRoutes(routes);
+}
+```
+
+### Nested routing
+
+```tsx
+const adminRoutes = [
+  { path: "users", element: <Users /> },
+  { path: "settings", element: <Settings /> },
+];
+
+const routes = [
+  {
+    path: "/",
+    element: <Layout />,
+    children: [
+      { index: true, element: <Home /> },
+      {
+        path: "admin",
+        element: <AdminLayout />,
+        children: adminRoutes,
+      },
+    ],
+  },
+];
+
+function App() {
+  return useRoutes(routes);
+}
+```
+
+### Lazy loading routes
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    element: <Layout />,
+    children: [
+      {
+        path: "dashboard",
+        lazy: async () => {
+          const { Dashboard, loader } = await import("./Dashboard");
+          return { element: <Dashboard />, loader };
+        },
+      },
+    ],
+  },
+];
+```
+
+### Protected routes
+
+```tsx
+function App({ user }) {
+  const routes = [
+    {
+      path: "/",
+      element: <Layout />,
+      children: [
+        { index: true, element: <Home /> },
+        ...(user
+          ? [
+              { path: "profile", element: <Profile /> },
+              { path: "settings", element: <Settings /> },
+            ]
+          : [
+              { path: "login", element: <Login /> },
+            ]),
+      ],
+    },
+  ];
+  
+  return useRoutes(routes);
+}
+```
+
+### Index routes
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    element: <Layout />,
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: "posts",
+        element: <PostsLayout />,
+        children: [
+          {
+            index: true,
+            element: <PostsList />,
+          },
+          {
+            path: ":id",
+            element: <Post />,
+          },
+        ],
+      },
+    ],
+  },
+];
+```
+
+### Wildcard routes
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    element: <Layout />,
+    children: [
+      { path: "home", element: <Home /> },
+      { path: "about", element: <About /> },
+      { path: "*", element: <NotFound /> },
+    ],
+  },
+];
+```
+
+### Route handles
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    element: <Layout />,
+    handle: { breadcrumb: "Home" },
+    children: [
+      {
+        path: "posts/:id",
+        element: <Post />,
+        loader: postLoader,
+        handle: {
+          breadcrumb: (match) => match.data.post.title,
+        },
+      },
+    ],
+  },
+];
+```
+
+## Comparison with Routes
+
+| Feature | `<Routes>` | `useRoutes` |
+|---------|------------|-------------|
+| Syntax | JSX components | JavaScript objects |
+| Dynamic routes | Harder | Easier |
+| Type safety | Less | More (with TypeScript) |
+| Code splitting | Manual | Easier with `lazy` |
+| Configuration | Inline | Can be external |
+
+## Type Safety
+
+### Typed routes
+
+```tsx
+import type { RouteObject } from "react-router";
+
+const routes: RouteObject[] = [
+  {
+    path: "/",
+    element: <Home />,
+    children: [
+      {
+        path: "about",
+        element: <About />,
+      },
+    ],
+  },
+];
+
+function App() {
+  return useRoutes(routes);
+}
+```
+
+### Custom route type
+
+```tsx
+interface AppRoute extends RouteObject {
+  title?: string;
+  permission?: string;
+}
+
+const routes: AppRoute[] = [
+  {
+    path: "/",
+    element: <Home />,
+    title: "Home",
+  },
+  {
+    path: "/admin",
+    element: <Admin />,
+    title: "Admin",
+    permission: "admin",
+  },
+];
+```
+
+## Important Notes
+
+### Must be inside Router
+
+`useRoutes` must be called within a `<Router>` component:
+
+```tsx
+// ❌ Will throw error
+function App() {
+  const element = useRoutes([...]);
+  return element;
+}
+
+// ✅ Correct
+function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
+  );
+}
+
+function AppRoutes() {
+  const element = useRoutes([...]);
+  return element;
+}
+```
+
+### Location override
+
+When overriding location, all parent routes must match:
+
+```tsx
+// Parent route at /app
+function ParentRoute() {
+  // ❌ Won't work - location must start with /app
+  const element = useRoutes(routes, "/other");
+  
+  // ✅ Works
+  const element = useRoutes(routes, "/app/nested");
+  
+  return element;
+}
+```
+
+## Related
+
+- [`Routes`](/api/components/routes) - Component version
+- [`Route`](/api/components/route) - Individual route component
+- [`createBrowserRouter`](/api/routers/create-browser-router) - Create router with data APIs
+- [`useMatches`](/api/hooks/use-matches) - Get active route matches

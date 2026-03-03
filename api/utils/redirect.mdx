@@ -1,0 +1,160 @@
+---
+title: 'redirect'
+description: 'Create redirect responses in loaders and actions'
+---
+
+## Summary
+
+A redirect [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response) that sets the status code and the [`Location`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location) header. Defaults to [`302 Found`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/302).
+
+Use `redirect` to navigate users to a different URL from loaders or actions.
+
+## Signature
+
+```typescript
+function redirect(
+  url: string,
+  init?: number | ResponseInit
+): Response
+```
+
+## Parameters
+
+<ParamField path="url" type="string" required>
+  The URL to redirect to. Can be a relative path (e.g., `/login`) or absolute URL.
+</ParamField>
+
+<ParamField path="init" type="number | ResponseInit">
+  Either a status code number or a `ResponseInit` object with status and headers.
+  
+  Defaults to `302` if not specified.
+  
+  Common redirect status codes:
+  - `301` - Permanent redirect
+  - `302` - Temporary redirect (default)
+  - `303` - See Other (common after POST)
+  - `307` - Temporary redirect (preserves method)
+  - `308` - Permanent redirect (preserves method)
+</ParamField>
+
+## Returns
+
+<ResponseField name="response" type="Response">
+  A [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response) object with the redirect status code and `Location` header set.
+</ResponseField>
+
+## Examples
+
+### Basic redirect
+
+```tsx
+import { redirect } from "react-router";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  
+  if (!user) {
+    throw redirect("/login");
+  }
+  
+  return { user };
+}
+```
+
+### Redirect with custom status code
+
+```tsx
+import { redirect } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  await createUser(formData);
+  
+  // Use 303 See Other after successful POST
+  throw redirect("/users", 303);
+}
+```
+
+### Redirect with headers
+
+```tsx
+import { redirect } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = await getSession(request);
+  
+  return redirect("/dashboard", {
+    status: 302,
+    headers: {
+      "Set-Cookie": await commitSession(session),
+    },
+  });
+}
+```
+
+### Permanent redirect
+
+```tsx
+import { redirect } from "react-router";
+
+export async function loader() {
+  // Moved permanently to new URL
+  throw redirect("/new-location", 301);
+}
+```
+
+## Common Use Cases
+
+### Authentication guards
+
+Redirect unauthenticated users to login:
+
+```tsx
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await requireAuth(request);
+  if (!user) throw redirect("/login");
+  return { user };
+}
+```
+
+### Post-action navigation
+
+Redirect after successful form submission:
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const post = await createPost(formData);
+  
+  return redirect(`/posts/${post.id}`, 303);
+}
+```
+
+### Conditional routing
+
+Redirect based on user role or permissions:
+
+```tsx
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  
+  if (user.role === "admin") {
+    throw redirect("/admin/dashboard");
+  }
+  
+  throw redirect("/dashboard");
+}
+```
+
+## Related Functions
+
+- [`redirectDocument`](/api/utils/redirect-document) - Force a full document reload
+- [`replace`](/api/utils/replace) - Redirect using history.replaceState
+- [`data`](/api/utils/data) - Return data with custom headers/status
+
+## Notes
+
+- Redirects are typically thrown rather than returned for better type inference
+- The `redirect` response will trigger client-side navigation in React Router
+- Use appropriate status codes for SEO and browser caching behavior
+- For external URLs, the browser will perform a full page navigation

@@ -1,0 +1,514 @@
+---
+title: createHashRouter
+---
+
+# createHashRouter
+
+Create a new data router that manages the application path via the URL [`hash`](https://developer.mozilla.org/en-US/docs/Web/API/URL/hash). This is useful for web applications that cannot configure the server to direct all traffic to the React Router application.
+
+## Function Signature
+
+```tsx
+function createHashRouter(
+  routes: RouteObject[],
+  opts?: DOMRouterOpts
+): DataRouter
+```
+
+## Route Configuration
+
+The `routes` parameter accepts the same `RouteObject[]` configuration as `createBrowserRouter`. See the [createBrowserRouter route configuration](/api/routers/create-browser-router#route-configuration) for complete details.
+
+```tsx
+interface RouteObject {
+  path?: string;
+  caseSensitive?: boolean;
+  index?: boolean;
+  element?: React.ReactNode;
+  Component?: React.ComponentType;
+  loader?: LoaderFunction;
+  action?: ActionFunction;
+  errorElement?: React.ReactNode;
+  ErrorBoundary?: React.ComponentType;
+  children?: RouteObject[];
+  // ... and more
+}
+```
+
+## Options Parameter
+
+```tsx
+interface DOMRouterOpts {
+  // Base path for all routes
+  basename?: string;
+  
+  // Context provider function for loaders/actions
+  getContext?: () => RouterContextProvider;
+  
+  // Future flags for opt-in features
+  future?: Partial<FutureConfig>;
+  
+  // Initial data from server-side rendering
+  hydrationData?: HydrationState;
+  
+  // Instrumentation for observability
+  unstable_instrumentations?: unstable_ClientInstrumentation[];
+  
+  // Custom data loading strategy
+  dataStrategy?: DataStrategyFunction;
+  
+  // Lazy route discovery
+  patchRoutesOnNavigation?: PatchRoutesOnNavigationFunction;
+  
+  // Window object override (defaults to global window)
+  window?: Window;
+}
+```
+
+## Return Type
+
+Returns an initialized `DataRouter` instance to be passed to `<RouterProvider>`.
+
+## Examples
+
+### Basic Usage
+
+```tsx
+import { createHashRouter, RouterProvider } from "react-router";
+import { createRoot } from "react-dom/client";
+
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <Root />,
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: "about",
+        element: <About />,
+      },
+      {
+        path: "contact",
+        element: <Contact />,
+        action: contactAction,
+      },
+    ],
+  },
+]);
+
+createRoot(document.getElementById("root")).render(
+  <RouterProvider router={router} />
+);
+
+// URLs will be:
+// http://example.com/#/
+// http://example.com/#/about
+// http://example.com/#/contact
+```
+
+### With Loaders and Actions
+
+```tsx
+async function rootLoader() {
+  const user = await fetchUser();
+  return { user };
+}
+
+async function productsLoader() {
+  const products = await fetchProducts();
+  return { products };
+}
+
+async function productAction({ request, params }) {
+  const formData = await request.formData();
+  await updateProduct(params.id, formData);
+  return { success: true };
+}
+
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <Root />,
+    loader: rootLoader,
+    children: [
+      {
+        path: "products",
+        element: <Products />,
+        loader: productsLoader,
+      },
+      {
+        path: "products/:id",
+        element: <ProductDetail />,
+        action: productAction,
+      },
+    ],
+  },
+]);
+```
+
+### With Error Boundaries
+
+```tsx
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <Root />,
+    errorElement: <RootErrorBoundary />,
+    children: [
+      {
+        path: "dashboard",
+        element: <Dashboard />,
+        errorElement: <DashboardError />,
+        loader: async () => {
+          const data = await fetchDashboard();
+          if (!data) {
+            throw new Response("Not Found", { status: 404 });
+          }
+          return data;
+        },
+      },
+    ],
+  },
+]);
+
+function RootErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div>
+      <h1>Oops!</h1>
+      <p>{error.message}</p>
+    </div>
+  );
+}
+```
+
+### With Basename
+
+```tsx
+const router = createHashRouter(
+  [
+    {
+      path: "/",
+      element: <Home />,
+    },
+    {
+      path: "/about",
+      element: <About />,
+    },
+  ],
+  {
+    basename: "/app",
+  }
+);
+
+// URLs will be:
+// http://example.com/#/app/
+// http://example.com/#/app/about
+```
+
+### With Lazy Loading
+
+```tsx
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <Root />,
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: "dashboard",
+        lazy: async () => {
+          const { Dashboard, loader } = await import("./dashboard");
+          return {
+            Component: Dashboard,
+            loader,
+          };
+        },
+      },
+      {
+        path: "settings",
+        lazy: () => import("./settings"),
+      },
+    ],
+  },
+]);
+```
+
+### Static File Hosting Example
+
+```tsx
+// Perfect for GitHub Pages, Netlify, Vercel, etc.
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <Layout />,
+    children: [
+      {
+        index: true,
+        element: <HomePage />,
+      },
+      {
+        path: "docs",
+        element: <Docs />,
+        loader: docsLoader,
+      },
+      {
+        path: "blog",
+        children: [
+          {
+            index: true,
+            element: <BlogList />,
+            loader: blogListLoader,
+          },
+          {
+            path: ":slug",
+            element: <BlogPost />,
+            loader: blogPostLoader,
+          },
+        ],
+      },
+    ],
+  },
+]);
+
+// GitHub Pages deployment:
+// https://username.github.io/repo-name/#/
+// https://username.github.io/repo-name/#/docs
+// https://username.github.io/repo-name/#/blog
+```
+
+### With Hydration Data
+
+```tsx
+const router = createHashRouter(
+  [
+    {
+      id: "root",
+      path: "/",
+      Component: Root,
+      children: [
+        {
+          id: "home",
+          index: true,
+          Component: Home,
+          loader: homeLoader,
+        },
+      ],
+    },
+  ],
+  {
+    hydrationData: window.__HYDRATION_DATA__,
+  }
+);
+```
+
+## Use Cases
+
+### When to Use createHashRouter
+
+Use `createHashRouter` when:
+
+- **Static file hosting**: Deploying to services like GitHub Pages, AWS S3, or other static hosts
+- **No server configuration**: Cannot configure server to handle client-side routes
+- **Legacy constraints**: Working with legacy systems or CDNs that don't support rewrite rules
+- **File protocol**: App runs via `file://` protocol (e.g., Electron without custom protocol)
+- **Fallback option**: Server configuration is complex or impossible
+- **Simple deployment**: Want to avoid server configuration entirely
+
+### Advantages
+
+- **No server configuration needed**: Works on any static file host
+- **All data router features**: Full support for loaders, actions, lazy loading, etc.
+- **Simple deployment**: Just upload files and go
+- **Legacy compatibility**: Works in older hosting environments
+- **Works everywhere**: Functions on any web server, even without special configuration
+
+### Disadvantages
+
+- **URLs include hash**: Less clean URLs (e.g., `example.com/#/about` vs `example.com/about`)
+- **SEO impact**: Hash portion not sent to server, may affect SEO
+- **Analytics**: May require special configuration for page tracking
+- **Server-side rendering limitations**: Hash routing doesn't work well with SSR
+- **Sharing**: URLs with hashes are less intuitive for users
+
+## How Hash Routing Works
+
+The hash router uses the URL hash fragment to store the route:
+
+```
+https://example.com/#/products/123
+                    └─────────────┘
+                    Hash fragment
+                    (not sent to server)
+```
+
+Key characteristics:
+
+1. **Client-side only**: Hash portion (`#/products/123`) never sent to server
+2. **No server changes**: Server always serves `index.html` regardless of URL
+3. **Browser history**: Still uses browser back/forward buttons
+4. **Anchor behavior**: Overrides default anchor link behavior within app
+
+## Deployment Examples
+
+### GitHub Pages
+
+```json
+// package.json
+{
+  "homepage": "https://username.github.io/repo-name",
+  "scripts": {
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
+  }
+}
+```
+
+```tsx
+// Router setup
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <App />,
+  },
+]);
+```
+
+### AWS S3 Static Website
+
+```tsx
+// No special S3 configuration needed!
+const router = createHashRouter([
+  {
+    path: "/",
+    element: <Root />,
+    children: [
+      { index: true, element: <Home /> },
+      { path: "about", element: <About /> },
+    ],
+  },
+]);
+```
+
+### Netlify/Vercel
+
+While these platforms support `createBrowserRouter` with redirects, `createHashRouter` works without any configuration:
+
+```tsx
+const router = createHashRouter(routes);
+// No _redirects or vercel.json needed
+```
+
+## SEO Considerations
+
+Hash routing has SEO limitations:
+
+```
+# Search engines see:
+https://example.com/
+
+# Not:
+https://example.com/#/about
+https://example.com/#/products/123
+```
+
+**Solutions:**
+
+1. **Use `createBrowserRouter` instead**: Best for SEO
+2. **Server-side rendering**: Pre-render pages for crawlers
+3. **Dynamic rendering**: Detect bots and serve static HTML
+4. **Sitemap submission**: Help search engines discover pages
+
+## Migration from createBrowserRouter
+
+Switching between routers is simple:
+
+```tsx
+// Before
+import { createBrowserRouter } from "react-router";
+const router = createBrowserRouter(routes);
+
+// After
+import { createHashRouter } from "react-router";
+const router = createHashRouter(routes);
+// Same routes array, same everything else!
+```
+
+Users' bookmarks will break, so consider:
+- Adding redirects from old URLs
+- Communicating the change
+- Updating external links
+
+## Differences from Other Routers
+
+| Feature | createHashRouter | createBrowserRouter | createMemoryRouter |
+|---------|-----------------|---------------------|-------------------|
+| URL Format | `#/path` | `/path` | N/A |
+| Server Config | ✗ Not needed | ✓ Required | ✗ Not needed |
+| SEO Friendly | ✗ No | ✓ Yes | N/A |
+| Clean URLs | ✗ No | ✓ Yes | N/A |
+| Static Hosting | ✓ Perfect | ✗ Needs config | N/A |
+| SSR Support | Limited | ✓ Full | ✓ Full |
+| Browser History | ✓ Yes | ✓ Yes | ✗ In-memory |
+| Production Use | ✓ Fallback | ✓ Recommended | ✗ Testing only |
+
+## Analytics Configuration
+
+Hash changes may require special tracking:
+
+### Google Analytics 4
+
+```tsx
+import { useEffect } from "react";
+import { useLocation } from "react-router";
+
+function GoogleAnalytics() {
+  const location = useLocation();
+  
+  useEffect(() => {
+    // Track hash route changes
+    gtag("event", "page_view", {
+      page_path: location.pathname + location.search + location.hash,
+    });
+  }, [location]);
+  
+  return null;
+}
+
+// Add to your app
+function App() {
+  return (
+    <RouterProvider router={router}>
+      <GoogleAnalytics />
+      {/* rest of app */}
+    </RouterProvider>
+  );
+}
+```
+
+### Other Analytics
+
+Most analytics libraries need similar configuration to track hash changes as page views.
+
+## Related
+
+- [`<RouterProvider>`](/api/components/router-provider) - Component to render the router
+- [`createBrowserRouter`](/api/routers/create-browser-router) - Browser history-based routing (recommended for most apps)
+- [`createMemoryRouter`](/api/routers/create-memory-router) - In-memory routing for testing
+- [`<HashRouter>`](/api/components/hash-router) - Declarative version for simple use cases

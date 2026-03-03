@@ -1,0 +1,307 @@
+---
+title: useOutlet
+---
+
+# useOutlet
+
+Returns the element for the child route at this level of the route hierarchy. Used internally by `<Outlet>` to render child routes.
+
+## Signature
+
+```tsx
+function useOutlet(context?: unknown): React.ReactElement | null
+```
+
+## Parameters
+
+<ParamField path="context" type="unknown">
+  Optional context to pass to the outlet. This is typically used with `useOutletContext` in child routes.
+</ParamField>
+
+## Returns
+
+<ResponseField name="element" type="React.ReactElement | null">
+  The child route element to render, or `null` if no child routes match.
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+```tsx
+import { useOutlet } from "react-router";
+
+function ParentRoute() {
+  const outlet = useOutlet();
+  
+  return (
+    <div>
+      <h1>Parent Route</h1>
+      {outlet}
+    </div>
+  );
+}
+```
+
+This is equivalent to:
+
+```tsx
+import { Outlet } from "react-router";
+
+function ParentRoute() {
+  return (
+    <div>
+      <h1>Parent Route</h1>
+      <Outlet />
+    </div>
+  );
+}
+```
+
+### Pass context to child routes
+
+```tsx
+function ParentRoute() {
+  const [count, setCount] = useState(0);
+  const outlet = useOutlet({ count, setCount });
+  
+  return (
+    <div>
+      <h1>Count: {count}</h1>
+      {outlet}
+    </div>
+  );
+}
+
+// Child route
+function ChildRoute() {
+  const { count, setCount } = useOutletContext();
+  
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      Increment
+    </button>
+  );
+}
+```
+
+### Conditional outlet rendering
+
+```tsx
+function Layout() {
+  const outlet = useOutlet();
+  const hasOutlet = outlet !== null;
+  
+  return (
+    <div>
+      <Header />
+      
+      {hasOutlet ? (
+        <main className="with-sidebar">
+          <Sidebar />
+          <div className="content">{outlet}</div>
+        </main>
+      ) : (
+        <main className="full-width">
+          <DefaultContent />
+        </main>
+      )}
+      
+      <Footer />
+    </div>
+  );
+}
+```
+
+### Animate route transitions
+
+```tsx
+import { useOutlet, useLocation } from "react-router";
+import { CSSTransition, SwitchTransition } from "react-transition-group";
+
+function AnimatedOutlet() {
+  const outlet = useOutlet();
+  const location = useLocation();
+  
+  return (
+    <SwitchTransition>
+      <CSSTransition
+        key={location.pathname}
+        timeout={300}
+        classNames="fade"
+      >
+        <div>{outlet}</div>
+      </CSSTransition>
+    </SwitchTransition>
+  );
+}
+```
+
+### Custom outlet wrapper
+
+```tsx
+function ProtectedOutlet({ requiredRole }) {
+  const outlet = useOutlet();
+  const { user } = useLoaderData();
+  
+  if (!user || !user.roles.includes(requiredRole)) {
+    return <Navigate to="/login" />;
+  }
+  
+  return outlet;
+}
+
+function AdminLayout() {
+  return (
+    <div>
+      <AdminNav />
+      <ProtectedOutlet requiredRole="admin" />
+    </div>
+  );
+}
+```
+
+## Common Patterns
+
+### Error boundary wrapper
+
+```tsx
+function OutletWithErrorBoundary() {
+  const outlet = useOutlet();
+  
+  return (
+    <ErrorBoundary>
+      {outlet}
+    </ErrorBoundary>
+  );
+}
+```
+
+### Loading wrapper
+
+```tsx
+function SuspenseOutlet() {
+  const outlet = useOutlet();
+  const navigation = useNavigation();
+  
+  return (
+    <Suspense
+      fallback={
+        navigation.state === "loading" ? <Spinner /> : null
+      }
+    >
+      {outlet}
+    </Suspense>
+  );
+}
+```
+
+### Scroll restoration
+
+```tsx
+function ScrollOutlet() {
+  const outlet = useOutlet();
+  const location = useLocation();
+  
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+  
+  return outlet;
+}
+```
+
+### Track depth
+
+```tsx
+function OutletWithDepth({ depth = 0 }) {
+  const outlet = useOutlet({ depth: depth + 1 });
+  
+  return (
+    <div style={{ paddingLeft: `${depth * 20}px` }}>
+      {outlet}
+    </div>
+  );
+}
+
+function ChildRoute() {
+  const { depth } = useOutletContext();
+  return <div>Depth: {depth}</div>;
+}
+```
+
+### Custom transition logic
+
+```tsx
+function FadeOutlet() {
+  const outlet = useOutlet();
+  const [displayLocation, setDisplayLocation] = useState(outlet);
+  const location = useLocation();
+  
+  useEffect(() => {
+    if (outlet !== null) {
+      setDisplayLocation(outlet);
+    }
+  }, [outlet]);
+  
+  return (
+    <div
+      style={{
+        opacity: outlet === null ? 0 : 1,
+        transition: "opacity 300ms",
+      }}
+    >
+      {displayLocation}
+    </div>
+  );
+}
+```
+
+## Comparison with Outlet
+
+| Feature | `<Outlet>` | `useOutlet` |
+|---------|------------|-------------|
+| Usage | Component | Hook |
+| Flexibility | Less flexible | More control |
+| Common use | Most layouts | Custom rendering logic |
+| Context | `<Outlet context={...} />` | `useOutlet(context)` |
+
+Use `<Outlet>` for simple layouts, and `useOutlet` when you need:
+- Conditional rendering based on outlet existence
+- Custom wrappers around the outlet
+- Animation/transition control
+- Additional processing of the outlet element
+
+## Type Safety
+
+### Type outlet context
+
+```tsx
+interface OutletContext {
+  user: User;
+  settings: Settings;
+}
+
+function ParentRoute() {
+  const data = useLoaderData();
+  const context: OutletContext = {
+    user: data.user,
+    settings: data.settings,
+  };
+  
+  const outlet = useOutlet(context);
+  return <div>{outlet}</div>;
+}
+
+function ChildRoute() {
+  const context = useOutletContext<OutletContext>();
+  return <div>Hello {context.user.name}</div>;
+}
+```
+
+## Related
+
+- [`Outlet`](/api/components/outlet) - Component for rendering child routes
+- [`useOutletContext`](/api/hooks/use-outlet-context) - Access outlet context in child routes
+- [`useMatches`](/api/hooks/use-matches) - Get all active route matches
+- [`useLocation`](/api/hooks/use-location) - Access current location

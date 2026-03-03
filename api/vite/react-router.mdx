@@ -1,0 +1,296 @@
+---
+title: reactRouter
+description: React Router Vite plugin for Framework Mode
+---
+
+# reactRouter
+
+The `reactRouter` Vite plugin enables Framework Mode with type-safe routing, automatic code splitting, and server-side rendering.
+
+## Import
+
+```ts
+import { reactRouter } from "@react-router/dev/vite";
+```
+
+## Usage
+
+<CodeGroup>
+
+```ts vite.config.ts
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [reactRouter()],
+});
+```
+
+```ts With Options
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    reactRouter({
+      // Plugin returns an array of plugins
+    }),
+  ],
+});
+```
+
+</CodeGroup>
+
+## Configuration
+
+The `reactRouter` plugin does not accept direct options. Instead, configuration is managed through:
+
+1. **react-router.config.ts** - Application-level configuration
+2. **routes.ts** - Route structure and organization
+3. **Vite config** - Build and dev server settings
+
+### Configuration Files
+
+<AccordionGroup>
+
+<Accordion title="react-router.config.ts">
+
+See [react-router.config.ts](/api/config/react-router-config) for application configuration options including:
+
+- App directory location
+- Build output settings  
+- SSR and prerendering
+- Server bundles
+- Future flags
+
+</Accordion>
+
+<Accordion title="routes.ts">
+
+See [routes.ts](/api/config/routes-config) for route configuration including:
+
+- Route definitions with `route()`, `index()`, `layout()`
+- File-system routing with `flatRoutes()`
+- Nested route hierarchies
+- Custom route IDs
+
+</Accordion>
+
+<Accordion title="vite.config.ts">
+
+Standard Vite configuration applies:
+
+```ts
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [reactRouter()],
+  // Standard Vite options
+  base: "/",
+  build: {
+    sourcemap: true,
+  },
+  server: {
+    port: 3000,
+  },
+});
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+## Features
+
+The `reactRouter` plugin provides:
+
+### Automatic Type Generation
+
+Generates TypeScript types for your routes in `.react-router/types/`:
+
+```ts
+import type { Route } from "./+types/root";
+
+export function loader({ params }: Route.LoaderArgs) {
+  // params are fully typed
+}
+```
+
+### Code Splitting
+
+Automatically splits routes into separate chunks for optimal loading:
+
+- Each route module is a separate chunk
+- Shared dependencies are extracted
+- Critical CSS is inlined
+
+### Dev Server
+
+Provides a development server with:
+
+- Hot Module Replacement (HMR)
+- Fast refresh for route modules
+- Server-side rendering in development
+- Automatic route discovery
+
+### Production Build
+
+Optimizes your application for production:
+
+- Client and server bundles
+- Asset manifest generation
+- CSS extraction and optimization
+- Tree shaking of unused exports
+
+## Common Patterns
+
+### Basic Setup
+
+<Steps>
+
+### Install dependencies
+
+```bash
+npm install @react-router/dev vite
+```
+
+### Create vite.config.ts
+
+```ts
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [reactRouter()],
+});
+```
+
+### Create app structure
+
+```
+app/
+├── root.tsx
+├── routes.ts
+└── routes/
+    └── _index.tsx
+```
+
+### Start dev server
+
+```bash
+npx vite dev
+```
+
+</Steps>
+
+### Multiple Server Bundles
+
+Configure server bundles in `react-router.config.ts`:
+
+```ts filename="react-router.config.ts"
+export default {
+  serverBundles: ({ branch }) => {
+    // Group routes by URL pattern
+    const isAdminRoute = branch.some((route) => 
+      route.id.startsWith("routes/admin")
+    );
+    return isAdminRoute ? "admin" : "main";
+  },
+};
+```
+
+### Custom Base Path
+
+```ts filename="vite.config.ts"
+export default defineConfig({
+  base: "/my-app/",
+  plugins: [reactRouter()],
+});
+```
+
+```ts filename="react-router.config.ts"
+export default {
+  basename: "/my-app",
+};
+```
+
+### Prerendering Static Pages
+
+```ts filename="react-router.config.ts"
+export default {
+  async prerender({ getStaticPaths }) {
+    return [
+      "/",
+      "/about",
+      "/pricing",
+      ...getStaticPaths(),
+    ];
+  },
+};
+```
+
+## Environment Variables
+
+Vite's [environment variable](https://vitejs.dev/guide/env-and-mode.html) system works automatically:
+
+```ts
+// Access in route modules
+export async function loader() {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  // ...
+}
+```
+
+```bash filename=".env"
+VITE_API_URL=https://api.example.com
+```
+
+<Warning>
+Only variables prefixed with `VITE_` are exposed to client code.
+</Warning>
+
+## TypeScript
+
+The plugin automatically generates types. Ensure your `tsconfig.json` includes:
+
+```json filename="tsconfig.json"
+{
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/.react-router/types/**/*"
+  ],
+  "compilerOptions": {
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx"
+  }
+}
+```
+
+## Plugin Order
+
+The `reactRouter` plugin should be placed first in most cases:
+
+```ts filename="vite.config.ts"
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig({
+  plugins: [
+    reactRouter(), // First
+    tsconfigPaths(),
+  ],
+});
+```
+
+<Note>
+Some plugins like `cloudflareDevProxy` must come before `reactRouter`.
+</Note>
+
+## Related
+
+- [react-router.config.ts](/api/config/react-router-config)
+- [routes.ts](/api/config/routes-config)
+- [cloudflareDevProxy](/api/vite/cloudflare)

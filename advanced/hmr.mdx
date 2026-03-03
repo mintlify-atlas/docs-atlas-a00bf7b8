@@ -1,0 +1,506 @@
+---
+title: Hot Module Replacement
+description: Fast refresh for routes during development
+---
+
+# Hot Module Replacement
+
+Hot Module Replacement (HMR) enables you to see changes instantly during development without losing application state.
+
+## How HMR Works
+
+When you edit a file:
+
+1. Vite detects the change
+2. Sends update to browser via WebSocket
+3. React Router applies changes
+4. UI updates without full page reload
+5. Application state is preserved
+
+## Framework Mode
+
+HMR is automatic in framework mode:
+
+```bash
+pnpm dev
+# ✓ HMR enabled
+# ✓ React Fast Refresh enabled
+```
+
+Edit any route file and see instant updates:
+
+```tsx
+// app/routes/_index.tsx
+export default function Home() {
+  const [count, setCount] = useState(0);
+  
+  return (
+    <div>
+      <h1>Home Page</h1>
+      <button onClick={() => setCount(c => c + 1)}>
+        Count: {count}
+      </button>
+    </div>
+  );
+}
+
+// Edit the heading:
+// <h1>Welcome Home</h1>
+// → Updates instantly, count is preserved!
+```
+
+## What Gets Updated
+
+### Components
+
+Component changes apply immediately:
+
+```tsx
+export function Component() {
+  return <div>Version 1</div>;
+}
+
+// Edit to:
+export function Component() {
+  return <div>Version 2</div>;
+}
+// → Instantly updates
+```
+
+### Loaders
+
+Loader changes trigger revalidation:
+
+```tsx
+export async function loader() {
+  return { message: "Hello" };
+}
+
+// Edit to:
+export async function loader() {
+  return { message: "Hello World" };
+}
+// → Loader re-runs, data updates
+```
+
+### Actions
+
+Action changes are applied on next submission:
+
+```tsx
+export async function action({ request }) {
+  // Old logic
+  return { success: true };
+}
+
+// Edit to:
+export async function action({ request }) {
+  // New logic
+  return { success: true, timestamp: Date.now() };
+}
+// → Next form submission uses new logic
+```
+
+### Styles
+
+CSS updates without reload:
+
+```tsx
+import "./styles.css";
+
+export function Component() {
+  return <div className="container">Content</div>;
+}
+
+// Edit styles.css:
+// .container { color: red; } → color: blue;
+// → Color changes instantly
+```
+
+## State Preservation
+
+React Fast Refresh preserves component state:
+
+```tsx
+export function Counter() {
+  const [count, setCount] = useState(0);
+  const [text, setText] = useState("");
+  
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>
+        Count: {count}
+      </button>
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+    </div>
+  );
+}
+
+// Edit the button text
+// → count and text are preserved!
+```
+
+### State Reset Cases
+
+State resets when:
+
+1. **Exporting non-components**:
+```tsx
+// This resets state
+export const config = { theme: "dark" };
+
+export function Component() {
+  const [state] = useState(0);
+  return <div>{state}</div>;
+}
+```
+
+2. **Anonymous exports**:
+```tsx
+// This resets state
+export default () => {
+  const [state] = useState(0);
+  return <div>{state}</div>;
+};
+
+// This preserves state
+export default function Component() {
+  const [state] = useState(0);
+  return <div>{state}</div>;
+}
+```
+
+3. **Class components**:
+```tsx
+// Class components always reset
+export default class MyComponent extends React.Component {
+  state = { count: 0 };
+  render() {
+    return <div>{this.state.count}</div>;
+  }
+}
+```
+
+## Route Updates
+
+Route configuration updates automatically:
+
+```tsx
+// app/routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("/", "./home.tsx"),
+  route("/about", "./about.tsx"),
+];
+
+// Add a route:
+export default [
+  route("/", "./home.tsx"),
+  route("/about", "./about.tsx"),
+  route("/contact", "./contact.tsx"), // ← New route
+];
+// → New route immediately available
+```
+
+## Loader Revalidation
+
+Control when loaders revalidate:
+
+```tsx
+// Revalidate on every edit
+export async function loader() {
+  return { timestamp: Date.now() };
+}
+
+// Prevent revalidation during HMR
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    // Don't revalidate
+  });
+}
+```
+
+## Custom HMR Handling
+
+Manual HMR logic for special cases:
+
+```tsx
+// app/routes/dashboard.tsx
+export function Component() {
+  const [data, setData] = useState(initialData);
+  
+  // Custom HMR handling
+  if (import.meta.hot) {
+    import.meta.hot.accept((newModule) => {
+      console.log("Dashboard updated");
+      // Custom update logic
+      if (newModule?.resetData) {
+        setData(newModule.initialData);
+      }
+    });
+    
+    import.meta.hot.dispose(() => {
+      console.log("Dashboard disposed");
+      // Cleanup
+    });
+  }
+  
+  return <div>{/* ... */}</div>;
+}
+```
+
+## Data Mode
+
+Enable HMR in data mode:
+
+```tsx
+import { createBrowserRouter } from "react-router";
+
+const routes = [/* ... */];
+const router = createBrowserRouter(routes);
+
+// HMR for routes
+if (import.meta.hot) {
+  import.meta.hot.accept("./routes", async () => {
+    const newRoutes = await import("./routes?t=" + Date.now());
+    router._internalSetRoutes(newRoutes.default);
+  });
+}
+```
+
+## Production Builds
+
+HMR code is removed in production:
+
+```tsx
+if (import.meta.hot) {
+  // This code is stripped out in production
+  import.meta.hot.accept();
+}
+```
+
+No performance impact on production builds.
+
+## Debugging HMR
+
+### Enable HMR Logging
+
+```tsx
+// vite.config.ts
+export default defineConfig({
+  server: {
+    hmr: {
+      overlay: true, // Show errors in overlay
+    },
+  },
+  plugins: [
+    reactRouter({
+      hmr: {
+        // HMR options
+      },
+    }),
+  ],
+});
+```
+
+### Check HMR Status
+
+```tsx
+if (import.meta.hot) {
+  console.log("HMR is enabled");
+  
+  import.meta.hot.on("vite:beforeUpdate", () => {
+    console.log("About to update");
+  });
+  
+  import.meta.hot.on("vite:afterUpdate", () => {
+    console.log("Update complete");
+  });
+}
+```
+
+### Force Full Reload
+
+Some changes require full reload:
+
+```tsx
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    // Force full reload for this module
+    import.meta.hot.invalidate();
+  });
+}
+```
+
+## HMR Boundaries
+
+Define update boundaries:
+
+```tsx
+// utils/api.ts
+export const API_URL = "/api";
+
+if (import.meta.hot) {
+  // Changes to this file trigger full reload
+  import.meta.hot.decline();
+}
+```
+
+```tsx
+// components/Chart.tsx
+import * as d3 from "d3";
+
+if (import.meta.hot) {
+  // Accept updates without propagating
+  import.meta.hot.accept();
+}
+```
+
+## Common Issues
+
+### HMR Not Working
+
+**Problem**: Changes don't update
+
+**Solutions**:
+1. Check dev server is running
+2. Verify WebSocket connection
+3. Clear browser cache
+4. Restart dev server
+
+```bash
+# Restart with clean cache
+pnpm dev --force
+```
+
+### Duplicate Module Errors
+
+**Problem**: "Module imported multiple times"
+
+**Solution**: Use consistent import paths
+
+```tsx
+// ❌ Bad - different paths
+import { util } from "./util";
+import { util2 } from "./util.ts";
+
+// ✅ Good - consistent paths  
+import { util, util2 } from "./util";
+```
+
+### State Loss
+
+**Problem**: State resets on every change
+
+**Solution**: Export named functions
+
+```tsx
+// ❌ Anonymous - resets state
+export default function() {
+  const [state] = useState(0);
+  return <div>{state}</div>;
+}
+
+// ✅ Named - preserves state
+export default function Component() {
+  const [state] = useState(0);
+  return <div>{state}</div>;
+}
+```
+
+## Custom Server HMR
+
+Enable HMR with custom servers:
+
+```tsx
+// server.mjs
+import express from "express";
+import { createServer } from "vite";
+
+const app = express();
+
+const vite = await createServer({
+  server: { middlewareMode: true },
+  appType: "custom",
+});
+
+app.use(vite.middlewares);
+
+// HMR endpoint
+app.get("/__vite_hmr", (req, res) => {
+  vite.ws.send({
+    type: "custom",
+    event: "route-update",
+    data: { route: "/example" },
+  });
+});
+
+app.listen(3000);
+```
+
+## Best Practices
+
+1. **Use named exports**: For better Fast Refresh
+2. **Avoid side effects**: In module scope
+3. **Split large files**: Improves HMR speed
+4. **Use HMR for dev only**: Don't rely on it in production
+5. **Test full reloads**: Ensure app works without HMR
+
+## Performance Tips
+
+### Optimize HMR Speed
+
+```tsx
+// vite.config.ts
+export default defineConfig({
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-router",
+    ],
+  },
+  server: {
+    hmr: {
+      timeout: 30000,
+    },
+  },
+});
+```
+
+### Reduce Update Scope
+
+```tsx
+// Extract static code
+const CONSTANTS = {
+  API_URL: "/api",
+  TIMEOUT: 5000,
+};
+
+// Component updates independently
+export function Component() {
+  return <div>{CONSTANTS.API_URL}</div>;
+}
+```
+
+## Framework Mode HMR
+
+Framework mode includes enhanced HMR:
+
+- Route-level updates
+- Loader revalidation
+- Asset updates
+- CSS hot reload
+- React Fast Refresh
+
+All enabled by default with `pnpm dev`.
+
+## Related
+
+- [React Fast Refresh](https://github.com/facebook/react/tree/main/packages/react-refresh)
+- [Vite HMR API](https://vitejs.dev/guide/api-hmr.html)
+- [Development](../start/framework/development)

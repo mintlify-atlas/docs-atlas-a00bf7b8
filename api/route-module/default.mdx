@@ -1,0 +1,272 @@
+---
+title: default export
+---
+
+# default export
+
+The React component that renders when the route matches.
+
+## Signature
+
+```tsx
+export default function Component() {
+  // Component implementation
+}
+```
+
+The default export is a React component with no props. It must be present in every route module.
+
+## Basic Example
+
+```tsx
+// app/routes/about.tsx
+export default function About() {
+  return (
+    <div>
+      <h1>About Us</h1>
+      <p>We build amazing software.</p>
+    </div>
+  );
+}
+```
+
+## Using Loader Data
+
+```tsx
+import { useLoaderData } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const product = await fetchProduct(params.productId);
+  return { product };
+}
+
+export default function Product() {
+  const { product } = useLoaderData<typeof loader>();
+  
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+      <p>${product.price}</p>
+    </div>
+  );
+}
+```
+
+## Nested Routes with Outlet
+
+```tsx
+import { Outlet } from "react-router";
+
+export default function Layout() {
+  return (
+    <div>
+      <header>
+        <nav>{/* navigation */}</nav>
+      </header>
+      
+      <main>
+        {/* Child routes render here */}
+        <Outlet />
+      </main>
+      
+      <footer>{/* footer */}</footer>
+    </div>
+  );
+}
+```
+
+## With Actions and Forms
+
+```tsx
+import { Form, useActionData } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  
+  if (!email?.includes("@")) {
+    return { error: "Invalid email" };
+  }
+  
+  await subscribe(email);
+  return { success: true };
+}
+
+export default function Newsletter() {
+  const actionData = useActionData<typeof action>();
+  
+  return (
+    <div>
+      <h2>Subscribe to our newsletter</h2>
+      
+      {actionData?.success ? (
+        <p>Thanks for subscribing!</p>
+      ) : (
+        <Form method="post">
+          <input type="email" name="email" required />
+          {actionData?.error && (
+            <span className="error">{actionData.error}</span>
+          )}
+          <button type="submit">Subscribe</button>
+        </Form>
+      )}
+    </div>
+  );
+}
+```
+
+## Navigation and Params
+
+```tsx
+import { useParams, useNavigate, Link } from "react-router";
+
+export default function Team() {
+  const params = useParams();
+  const navigate = useNavigate();
+  
+  return (
+    <div>
+      <h1>Team: {params.teamId}</h1>
+      
+      <nav>
+        <Link to="members">Members</Link>
+        <Link to="settings">Settings</Link>
+      </nav>
+      
+      <button onClick={() => navigate("/teams")}>
+        Back to Teams
+      </button>
+    </div>
+  );
+}
+```
+
+## Async Components
+
+Components cannot be async. Use loaders for data fetching:
+
+```tsx
+// ❌ This doesn't work
+export default async function Product() {
+  const product = await fetchProduct();
+  return <div>{product.name}</div>;
+}
+
+// ✅ Use a loader instead
+export async function loader() {
+  const product = await fetchProduct();
+  return { product };
+}
+
+export default function Product() {
+  const { product } = useLoaderData<typeof loader>();
+  return <div>{product.name}</div>;
+}
+```
+
+## Component Naming
+
+You can use any valid function name:
+
+```tsx
+// All of these work
+export default function Component() { /* ... */ }
+export default function ProductDetail() { /* ... */ }
+export default function() { /* ... */ }
+
+// Arrow functions work too
+const Component = () => { /* ... */ };
+export default Component;
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use semantic HTML">
+    Structure your components with proper HTML elements:
+
+    ```tsx
+    export default function Article() {
+      return (
+        <article>
+          <header>
+            <h1>Title</h1>
+            <time>2024-01-01</time>
+          </header>
+          <section>{/* content */}</section>
+          <footer>{/* metadata */}</footer>
+        </article>
+      );
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Keep components focused">
+    Extract complex UI into separate components:
+
+    ```tsx
+    // app/routes/dashboard.tsx
+    import { Sidebar } from "~/components/Sidebar";
+    import { MetricsPanel } from "~/components/MetricsPanel";
+
+    export default function Dashboard() {
+      return (
+        <div className="dashboard">
+          <Sidebar />
+          <MetricsPanel />
+        </div>
+      );
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle loading and error states">
+    Use hooks to handle different states:
+
+    ```tsx
+    import { useNavigation } from "react-router";
+
+    export default function SearchResults() {
+      const navigation = useNavigation();
+      const data = useLoaderData<typeof loader>();
+      
+      const isSearching = navigation.state === "loading";
+      
+      return (
+        <div>
+          {isSearching && <Spinner />}
+          <ul>
+            {data.results.map(result => (
+              <li key={result.id}>{result.name}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use TypeScript for type safety">
+    Leverage type inference from loaders and actions:
+
+    ```tsx
+    export async function loader() {
+      return { message: "Hello", count: 42 };
+    }
+
+    export default function Component() {
+      const data = useLoaderData<typeof loader>();
+      data.message; // string
+      data.count;   // number
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [useLoaderData](/api/hooks/use-loader-data) - Access loader data
+- [useActionData](/api/hooks/use-action-data) - Access action data
+- [Outlet](/api/components/outlet) - Render child routes
+- [ErrorBoundary](/api/route-module/error-boundary) - Handle errors

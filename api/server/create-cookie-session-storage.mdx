@@ -1,0 +1,447 @@
+---
+title: createCookieSessionStorage
+description: Store session data directly in browser cookies
+---
+
+# createCookieSessionStorage
+
+Creates a SessionStorage object that stores all session data directly in the session cookie itself. This eliminates the need for a server-side database or session store.
+
+## Signature
+
+```tsx
+function createCookieSessionStorage<Data = SessionData, FlashData = Data>(
+  options?: CookieSessionStorageOptions
+): SessionStorage<Data, FlashData>
+```
+
+<ParamField path="options" type="CookieSessionStorageOptions">
+  Configuration options for cookie session storage.
+  
+  <ParamField path="cookie" type="Cookie | CookieOptions">
+    The cookie used to store session data, or options to create one automatically.
+    
+    <ParamField path="name" type="string" default="__session">
+      The name of the cookie.
+    </ParamField>
+    
+    <ParamField path="secrets" type="string[]">
+      Array of secrets for signing cookies. First secret signs new cookies, all are tried when parsing.
+    </ParamField>
+    
+    <ParamField path="domain" type="string">
+      Cookie domain.
+    </ParamField>
+    
+    <ParamField path="path" type="string" default="/">
+      Cookie path.
+    </ParamField>
+    
+    <ParamField path="maxAge" type="number">
+      Maximum age in seconds.
+    </ParamField>
+    
+    <ParamField path="httpOnly" type="boolean" default="true">
+      Makes cookie inaccessible to JavaScript.
+    </ParamField>
+    
+    <ParamField path="secure" type="boolean">
+      Only send cookie over HTTPS.
+    </ParamField>
+    
+    <ParamField path="sameSite" type="'lax' | 'strict' | 'none'" default="lax">
+      Controls cross-site request behavior.
+    </ParamField>
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="SessionStorage" type="object">
+  A session storage object with methods to manage sessions.
+  
+  <ResponseField name="getSession" type="function">
+    Parses the Cookie header and returns a Session object.
+    
+    ```tsx
+    getSession(
+      cookieHeader?: string | null,
+      options?: ParseOptions
+    ): Promise<Session>
+    ```
+  </ResponseField>
+  
+  <ResponseField name="commitSession" type="function">
+    Serializes session data and returns the Set-Cookie header. Throws an error if the cookie exceeds 4KB.
+    
+    ```tsx
+    commitSession(
+      session: Session,
+      options?: SerializeOptions
+    ): Promise<string>
+    ```
+  </ResponseField>
+  
+  <ResponseField name="destroySession" type="function">
+    Returns a Set-Cookie header that clears the session cookie.
+    
+    ```tsx
+    destroySession(
+      session: Session,
+      options?: SerializeOptions
+    ): Promise<string>
+    ```
+  </ResponseField>
+</ResponseField>
+
+## Basic Example
+
+```tsx filename=app/sessions.server.ts
+import { createCookieSessionStorage } from "react-router";
+
+export const sessionStorage = createCookieSessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+    sameSite: "lax",
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  },
+});
+```
+
+## Login Example
+
+Set session data after authentication:
+
+```tsx filename=app/routes/login.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/login";
+import { sessionStorage } from "~/sessions.server";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const user = await authenticateUser(
+    formData.get("email"),
+    formData.get("password")
+  );
+  
+  if (!user) {
+    return { error: "Invalid credentials" };
+  }
+  
+  // Create session
+  const session = await sessionStorage.getSession();
+  session.set("userId", user.id);
+  
+  // Redirect with session cookie
+  return redirect("/dashboard", {
+    headers: {
+      "Set-Cookie": await sessionStorage.commitSession(session),
+    },
+  });
+}
+```
+
+## Reading Session Data
+
+Access session data in loaders:
+
+```tsx filename=app/routes/dashboard.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/dashboard";
+import { sessionStorage } from "~/sessions.server";
+import { db } from "~/db.server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  const userId = session.get("userId");
+  
+  if (!userId) {
+    return redirect("/login");
+  }
+  
+  const user = await db.user.findUnique({
+    where: { id: userId },
+  });
+  
+  return { user };
+}
+```
+
+## Flash Messages
+
+Store temporary messages that are automatically removed after being read:
+
+```tsx filename=app/routes/settings.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/settings";
+import { sessionStorage } from "~/sessions.server";
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  // Set flash message
+  session.flash("success", "Settings saved successfully!");
+  
+  return redirect("/settings", {
+    headers: {
+      "Set-Cookie": await sessionStorage.commitSession(session),
+    },
+  });
+}
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  // Get flash message (automatically removed after reading)
+  const successMessage = session.get("success");
+  
+  return {
+    successMessage,
+  };
+}
+```
+
+## Logout Example
+
+Destroy the session on logout:
+
+```tsx filename=app/routes/logout.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/logout";
+import { sessionStorage } from "~/sessions.server";
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  return redirect("/", {
+    headers: {
+      "Set-Cookie": await sessionStorage.destroySession(session),
+    },
+  });
+}
+```
+
+## Custom Session Expiration
+
+Set expiration when committing the session:
+
+```tsx
+const session = await sessionStorage.getSession();
+session.set("userId", user.id);
+
+return redirect("/dashboard", {
+  headers: {
+    "Set-Cookie": await sessionStorage.commitSession(session, {
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    }),
+  },
+});
+```
+
+## TypeScript Support
+
+Define session data types:
+
+```tsx filename=app/sessions.server.ts
+import { createCookieSessionStorage } from "react-router";
+
+type SessionData = {
+  userId: string;
+  role: "admin" | "user";
+};
+
+type FlashData = {
+  error: string;
+  success: string;
+};
+
+export const sessionStorage = createCookieSessionStorage<
+  SessionData,
+  FlashData
+>({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+  },
+});
+
+// Usage with type safety
+const session = await sessionStorage.getSession();
+const userId = session.get("userId"); // typed as string
+const role = session.get("role");     // typed as "admin" | "user"
+session.flash("error", "Something went wrong"); // typed
+```
+
+## Helper Functions
+
+Create utilities to simplify common session operations:
+
+```tsx filename=app/sessions.server.ts
+import { redirect } from "react-router";
+import { sessionStorage } from "./sessions.server";
+
+export async function requireUser(request: Request) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  const userId = session.get("userId");
+  
+  if (!userId) {
+    throw redirect("/login");
+  }
+  
+  return userId;
+}
+
+export async function createUserSession(
+  userId: string,
+  redirectTo: string
+) {
+  const session = await sessionStorage.getSession();
+  session.set("userId", userId);
+  
+  return redirect(redirectTo, {
+    headers: {
+      "Set-Cookie": await sessionStorage.commitSession(session),
+    },
+  });
+}
+```
+
+Use in routes:
+
+```tsx filename=app/routes/protected.tsx
+import type { Route } from "./+types/protected";
+import { requireUser } from "~/sessions.server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const userId = await requireUser(request);
+  // userId is guaranteed to exist here
+  return { userId };
+}
+```
+
+## Advantages
+
+- **No database required** - Simplifies deployment and reduces infrastructure
+- **Stateless** - Works seamlessly in load-balanced environments
+- **Fast** - No database queries for session data
+- **Simple** - Easy to set up and maintain
+
+## Limitations
+
+### Cookie Size Limit
+
+Browsers limit cookies to approximately 4KB. Store minimal data:
+
+```tsx
+// Bad - too much data
+session.set("cart", largeCartObject); // May exceed 4KB
+
+// Good - store just the ID
+session.set("cartId", "cart-123");
+```
+
+The `commitSession` method throws an error if the cookie exceeds the size limit:
+
+```tsx
+try {
+  const setCookie = await sessionStorage.commitSession(session);
+} catch (error) {
+  // Error: Cookie length will exceed browser maximum. Length: 5234
+}
+```
+
+### Data Included in Every Request
+
+Cookie session data is sent with every request:
+
+```tsx
+// Store minimal data
+type SessionData = {
+  userId: string;        // Good - just an ID
+  // user: User;         // Bad - full user object
+};
+```
+
+## Security Considerations
+
+### Always Use Secrets
+
+Sign cookies to prevent tampering:
+
+```tsx
+// Bad - unsigned cookies can be modified
+const sessionStorage = createCookieSessionStorage({
+  cookie: { name: "__session" },
+});
+
+// Good - signed cookies are verified
+const sessionStorage = createCookieSessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+  },
+});
+```
+
+### Use HttpOnly Cookies
+
+Prevent XSS attacks:
+
+```tsx
+const sessionStorage = createCookieSessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+    httpOnly: true, // JavaScript cannot access this cookie
+  },
+});
+```
+
+### Enable Secure in Production
+
+Only send cookies over HTTPS:
+
+```tsx
+const sessionStorage = createCookieSessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+    secure: process.env.NODE_ENV === "production",
+  },
+});
+```
+
+### Use SameSite Protection
+
+Prevent CSRF attacks:
+
+```tsx
+const sessionStorage = createCookieSessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+    sameSite: "lax", // Recommended for most applications
+  },
+});
+```
+
+## Related
+
+- [createSessionStorage](/api/server/create-session-storage) - Custom session storage backends
+- [createCookie](/api/server/create-cookie) - Cookie management
+- [Sessions and Cookies](/concepts/sessions) - Sessions guide

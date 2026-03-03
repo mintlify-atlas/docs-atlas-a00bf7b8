@@ -1,0 +1,354 @@
+---
+title: headers
+---
+
+# headers
+
+A server-side function that defines HTTP headers to be sent with the document response. Only runs on document requests, not data requests.
+
+## Signature
+
+```tsx
+export function headers(args: HeadersArgs): Headers | HeadersInit
+```
+
+<ParamField path="args" type="HeadersArgs" required>
+  Arguments passed to the headers function
+
+  <Expandable title="properties">
+    <ParamField path="loaderHeaders" type="Headers">
+      Headers returned from this route's loader
+    </ParamField>
+
+    <ParamField path="parentHeaders" type="Headers">
+      Headers returned from the parent route's headers function
+    </ParamField>
+
+    <ParamField path="actionHeaders" type="Headers">
+      Headers returned from this route's action (if action was called)
+    </ParamField>
+
+    <ParamField path="errorHeaders" type="Headers | undefined">
+      Headers from the error response (if an error occurred)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Headers | HeadersInit">
+  Can return:
+  - A Headers object
+  - A HeadersInit object (plain object, array of tuples)
+</ResponseField>
+
+## Basic Example
+
+```tsx
+export function headers() {
+  return {
+    "Cache-Control": "public, max-age=3600",
+  };
+}
+
+export async function loader() {
+  const data = await fetchData();
+  return { data };
+}
+
+export default function Component() {
+  // Route rendering
+}
+```
+
+## Using Loader Headers
+
+```tsx
+export async function loader() {
+  const response = await fetch("https://api.example.com/data");
+  const data = await response.json();
+  
+  return Response.json(
+    { data },
+    {
+      headers: {
+        "Cache-Control": response.headers.get("Cache-Control"),
+        "X-Custom-Header": "value"
+      }
+    }
+  );
+}
+
+export function headers({ loaderHeaders }: HeadersArgs) {
+  // Forward cache headers from loader
+  return {
+    "Cache-Control": loaderHeaders.get("Cache-Control"),
+    "X-Custom-Header": loaderHeaders.get("X-Custom-Header"),
+  };
+}
+```
+
+## Merging Parent Headers
+
+```tsx
+export function headers({ parentHeaders }: HeadersArgs) {
+  // Start with parent headers
+  const headers = new Headers(parentHeaders);
+  
+  // Override or add specific headers
+  headers.set("Cache-Control", "public, max-age=1800");
+  headers.set("X-Route-Id", "product-detail");
+  
+  return headers;
+}
+```
+
+## Conditional Headers Based on Action
+
+```tsx
+export function headers({ actionHeaders, loaderHeaders }: HeadersArgs) {
+  // If action was called, use action headers
+  if (actionHeaders) {
+    return {
+      "Cache-Control": "no-cache",
+      "X-Action-Status": actionHeaders.get("X-Action-Status"),
+    };
+  }
+  
+  // Otherwise use loader headers
+  return {
+    "Cache-Control": loaderHeaders.get("Cache-Control") || "public, max-age=3600",
+  };
+}
+```
+
+## Error Response Headers
+
+```tsx
+export function headers({ errorHeaders, loaderHeaders }: HeadersArgs) {
+  // If there was an error, use error headers
+  if (errorHeaders) {
+    return {
+      "Cache-Control": "no-cache",
+      "X-Error": "true",
+    };
+  }
+  
+  return {
+    "Cache-Control": loaderHeaders.get("Cache-Control"),
+  };
+}
+```
+
+## Security Headers
+
+```tsx
+export function headers() {
+  return {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  };
+}
+```
+
+## Cache Control Strategies
+
+```tsx
+// Static content - cache aggressively
+export function headers() {
+  return {
+    "Cache-Control": "public, max-age=31536000, immutable",
+  };
+}
+
+// Dynamic content - cache with revalidation
+export function headers() {
+  return {
+    "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+  };
+}
+
+// Private content - no cache
+export function headers() {
+  return {
+    "Cache-Control": "private, no-cache, no-store, must-revalidate",
+  };
+}
+
+// CDN with browser cache
+export function headers() {
+  return {
+    "Cache-Control": "public, max-age=300, s-maxage=3600",
+  };
+}
+```
+
+## Content Security Policy
+
+```tsx
+export function headers() {
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://trusted-cdn.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.example.com",
+  ].join("; ");
+
+  return {
+    "Content-Security-Policy": csp,
+  };
+}
+```
+
+## Dynamic Headers
+
+```tsx
+export async function loader({ context }: Route.LoaderArgs) {
+  const data = await fetchData();
+  const cacheTime = data.isPublished ? 3600 : 60;
+  
+  return Response.json(
+    { data },
+    {
+      headers: {
+        "Cache-Control": `public, max-age=${cacheTime}`,
+        "X-Published": String(data.isPublished),
+      }
+    }
+  );
+}
+
+export function headers({ loaderHeaders }: HeadersArgs) {
+  return {
+    "Cache-Control": loaderHeaders.get("Cache-Control"),
+    "X-Published": loaderHeaders.get("X-Published"),
+  };
+}
+```
+
+## Setting Cookies
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const theme = formData.get("theme");
+  
+  return Response.json(
+    { success: true },
+    {
+      headers: {
+        "Set-Cookie": `theme=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`,
+      }
+    }
+  );
+}
+
+export function headers({ actionHeaders }: HeadersArgs) {
+  const headers = new Headers();
+  
+  if (actionHeaders?.has("Set-Cookie")) {
+    headers.set("Set-Cookie", actionHeaders.get("Set-Cookie"));
+  }
+  
+  return headers;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Set headers in loaders, merge in headers()">
+    Keep header logic close to the data:
+
+    ```tsx
+    export async function loader() {
+      const data = await fetchData();
+      
+      return Response.json(
+        { data },
+        {
+          headers: {
+            "Cache-Control": "public, max-age=3600",
+          }
+        }
+      );
+    }
+
+    export function headers({ loaderHeaders }: HeadersArgs) {
+      // Simply forward loader headers
+      return {
+        "Cache-Control": loaderHeaders.get("Cache-Control"),
+      };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Leaf route headers win">
+    React Router uses headers from the deepest matching route:
+
+    ```tsx
+    // Route: /products/:id
+    // Headers from product detail route are used, not /products
+    
+    // app/routes/products.tsx
+    export function headers() {
+      return { "Cache-Control": "max-age=3600" };
+    }
+
+    // app/routes/products.$id.tsx  
+    export function headers() {
+      // These headers are used for /products/123
+      return { "Cache-Control": "max-age=300" };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Don't set Content-Type or Content-Length">
+    These are automatically managed by React Router:
+
+    ```tsx
+    // ❌ Don't do this
+    export function headers() {
+      return {
+        "Content-Type": "text/html",
+        "Content-Length": "1234",
+      };
+    }
+
+    // ✅ Set other headers
+    export function headers() {
+      return {
+        "Cache-Control": "public, max-age=3600",
+        "X-Custom-Header": "value",
+      };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Consider the full header hierarchy">
+    Remember that headers bubble up through parent routes:
+
+    ```tsx
+    // app/root.tsx
+    export function headers() {
+      return {
+        "X-Frame-Options": "DENY", // Applied to all routes
+      };
+    }
+
+    // app/routes/admin.tsx
+    export function headers({ parentHeaders }: HeadersArgs) {
+      const headers = new Headers(parentHeaders);
+      headers.set("X-Admin", "true");
+      return headers;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [loader](/api/route-module/loader) - Server data loading
+- [action](/api/route-module/action) - Server mutations

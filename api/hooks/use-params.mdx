@@ -1,0 +1,271 @@
+---
+title: useParams
+---
+
+# useParams
+
+Returns an object of key/value pairs of the dynamic params from the current URL that were matched by the routes. Child routes inherit all params from their parent routes.
+
+## Signature
+
+```tsx
+function useParams<
+  ParamsOrKey extends string | Record<string, string | undefined> = string
+>(): Readonly<
+  [ParamsOrKey] extends [string] ? Params<ParamsOrKey> : Partial<ParamsOrKey>
+>
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="params" type="Record<string, string | undefined>">
+  An object containing the URL parameters from the matched route. All values are strings or `undefined`.
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+Given a route pattern like `/posts/:postId`:
+
+```tsx
+import { useParams } from "react-router";
+
+// Route definition
+<Route path="/posts/:postId" element={<Post />} />
+
+// Component
+function Post() {
+  const params = useParams();
+  return <h1>Post ID: {params.postId}</h1>;
+}
+
+// URL: /posts/123
+// params.postId === "123"
+```
+
+### Multiple params
+
+Patterns can have multiple params:
+
+```tsx
+// Route: /posts/:postId/comments/:commentId
+<Route
+  path="/posts/:postId/comments/:commentId"
+  element={<Comment />}
+/>
+
+function Comment() {
+  const params = useParams();
+  
+  return (
+    <div>
+      <h1>Post: {params.postId}</h1>
+      <h2>Comment: {params.commentId}</h2>
+    </div>
+  );
+}
+
+// URL: /posts/123/comments/456
+// params.postId === "123"
+// params.commentId === "456"
+```
+
+### Catchall params
+
+Catchall params are defined with `*`:
+
+```tsx
+// Route: /files/*
+<Route path="/files/*" element={<Files />} />
+
+function Files() {
+  const params = useParams();
+  const filepath = params["*"];
+  
+  return <h1>File: {filepath}</h1>;
+}
+
+// URL: /files/documents/report.pdf
+// params["*"] === "documents/report.pdf"
+```
+
+You can destructure the catchall param:
+
+```tsx
+function Files() {
+  const { "*": filepath } = useParams();
+  return <h1>File: {filepath}</h1>;
+}
+```
+
+### Named catchall params
+
+You can also name catchall params:
+
+```tsx
+// Route: /files/:path*
+<Route path="/files/:path*" element={<Files />} />
+
+function Files() {
+  const { path } = useParams();
+  return <h1>File: {path}</h1>;
+}
+```
+
+### Using in loaders
+
+Params are available in route loaders:
+
+```tsx
+import { useLoaderData } from "react-router";
+
+export async function loader({ params }) {
+  const post = await fetchPost(params.postId);
+  return { post };
+}
+
+export default function Post() {
+  const { post } = useLoaderData();
+  return <h1>{post.title}</h1>;
+}
+```
+
+### Parent route params
+
+Child routes inherit all params from parent routes:
+
+```tsx
+// Parent route: /users/:userId
+<Route path="/users/:userId" element={<UserLayout />}>
+  {/* Child route: /users/:userId/posts/:postId */}
+  <Route path="posts/:postId" element={<Post />} />
+</Route>
+
+function Post() {
+  const params = useParams();
+  
+  // Both userId and postId are available
+  console.log(params.userId);  // from parent
+  console.log(params.postId);  // from child
+}
+
+// URL: /users/42/posts/123
+// params.userId === "42"
+// params.postId === "123"
+```
+
+## Type Safety
+
+### Generic type parameter
+
+You can provide a type for better type checking:
+
+```tsx
+interface Params {
+  userId: string;
+  postId: string;
+}
+
+function Post() {
+  const params = useParams<Params>();
+  
+  // TypeScript knows these are strings | undefined
+  params.userId;  // string | undefined
+  params.postId;  // string | undefined
+}
+```
+
+### With route loader types
+
+In Framework mode, types are automatically generated:
+
+```tsx
+import type { Route } from "./+types.post";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  // params is automatically typed
+  const post = await fetchPost(params.postId);
+  return { post };
+}
+
+export default function Post() {
+  const params = useParams<Route.Params>();
+  // params is fully typed
+}
+```
+
+### Runtime validation
+
+Since params can be `undefined`, validate them at runtime:
+
+```tsx
+function Post() {
+  const params = useParams();
+  
+  if (!params.postId) {
+    return <div>Invalid post ID</div>;
+  }
+  
+  // Now safe to use params.postId
+  const postId = params.postId;
+}
+```
+
+## Common Patterns
+
+### Convert to number
+
+Params are always strings. Convert to numbers as needed:
+
+```tsx
+function Post() {
+  const params = useParams();
+  const postId = Number(params.postId);
+  
+  if (isNaN(postId)) {
+    return <div>Invalid post ID</div>;
+  }
+  
+  // Use postId as a number
+}
+```
+
+### URL decode params
+
+Params are automatically URL-decoded:
+
+```tsx
+// URL: /posts/hello%20world
+// params.postId === "hello world"
+```
+
+### Optional params
+
+Make params optional with `?`:
+
+```tsx
+// Route: /posts/:postId?
+<Route path="/posts/:postId?" element={<Posts />} />
+
+function Posts() {
+  const params = useParams();
+  
+  if (params.postId) {
+    return <Post id={params.postId} />;
+  }
+  
+  return <PostList />;
+}
+```
+
+## Related
+
+- [`useLocation`](/api/hooks/use-location) - Access current location
+- [`useSearchParams`](/api/hooks/use-search-params) - Work with search params
+- [`useLoaderData`](/api/hooks/use-loader-data) - Access loader data
+- [`loader`](/start/framework/route-module#loader) - Route loader function

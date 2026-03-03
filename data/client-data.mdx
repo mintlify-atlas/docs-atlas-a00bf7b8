@@ -1,0 +1,477 @@
+---
+title: Client-Side Data
+---
+
+# Client-Side Data Loading
+
+React Router provides several ways to load and manage data entirely on the client, enabling progressive enhancement, caching strategies, and hybrid server/client data patterns.
+
+## Client Loaders
+
+Use `clientLoader` to fetch data only on the client:
+
+```tsx
+import type { Route } from "./+types/products";
+
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  const product = await fetch(`/api/products/${params.id}`).then((r) => r.json());
+  return { product };
+}
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>{loaderData.product.name}</h1>
+      <p>{loaderData.product.description}</p>
+    </div>
+  );
+}
+```
+
+## Combining Server and Client Loaders
+
+Call server loader from client for hybrid loading:
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  // Runs on server during SSR
+  const product = await db.product.findUnique({
+    where: { id: params.id },
+  });
+  return { product };
+}
+
+export async function clientLoader({
+  params,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  // Check cache first
+  const cached = cache.get(`product:${params.id}`);
+  if (cached) return cached;
+  
+  // Fall back to server loader
+  const data = await serverLoader();
+  cache.set(`product:${params.id}`, data);
+  return data;
+}
+```
+
+## Client-Side Caching
+
+```tsx
+const cache = new Map<string, any>();
+
+export async function clientLoader({
+  params,
+  request,
+}: Route.ClientLoaderArgs) {
+  const url = new URL(request.url);
+  const cacheKey = `${url.pathname}${url.search}`;
+  
+  // Return cached data if available
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+  
+  // Fetch and cache
+  const data = await fetch(`/api/data/${params.id}`).then((r) => r.json());
+  cache.set(cacheKey, data);
+  
+  return data;
+}
+
+// Clear cache on actions
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  cache.clear();
+  const formData = await request.formData();
+  return await fetch("/api/data", {
+    method: "POST",
+    body: formData,
+  }).then((r) => r.json());
+}
+```
+
+## Time-Based Cache
+
+```tsx
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const cache = new Map<string, CacheEntry<any>>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  const cacheKey = `user:${params.id}`;
+  const cached = cache.get(cacheKey);
+  
+  // Return cached data if still fresh
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  
+  // Fetch fresh data
+  const data = await fetch(`/api/users/${params.id}`).then((r) => r.json());
+  
+  cache.set(cacheKey, {
+    data,
+    timestamp: Date.now(),
+  });
+  
+  return data;
+}
+```
+
+## Local Storage
+
+```tsx
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  // Try local storage first
+  const cached = localStorage.getItem(`draft:${params.id}`);
+  if (cached) {
+    return JSON.parse(cached);
+  }
+  
+  // Fetch from server
+  const data = await fetch(`/api/drafts/${params.id}`).then((r) => r.json());
+  return data;
+}
+
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const id = formData.get("id");
+  
+  // Save to local storage
+  const draft = {
+    id,
+    title: formData.get("title"),
+    content: formData.get("content"),
+  };
+  
+  localStorage.setItem(`draft:${id}`, JSON.stringify(draft));
+  
+  return { success: true };
+}
+```
+
+## IndexedDB
+
+```tsx
+import { openDB } from "idb";
+
+const dbPromise = openDB("my-app", 1, {
+  upgrade(db) {
+    db.createObjectStore("products");
+  },
+});
+
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  const db = await dbPromise;
+  
+  // Try IndexedDB first
+  const cached = await db.get("products", params.id);
+  if (cached) return { product: cached };
+  
+  // Fetch and store
+  const product = await fetch(`/api/products/${params.id}`).then((r) => r.json());
+  await db.put("products", product, params.id);
+  
+  return { product };
+}
+```
+
+## Prefetching Data
+
+```tsx
+import { prefetchRoute } from "react-router";
+
+export default function ProductList({ products }) {
+  return (
+    <ul>
+      {products.map((product) => (
+        <li
+          key={product.id}
+          onMouseEnter={() => {
+            // Prefetch on hover
+            prefetchRoute(`/products/${product.id}`);
+          }}
+        >
+          <Link to={`/products/${product.id}`}>
+            {product.name}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Client Actions
+
+Handle mutations entirely on the client:
+
+```tsx
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  
+  // Call API directly
+  const response = await fetch("/api/products", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: formData.get("name"),
+      price: formData.get("price"),
+    }),
+  });
+  
+  if (!response.ok) {
+    return { error: "Failed to create product" };
+  }
+  
+  return await response.json();
+}
+```
+
+## Optimistic Client Updates
+
+```tsx
+const cache = new Map<string, any>();
+
+export async function clientAction({
+  request,
+  params,
+}: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  
+  // Optimistically update cache
+  const optimisticData = {
+    id: params.id,
+    name: formData.get("name"),
+    updatedAt: new Date().toISOString(),
+  };
+  
+  cache.set(`item:${params.id}`, optimisticData);
+  
+  try {
+    // Send to server
+    const result = await fetch(`/api/items/${params.id}`, {
+      method: "PUT",
+      body: formData,
+    }).then((r) => r.json());
+    
+    // Update cache with server data
+    cache.set(`item:${params.id}`, result);
+    return result;
+  } catch (error) {
+    // Rollback on error
+    cache.delete(`item:${params.id}`);
+    throw error;
+  }
+}
+```
+
+## Background Sync
+
+```tsx
+const pendingSync = new Map<string, any>();
+
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const data = Object.fromEntries(formData);
+  
+  // Queue for background sync
+  const syncId = crypto.randomUUID();
+  pendingSync.set(syncId, data);
+  
+  // Try to sync immediately
+  try {
+    await syncData(syncId, data);
+    pendingSync.delete(syncId);
+  } catch (error) {
+    // Will retry later via service worker
+    console.log("Queued for background sync");
+  }
+  
+  return { success: true, queued: pendingSync.has(syncId) };
+}
+
+async function syncData(id: string, data: any) {
+  const response = await fetch("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) throw new Error("Sync failed");
+  return response.json();
+}
+```
+
+## Progressive Enhancement
+
+```tsx
+// Works with server loader as fallback
+export async function loader({ params }: Route.LoaderArgs) {
+  // Server-side loading for initial page load and no-JS
+  const data = await db.getData(params.id);
+  return { data };
+}
+
+export async function clientLoader({
+  params,
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  // Enhanced client-side loading for subsequent navigations
+  
+  // Check if we're online
+  if (!navigator.onLine) {
+    // Use cached data when offline
+    const cached = await getCachedData(params.id);
+    if (cached) return { data: cached };
+  }
+  
+  // Use server loader as fallback
+  return serverLoader();
+}
+```
+
+## Hydration
+
+Control hydration behavior:
+
+```tsx
+import type { Route } from "./+types/route";
+
+export async function loader() {
+  return { serverData: "from server" };
+}
+
+export async function clientLoader({
+  serverLoader,
+}: Route.ClientLoaderArgs) {
+  // On first load, use server data
+  // On client navigation, fetch fresh data
+  const serverData = await serverLoader();
+  return {
+    ...serverData,
+    clientData: "enhanced on client",
+  };
+}
+
+// Skip hydration to always run clientLoader
+clientLoader.hydrate = false;
+```
+
+## React Query Integration
+
+```tsx
+import { useQuery } from "@tanstack/react-query";
+
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  // Return empty data for initial render
+  return { product: null };
+}
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  const { data: product } = useQuery({
+    queryKey: ["product", loaderData.productId],
+    queryFn: () => fetch(`/api/products/${loaderData.productId}`).then((r) => r.json()),
+  });
+  
+  if (!product) return <div>Loading...</div>;
+  
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+    </div>
+  );
+}
+```
+
+## SWR Integration
+
+```tsx
+import useSWR from "swr";
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+export default function User({ params }: { params: { id: string } }) {
+  const { data, error } = useSWR(`/api/users/${params.id}`, fetcher);
+  
+  if (error) return <div>Failed to load</div>;
+  if (!data) return <div>Loading...</div>;
+  
+  return (
+    <div>
+      <h1>{data.name}</h1>
+      <p>{data.email}</p>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+### Cache Invalidation
+
+```tsx
+// Clear cache after mutations
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const result = await fetch("/api/data", {
+    method: "POST",
+    body: await request.formData(),
+  });
+  
+  // Invalidate related caches
+  cache.delete("list");
+  cache.delete("stats");
+  
+  return result.json();
+}
+```
+
+### Error Boundaries
+
+```tsx
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  try {
+    const data = await fetch(`/api/data/${params.id}`).then((r) => r.json());
+    return { data };
+  } catch (error) {
+    throw new Response("Failed to load data", { status: 500 });
+  }
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  return <div>Error: {error.message}</div>;
+}
+```
+
+### Loading States
+
+```tsx
+import { useNavigation } from "react-router";
+
+export default function Component({ loaderData }: Route.ComponentProps) {
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "loading";
+  
+  return (
+    <div>
+      {isLoading && <Spinner />}
+      <div className={isLoading ? "opacity-50" : ""}>
+        {loaderData.content}
+      </div>
+    </div>
+  );
+}
+```
+
+## Related
+
+- [Loaders](/data/loaders) - Server-side data loading
+- [Fetchers](/data/fetchers) - Load data without navigation
+- [Revalidation](/data/revalidation) - Keep data fresh

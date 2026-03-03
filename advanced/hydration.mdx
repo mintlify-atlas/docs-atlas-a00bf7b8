@@ -1,0 +1,392 @@
+---
+title: Hydration Strategies
+description: Control how your app hydrates from server-rendered HTML
+---
+
+# Hydration Strategies
+
+Hydration is the process of attaching React event handlers to server-rendered HTML, making it interactive. React Router provides several strategies to optimize this process.
+
+## Basic Hydration
+
+By default, React Router hydrates immediately with server data:
+
+```tsx
+// Client entry
+import { HydratedRouter } from "react-router/dom";
+
+ReactDOM.hydrateRoot(
+  document.getElementById("root"),
+  <HydratedRouter />
+);
+```
+
+This uses the hydration data embedded in the HTML:
+
+```html
+<!-- Server-rendered -->
+<script>
+  window.__staticRouterHydrationData = {
+    loaderData: { root: {...}, about: {...} },
+    errors: null
+  };
+</script>
+```
+
+## Client Loaders
+
+Run additional logic on the client during hydration:
+
+```tsx
+export async function clientLoader({ serverLoader }) {
+  // Get server data
+  const serverData = await serverLoader();
+  
+  // Augment with client-only data
+  const clientData = localStorage.getItem("preferences");
+  
+  return {
+    ...serverData,
+    preferences: JSON.parse(clientData),
+  };
+}
+
+export async function loader() {
+  return { user: await getUser() };
+}
+
+export function Component() {
+  const data = useLoaderData();
+  // data includes both server and client data
+  return <div>Welcome {data.user.name}</div>;
+}
+```
+
+## Hydrate Flag
+
+Control whether client loaders run on hydration:
+
+```tsx
+export async function clientLoader({ serverLoader }) {
+  return await serverLoader();
+}
+
+// Don't run on hydration - use server data only
+clientLoader.hydrate = false;
+```
+
+```tsx
+export async function clientLoader() {
+  return await getClientOnlyData();
+}
+
+// Always run on hydration
+clientLoader.hydrate = true;
+```
+
+### Default Behavior
+
+- `hydrate = true`: When there's no server loader
+- `hydrate = false`: When calling `serverLoader()`
+- `hydrate = true`: When not calling `serverLoader()`
+
+## HydrateFallback
+
+Show a loading state during client loader execution:
+
+```tsx
+export function HydrateFallback() {
+  return <div>Loading preferences...</div>;
+}
+
+export async function clientLoader() {
+  // This runs on hydration
+  const data = await fetch("/api/user").then(r => r.json());
+  return data;
+}
+
+clientLoader.hydrate = true;
+
+export function Component() {
+  const data = useLoaderData();
+  return <div>Welcome {data.name}</div>;
+}
+```
+
+### HydrateFallback Behavior
+
+1. **Only runs on initial hydration**: Not on client-side navigations
+2. **Requires clientLoader**: With `hydrate = true`
+3. **Bubbles up**: Renders parent's `HydrateFallback` if none provided
+4. **No Outlet**: Cannot render children (they may not have data yet)
+
+## Partial Hydration
+
+Hydrate different parts of your app at different times:
+
+```tsx
+// Root route - hydrates immediately
+export function Component() {
+  return (
+    <div>
+      <header>Instant header</header>
+      <Outlet />
+    </div>
+  );
+}
+
+// Dashboard route - deferred hydration
+export function HydrateFallback() {
+  return <div>Loading dashboard...</div>;
+}
+
+export async function clientLoader() {
+  // Heavy client-side initialization
+  await loadAnalytics();
+  await loadCharts();
+  return { ready: true };
+}
+
+clientLoader.hydrate = true;
+
+export function Component() {
+  return <div>Dashboard ready!</div>;
+}
+```
+
+## Streaming Hydration
+
+Combine with deferred data for progressive hydration:
+
+```tsx
+import { defer } from "react-router";
+
+export async function loader() {
+  return defer({
+    critical: await getCriticalData(),
+    deferred: getDeferredData(), // Promise
+  });
+}
+
+export function Component() {
+  const data = useLoaderData();
+  
+  return (
+    <div>
+      <h1>{data.critical.title}</h1>
+      
+      <Suspense fallback={<Spinner />}>
+        <Await resolve={data.deferred}>
+          {(deferred) => <Content data={deferred} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+The page hydrates with critical data, then streams in deferred data.
+
+## Optimistic Hydration
+
+Assume server data is available and hydrate eagerly:
+
+```tsx
+// Server
+export async function loader() {
+  return { count: await getCount() };
+}
+
+// Client
+export async function clientLoader({ serverLoader }) {
+  // Optimistically return server data
+  const data = await serverLoader();
+  
+  // Then update from API in the background
+  fetch("/api/count")
+    .then(r => r.json())
+    .then(fresh => {
+      // Update state with fresh data
+    });
+  
+  return data;
+}
+
+clientLoader.hydrate = false; // Use server data immediately
+```
+
+## Selective Hydration
+
+Only hydrate interactive components:
+
+```tsx
+import { hydrateRoot } from "react-dom/client";
+import { HydratedRouter } from "react-router/dom";
+
+// Hydrate interactive parts only
+const root = document.getElementById("root");
+const interactive = root.querySelector("[data-interactive]");
+
+if (interactive) {
+  hydrateRoot(interactive, <HydratedRouter />);
+} else {
+  // Just static content, no hydration needed
+}
+```
+
+## Island Architecture
+
+Hydrate isolated interactive regions:
+
+```tsx
+// Static layout, no hydration
+export function Layout() {
+  return (
+    <div>
+      <nav>Static navigation</nav>
+      <Outlet />
+    </div>
+  );
+}
+
+// Interactive island
+export function Component() {
+  const [count, setCount] = useState(0);
+  
+  return (
+    <div data-island>
+      <button onClick={() => setCount(c => c + 1)}>
+        Count: {count}
+      </button>
+    </div>
+  );
+}
+```
+
+## Custom Hydration
+
+Full control over the hydration process:
+
+```tsx
+import { matchRoutes } from "react-router";
+
+// Find routes that need hydration
+const lazyMatches = matchRoutes(
+  routes,
+  window.location
+)?.filter(m => m.route.lazy);
+
+// Preload lazy routes
+if (lazyMatches?.length) {
+  await Promise.all(
+    lazyMatches.map(async (m) => {
+      const module = await m.route.lazy();
+      Object.assign(m.route, { ...module, lazy: undefined });
+    })
+  );
+}
+
+// Create router with hydration data
+const router = createBrowserRouter(routes, {
+  hydrationData: window.__staticRouterHydrationData,
+});
+
+// Hydrate
+ReactDOM.hydrateRoot(
+  document.getElementById("root"),
+  <RouterProvider router={router} />
+);
+```
+
+## Hydration Errors
+
+Debug mismatches between server and client:
+
+```tsx
+if (import.meta.env.DEV) {
+  const root = document.getElementById("root");
+  const originalError = console.error;
+  
+  console.error = (...args) => {
+    if (args[0]?.includes?.("Hydration")) {
+      console.warn("Hydration mismatch:", args);
+      // Log server HTML
+      console.log("Server HTML:", root.innerHTML);
+    }
+    originalError(...args);
+  };
+}
+```
+
+## Performance Monitoring
+
+Track hydration performance:
+
+```tsx
+export async function clientLoader({ serverLoader }) {
+  const start = performance.now();
+  const data = await serverLoader();
+  const duration = performance.now() - start;
+  
+  // Send to analytics
+  analytics.timing("hydration", duration);
+  
+  return data;
+}
+```
+
+## Best Practices
+
+1. **Use server data by default**: Set `hydrate = false` when possible
+2. **Show loading states**: Use `HydrateFallback` for better UX
+3. **Minimize client loaders**: Keep hydration fast
+4. **Test without JavaScript**: Ensure server-rendered content works
+5. **Monitor hydration time**: Track performance metrics
+
+## Common Patterns
+
+### User Preferences
+
+```tsx
+export async function clientLoader({ serverLoader }) {
+  const [serverData, theme] = await Promise.all([
+    serverLoader(),
+    getLocalTheme(),
+  ]);
+  
+  return { ...serverData, theme };
+}
+```
+
+### Authentication State
+
+```tsx
+export async function clientLoader({ serverLoader }) {
+  const serverData = await serverLoader();
+  const token = localStorage.getItem("token");
+  
+  return {
+    ...serverData,
+    isAuthenticated: !!token,
+  };
+}
+```
+
+### Feature Flags
+
+```tsx
+export async function clientLoader({ serverLoader }) {
+  const [serverData, flags] = await Promise.all([
+    serverLoader(),
+    getFeatureFlags(),
+  ]);
+  
+  return { ...serverData, features: flags };
+}
+```
+
+## Related
+
+- [Client Data](../start/framework/data-loading#client-data)
+- [Streaming](../start/framework/streaming)
+- [SSR](../start/framework/rendering)

@@ -1,0 +1,385 @@
+---
+title: Type Generation
+---
+
+# Type Generation
+
+React Router Framework Mode automatically generates TypeScript types from your route configuration, providing type safety for route parameters, loader data, and more.
+
+## Overview
+
+The type generation system:
+
+- Generates types from your `routes.ts` configuration
+- Creates route-specific types for params, loader data, and actions
+- Updates automatically during development
+- Provides IDE autocomplete for route paths and params
+
+## Setup
+
+Type generation is enabled automatically when you use the Vite plugin:
+
+```typescript
+// vite.config.ts
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [reactRouter()],
+});
+```
+
+## Generated Files
+
+Types are generated in `.react-router/types/`:
+
+```
+.react-router/
+└── types/
+    ├── react-router-config.d.ts  # Future flags config
+    ├── +server.d.ts              # Server build types
+    └── app/                      # Route module types
+        ├── root.d.ts
+        ├── routes/
+        │   ├── _index.d.ts
+        │   └── posts.$id.d.ts
+        └── ...
+```
+
+**Important:** Do not edit these files directly. They are regenerated automatically.
+
+## Add to .gitignore
+
+Add the generated types directory to `.gitignore`:
+
+```
+.react-router/
+```
+
+## TypeScript Configuration
+
+Update your `tsconfig.json` to include generated types:
+
+```json
+{
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".react-router/types/**/*"
+  ],
+  "compilerOptions": {
+    "rootDirs": [".", "./.react-router/types"]
+  }
+}
+```
+
+## Route Module Types
+
+Each route module gets generated type annotations:
+
+```typescript
+// app/routes/posts.$id.tsx
+import type { Route } from "./+types/posts.$id";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  // params.id is typed as string
+  const post = await getPost(params.id);
+  return { post };
+}
+
+export default function Post({ loaderData }: Route.ComponentProps) {
+  // loaderData.post is typed from loader return value
+  return <article>{loaderData.post.title}</article>;
+}
+```
+
+## Available Types
+
+Each route module exports these types:
+
+### `Route.LoaderArgs`
+
+Arguments passed to the `loader` function:
+
+```typescript
+export async function loader({ params, request, context }: Route.LoaderArgs) {
+  // params: typed route parameters
+  // request: Request object
+  // context: server context
+}
+```
+
+### `Route.ActionArgs`
+
+Arguments passed to the `action` function:
+
+```typescript
+export async function action({ params, request, context }: Route.ActionArgs) {
+  const formData = await request.formData();
+  // ...
+}
+```
+
+### `Route.ComponentProps`
+
+Props for the default route component:
+
+```typescript
+export default function Component({ loaderData, actionData }: Route.ComponentProps) {
+  // loaderData: typed return value from loader
+  // actionData: typed return value from action
+}
+```
+
+### `Route.ErrorBoundaryProps`
+
+Props for the `ErrorBoundary` component:
+
+```typescript
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  // error: unknown
+  return <div>Error: {String(error)}</div>;
+}
+```
+
+### `Route.HydrateFallbackProps`
+
+Props for the `HydrateFallback` component:
+
+```typescript
+export function HydrateFallback(props: Route.HydrateFallbackProps) {
+  return <div>Loading...</div>;
+}
+```
+
+### `Route.MiddlewareArgs`
+
+Arguments for middleware functions (with `future.v8_middleware` flag):
+
+```typescript
+export async function middleware({ params, request, context }: Route.MiddlewareArgs) {
+  // Middleware logic
+}
+```
+
+### `Route.ClientMiddlewareArgs`
+
+Arguments for client middleware:
+
+```typescript
+export async function clientMiddleware({ params, request, context }: Route.ClientMiddlewareArgs) {
+  // Client middleware logic
+}
+```
+
+## Route Parameters
+
+Parameters are automatically typed based on route paths:
+
+```typescript
+// routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("posts/:postId/comments/:commentId", "./post-comment.tsx"),
+];
+```
+
+```typescript
+// app/post-comment.tsx
+import type { Route } from "./+types/post-comment";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  // params.postId: string
+  // params.commentId: string
+  const { postId, commentId } = params;
+}
+```
+
+## Loader Data Types
+
+Loader return values are automatically inferred:
+
+```typescript
+export async function loader() {
+  const posts = await db.post.findMany();
+  return { posts }; // Type is inferred
+}
+
+export default function Posts({ loaderData }: Route.ComponentProps) {
+  // loaderData.posts has the correct type
+  return (
+    <ul>
+      {loaderData.posts.map((post) => (
+        <li key={post.id}>{post.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Action Data Types
+
+Action return values are also typed:
+
+```typescript
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const post = await createPost(formData);
+  return { post, success: true };
+}
+
+export default function NewPost({ actionData }: Route.ComponentProps) {
+  // actionData?.post and actionData?.success are typed
+  if (actionData?.success) {
+    return <p>Post created: {actionData.post.title}</p>;
+  }
+}
+```
+
+## Manual Type Generation
+
+Run type generation manually:
+
+```bash
+npx react-router typegen
+```
+
+## Watch Mode
+
+Types are automatically regenerated during development when:
+
+- Route files are added or removed
+- `routes.ts` configuration changes
+- `react-router.config.ts` changes
+
+## Future Flags Types
+
+Future flags are typed in `.react-router/types/react-router-config.d.ts`:
+
+```typescript
+// Generated based on your config
+declare module "react-router" {
+  interface Future {
+    v8_middleware: true; // or false based on your config
+    v8_splitRouteModules: false;
+    v8_viteEnvironmentApi: false;
+  }
+}
+```
+
+This enables conditional types based on enabled features.
+
+## Server Build Types
+
+The server build exports are typed in `+server.d.ts`:
+
+```typescript
+import type { ServerBuild } from "react-router";
+
+// Type for your server build
+export const build: ServerBuild;
+```
+
+## Middleware Types
+
+With middleware enabled:
+
+```typescript
+export default {
+  future: {
+    v8_middleware: true,
+  },
+} satisfies Config;
+```
+
+You get typed middleware functions:
+
+```typescript
+import type { Route } from "./+types/route-name";
+
+export const middleware: Route.MiddlewareFunction = async ({ params, request, context }) => {
+  // All arguments are typed
+};
+
+export const clientMiddleware: Route.ClientMiddlewareFunction = async ({ params, request, context }) => {
+  // Client middleware types
+};
+```
+
+## Type Safety Best Practices
+
+### 1. Use Route Types
+
+Always import and use the generated route types:
+
+```typescript
+import type { Route } from "./+types/route-name";
+
+export async function loader(args: Route.LoaderArgs) {
+  // Typed automatically
+}
+```
+
+### 2. Type Return Values Explicitly
+
+For complex return types, add explicit types:
+
+```typescript
+interface LoaderData {
+  posts: Post[];
+  page: number;
+  totalPages: number;
+}
+
+export async function loader(): Promise<LoaderData> {
+  // Return type is explicit
+  return {
+    posts: await getPosts(),
+    page: 1,
+    totalPages: 10,
+  };
+}
+```
+
+### 3. Use Type Guards
+
+For error boundaries:
+
+```typescript
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (error instanceof Error) {
+    return <div>Error: {error.message}</div>;
+  }
+  return <div>Unknown error</div>;
+}
+```
+
+## Troubleshooting
+
+### Types Not Updating
+
+1. Check that `.react-router/types` is included in `tsconfig.json`
+2. Restart your TypeScript server in VS Code (`Cmd+Shift+P` > "Restart TS Server")
+3. Run `npx react-router typegen` manually
+
+### Build Errors
+
+If types cause build errors:
+
+1. Delete `.react-router/types` directory
+2. Run `npx react-router typegen`
+3. Restart your IDE
+
+### Missing Types
+
+If route types are missing:
+
+1. Ensure the route file exists
+2. Check `routes.ts` configuration is valid
+3. Look for errors in the console
+
+## See Also
+
+- [Vite Plugin](/framework/vite-plugin)
+- [Routes Configuration](https://reactrouter.com/start/framework/routing)

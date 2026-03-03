@@ -1,0 +1,486 @@
+---
+title: Resource Routes
+---
+
+# Resource Routes
+
+Resource routes return non-HTML responses like JSON, PDF, images, or any other data format. They're useful for creating APIs, webhooks, and downloadable files.
+
+## Basic Resource Route
+
+A resource route is just a loader/action without a default component export:
+
+```tsx filename=app/routes/api.products.tsx
+import type { Route } from "./+types/api.products";
+
+export async function loader() {
+  const products = await db.product.findMany();
+  
+  return Response.json(products);
+}
+
+// No default export = resource route
+```
+
+## JSON API
+
+Create RESTful JSON endpoints:
+
+```tsx filename=app/routes/api.users.$id.tsx
+import type { Route } from "./+types/api.users.$id";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await db.user.findUnique({
+    where: { id: params.id },
+  });
+  
+  if (!user) {
+    return Response.json(
+      { error: "User not found" },
+      { status: 404 }
+    );
+  }
+  
+  return Response.json(user);
+}
+
+export async function action({ request, params }: Route.ActionArgs) {
+  const data = await request.json();
+  
+  const updated = await db.user.update({
+    where: { id: params.id },
+    data,
+  });
+  
+  return Response.json(updated);
+}
+```
+
+## File Downloads
+
+Serve downloadable files:
+
+```tsx filename=app/routes/reports.$id.pdf.tsx
+import type { Route } from "./+types/reports.$id.pdf";
+import { generatePDF } from "~/utils/pdf";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const report = await db.report.findUnique({
+    where: { id: params.id },
+  });
+  
+  const pdf = await generatePDF(report);
+  
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="report-${params.id}.pdf"`,
+    },
+  });
+}
+```
+
+## CSV Export
+
+```tsx filename=app/routes/export.users.csv.tsx
+import type { Route } from "./+types/export.users.csv";
+
+export async function loader() {
+  const users = await db.user.findMany();
+  
+  // Generate CSV
+  const csv = [
+    "ID,Name,Email",
+    ...users.map((u) => `${u.id},${u.name},${u.email}`),
+  ].join("\n");
+  
+  return new Response(csv, {
+    headers: {
+      "Content-Type": "text/csv",
+      "Content-Disposition": "attachment; filename=users.csv",
+    },
+  });
+}
+```
+
+## Image Generation
+
+```tsx filename=app/routes/og.$title.png.tsx
+import type { Route } from "./+types/og.$title.png";
+import { generateOGImage } from "~/utils/og";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const image = await generateOGImage({
+    title: params.title,
+  });
+  
+  return new Response(image, {
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+```
+
+## RSS Feed
+
+```tsx filename=app/routes/blog.rss.tsx
+import type { Route } from "./+types/blog.rss";
+
+export async function loader() {
+  const posts = await db.post.findMany({
+    orderBy: { publishedAt: "desc" },
+    take: 20,
+  });
+  
+  const rss = `<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0">
+      <channel>
+        <title>My Blog</title>
+        <link>https://example.com</link>
+        <description>Latest posts</description>
+        ${posts.map((post) => `
+          <item>
+            <title>${post.title}</title>
+            <link>https://example.com/blog/${post.slug}</link>
+            <description>${post.excerpt}</description>
+            <pubDate>${post.publishedAt.toUTCString()}</pubDate>
+          </item>
+        `).join("")}
+      </channel>
+    </rss>`;
+  
+  return new Response(rss, {
+    headers: {
+      "Content-Type": "application/rss+xml",
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
+}
+```
+
+## Webhooks
+
+Handle incoming webhooks:
+
+```tsx filename=app/routes/webhooks.stripe.tsx
+import type { Route } from "./+types/webhooks.stripe";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+export async function action({ request }: Route.ActionArgs) {
+  const sig = request.headers.get("stripe-signature");
+  const body = await request.text();
+  
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      body,
+      sig!,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err) {
+    return Response.json({ error: "Invalid signature" }, { status: 400 });
+  }
+  
+  switch (event.type) {
+    case "payment_intent.succeeded":
+      await handlePaymentSuccess(event.data.object);
+      break;
+    case "payment_intent.failed":
+      await handlePaymentFailure(event.data.object);
+      break;
+  }
+  
+  return Response.json({ received: true });
+}
+```
+
+## XML Sitemap
+
+```tsx filename=app/routes/sitemap[.]xml.tsx
+import type { Route } from "./+types/sitemap[.]xml";
+
+export async function loader() {
+  const posts = await db.post.findMany({
+    select: { slug: true, updatedAt: true },
+  });
+  
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://example.com</loc>
+        <priority>1.0</priority>
+      </url>
+      ${posts.map((post) => `
+        <url>
+          <loc>https://example.com/blog/${post.slug}</loc>
+          <lastmod>${post.updatedAt.toISOString()}</lastmod>
+          <priority>0.8</priority>
+        </url>
+      `).join("")}
+    </urlset>`;
+  
+  return new Response(sitemap, {
+    headers: {
+      "Content-Type": "application/xml",
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
+}
+```
+
+## robots.txt
+
+```tsx filename=app/routes/robots[.]txt.tsx
+export function loader() {
+  const robots = `
+User-agent: *
+Allow: /
+
+Sitemap: https://example.com/sitemap.xml
+  `.trim();
+  
+  return new Response(robots, {
+    headers: {
+      "Content-Type": "text/plain",
+    },
+  });
+}
+```
+
+## Health Check
+
+```tsx filename=app/routes/healthz.tsx
+import type { Route } from "./+types/healthz";
+
+export async function loader() {
+  try {
+    // Check database
+    await db.$queryRaw`SELECT 1`;
+    
+    return Response.json(
+      { status: "healthy", timestamp: new Date().toISOString() },
+      { status: 200 }
+    );
+  } catch (error) {
+    return Response.json(
+      { status: "unhealthy", error: error.message },
+      { status: 503 }
+    );
+  }
+}
+```
+
+## Proxying Requests
+
+```tsx filename=app/routes/proxy.tsx
+import type { Route } from "./+types/proxy";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  const target = url.searchParams.get("url");
+  
+  if (!target) {
+    return Response.json({ error: "Missing url parameter" }, { status: 400 });
+  }
+  
+  // Proxy the request
+  const response = await fetch(target, {
+    headers: {
+      // Forward relevant headers
+      "User-Agent": request.headers.get("User-Agent") || "",
+    },
+  });
+  
+  return new Response(response.body, {
+    status: response.status,
+    headers: response.headers,
+  });
+}
+```
+
+## Server-Sent Events
+
+```tsx filename=app/routes/events.tsx
+import type { Route } from "./+types/events";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      
+      // Send initial message
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify({ type: "connected" })}\n\n`)
+      );
+      
+      // Send updates every 5 seconds
+      const interval = setInterval(() => {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "update", timestamp: Date.now() })}\n\n`
+          )
+        );
+      }, 5000);
+      
+      // Clean up on close
+      request.signal.addEventListener("abort", () => {
+        clearInterval(interval);
+        controller.close();
+      });
+    },
+  });
+  
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
+}
+```
+
+## Binary Data
+
+```tsx filename=app/routes/qr.$data.png.tsx
+import type { Route } from "./+types/qr.$data.png";
+import QRCode from "qrcode";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const buffer = await QRCode.toBuffer(params.data, {
+    type: "png",
+    width: 300,
+  });
+  
+  return new Response(buffer, {
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=31536000",
+    },
+  });
+}
+```
+
+## GraphQL API
+
+```tsx filename=app/routes/api.graphql.tsx
+import type { Route } from "./+types/api.graphql";
+import { graphql } from "graphql";
+import { schema } from "~/graphql/schema";
+
+export async function action({ request }: Route.ActionArgs) {
+  const { query, variables } = await request.json();
+  
+  const result = await graphql({
+    schema,
+    source: query,
+    variableValues: variables,
+  });
+  
+  return Response.json(result);
+}
+```
+
+## Authentication Check
+
+```tsx filename=app/routes/api.auth.check.tsx
+import type { Route } from "./+types/api.auth.check";
+import { getUser } from "~/auth.server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  
+  return Response.json({
+    authenticated: !!user,
+    user: user ? { id: user.id, email: user.email } : null,
+  });
+}
+```
+
+## Best Practices
+
+### Set Appropriate Headers
+
+```tsx
+// Good: Specific content type and caching
+return new Response(data, {
+  headers: {
+    "Content-Type": "application/json",
+    "Cache-Control": "public, max-age=3600",
+  },
+});
+```
+
+### Handle Errors
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  try {
+    const data = await fetchData(params.id);
+    return Response.json(data);
+  } catch (error) {
+    return Response.json(
+      { error: "Failed to fetch data" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Use HTTP Status Codes
+
+```tsx
+// 200 - Success
+return Response.json(data);
+
+// 201 - Created
+return Response.json(newResource, { status: 201 });
+
+// 204 - No Content
+return new Response(null, { status: 204 });
+
+// 400 - Bad Request
+return Response.json({ error: "Invalid input" }, { status: 400 });
+
+// 404 - Not Found
+return Response.json({ error: "Not found" }, { status: 404 });
+
+// 500 - Server Error
+return Response.json({ error: "Server error" }, { status: 500 });
+```
+
+### Validate Input
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const contentType = request.headers.get("Content-Type");
+  
+  if (!contentType?.includes("application/json")) {
+    return Response.json(
+      { error: "Content-Type must be application/json" },
+      { status: 415 }
+    );
+  }
+  
+  const data = await request.json();
+  
+  // Validate data
+  if (!data.name || !data.email) {
+    return Response.json(
+      { error: "Missing required fields" },
+      { status: 400 }
+    );
+  }
+  
+  return Response.json({ success: true });
+}
+```
+
+## Related
+
+- [Loaders](/data/loaders) - Loading data for routes
+- [Actions](/data/actions) - Handling mutations

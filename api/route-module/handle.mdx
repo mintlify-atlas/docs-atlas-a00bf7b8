@@ -1,0 +1,445 @@
+---
+title: handle
+---
+
+# handle
+
+An arbitrary object associated with a route that can be accessed by parent routes and components. Useful for breadcrumbs, navigation, permissions, and other route-level metadata.
+
+## Signature
+
+```tsx
+export const handle = {
+  // Any data you want
+};
+```
+
+The handle can be any value, but is typically an object containing metadata about the route.
+
+## Basic Example
+
+```tsx
+// app/routes/projects.$id.tsx
+export const handle = {
+  breadcrumb: "Project Details",
+};
+
+export default function ProjectDetails() {
+  return <div>{/* route content */}</div>;
+}
+```
+
+## Accessing Handle in Components
+
+```tsx
+import { useMatches } from "react-router";
+
+export default function Breadcrumbs() {
+  const matches = useMatches();
+
+  return (
+    <nav>
+      <ol>
+        {matches
+          .filter((match) => match.handle?.breadcrumb)
+          .map((match) => (
+            <li key={match.pathname}>
+              <Link to={match.pathname}>
+                {match.handle.breadcrumb}
+              </Link>
+            </li>
+          ))}
+      </ol>
+    </nav>
+  );
+}
+```
+
+## Dynamic Breadcrumbs with Data
+
+```tsx
+// app/routes/projects.$id.tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  const project = await fetchProject(params.id);
+  return { project };
+}
+
+export const handle = {
+  breadcrumb: (match: any) => match.data.project.name,
+};
+
+// app/root.tsx or layout component
+import { useMatches } from "react-router";
+
+export default function Layout() {
+  const matches = useMatches();
+
+  return (
+    <div>
+      <nav>
+        <ol>
+          {matches
+            .filter((match) => match.handle?.breadcrumb)
+            .map((match) => {
+              const breadcrumb = typeof match.handle.breadcrumb === "function"
+                ? match.handle.breadcrumb(match)
+                : match.handle.breadcrumb;
+
+              return (
+                <li key={match.pathname}>
+                  <Link to={match.pathname}>{breadcrumb}</Link>
+                </li>
+              );
+            })}
+        </ol>
+      </nav>
+      <main>
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+```
+
+## Navigation Metadata
+
+```tsx
+// app/routes/dashboard.tsx
+export const handle = {
+  nav: {
+    label: "Dashboard",
+    icon: "📊",
+    order: 1,
+  },
+};
+
+// app/routes/settings.tsx
+export const handle = {
+  nav: {
+    label: "Settings",
+    icon: "⚙️",
+    order: 2,
+  },
+};
+
+// Navigation component
+import { useMatches } from "react-router";
+
+export default function Navigation() {
+  const matches = useMatches();
+  
+  const navItems = matches
+    .filter((match) => match.handle?.nav)
+    .map((match) => match.handle.nav)
+    .sort((a, b) => a.order - b.order);
+
+  return (
+    <nav>
+      {navItems.map((item) => (
+        <Link key={item.label} to={item.path}>
+          <span>{item.icon}</span>
+          <span>{item.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+```
+
+## Permissions and Access Control
+
+```tsx
+// app/routes/admin.tsx
+export const handle = {
+  permissions: ["admin"],
+};
+
+// app/routes/admin.users.tsx
+export const handle = {
+  permissions: ["admin", "user-management"],
+};
+
+// Authorization component
+import { useMatches, useNavigate } from "react-router";
+
+export function useRequirePermissions() {
+  const matches = useMatches();
+  const navigate = useNavigate();
+  const user = useUser();
+
+  useEffect(() => {
+    const requiredPermissions = matches
+      .filter((match) => match.handle?.permissions)
+      .flatMap((match) => match.handle.permissions);
+
+    const hasPermission = requiredPermissions.every((permission) =>
+      user.permissions.includes(permission)
+    );
+
+    if (!hasPermission) {
+      navigate("/unauthorized");
+    }
+  }, [matches, user, navigate]);
+}
+```
+
+## Layout Variants
+
+```tsx
+// app/routes/auth.login.tsx
+export const handle = {
+  layout: "centered",
+};
+
+// app/routes/dashboard.tsx
+export const handle = {
+  layout: "sidebar",
+};
+
+// app/root.tsx
+import { useMatches } from "react-router";
+
+export default function Root() {
+  const matches = useMatches();
+  
+  // Get layout from deepest matching route
+  const layout = matches
+    .reverse()
+    .find((match) => match.handle?.layout)?.handle.layout || "default";
+
+  return (
+    <html>
+      <body>
+        {layout === "centered" && <CenteredLayout />}
+        {layout === "sidebar" && <SidebarLayout />}
+        {layout === "default" && <DefaultLayout />}
+      </body>
+    </html>
+  );
+}
+```
+
+## I18n and Localization
+
+```tsx
+// app/routes/products.$id.tsx
+export const handle = {
+  i18n: ["products", "common"],
+};
+
+// Load translations based on handles
+import { useMatches } from "react-router";
+
+export function useI18n() {
+  const matches = useMatches();
+  
+  const namespaces = [...new Set(
+    matches
+      .filter((match) => match.handle?.i18n)
+      .flatMap((match) => match.handle.i18n)
+  )];
+
+  return useTranslation(namespaces);
+}
+```
+
+## Analytics and Tracking
+
+```tsx
+// app/routes/products.tsx
+export const handle = {
+  analytics: {
+    category: "products",
+    label: "Product List",
+  },
+};
+
+// Track page views
+import { useMatches, useLocation } from "react-router";
+
+export function usePageTracking() {
+  const location = useLocation();
+  const matches = useMatches();
+
+  useEffect(() => {
+    const currentMatch = matches[matches.length - 1];
+    const analytics = currentMatch?.handle?.analytics;
+
+    if (analytics) {
+      trackPageView({
+        path: location.pathname,
+        category: analytics.category,
+        label: analytics.label,
+      });
+    }
+  }, [location, matches]);
+}
+```
+
+## Scroll Behavior
+
+```tsx
+// app/routes/docs.$slug.tsx
+export const handle = {
+  scrollMode: "top", // scroll to top on navigation
+};
+
+// app/routes/search.tsx
+export const handle = {
+  scrollMode: "preserve", // maintain scroll position
+};
+
+// Custom scroll behavior
+import { useMatches, useLocation } from "react-router";
+
+export function useScrollBehavior() {
+  const location = useLocation();
+  const matches = useMatches();
+
+  useEffect(() => {
+    const currentMatch = matches[matches.length - 1];
+    const scrollMode = currentMatch?.handle?.scrollMode || "auto";
+
+    if (scrollMode === "top") {
+      window.scrollTo(0, 0);
+    }
+    // "preserve" means do nothing
+  }, [location, matches]);
+}
+```
+
+## TypeScript Types
+
+```tsx
+// Define a type for your handle
+type RouteHandle = {
+  breadcrumb?: string | ((match: any) => string);
+  nav?: {
+    label: string;
+    icon: string;
+    order: number;
+  };
+  permissions?: string[];
+  layout?: "default" | "centered" | "sidebar";
+};
+
+// Use in route
+export const handle: RouteHandle = {
+  breadcrumb: "Dashboard",
+  nav: {
+    label: "Dashboard",
+    icon: "📊",
+    order: 1,
+  },
+};
+
+// Access in components
+import { useMatches } from "react-router";
+
+type RouteMatch = ReturnType<typeof useMatches>[number] & {
+  handle?: RouteHandle;
+};
+
+export function Breadcrumbs() {
+  const matches = useMatches() as RouteMatch[];
+  // Now handle is typed
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use handle for route-level metadata only">
+    Don't use handle for component state or data:
+
+    ```tsx
+    // ✅ Good - route metadata
+    export const handle = {
+      breadcrumb: "Products",
+      layout: "grid",
+    };
+
+    // ❌ Bad - component state belongs in components
+    export const handle = {
+      isModalOpen: false,
+      currentPage: 1,
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Keep handle serializable">
+    Avoid functions and complex objects when possible:
+
+    ```tsx
+    // ✅ Simple, serializable
+    export const handle = {
+      title: "Products",
+      category: "catalog",
+    };
+
+    // ⚠️ Works but harder to debug
+    export const handle = {
+      title: (match) => match.data.product.name,
+      validator: (data) => validateData(data),
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Use TypeScript for type safety">
+    Define a shared type for your handle objects:
+
+    ```tsx
+    // types/route.ts
+    export type AppRouteHandle = {
+      breadcrumb?: string | ((match: any) => string);
+      permissions?: string[];
+      layout?: "default" | "centered";
+    };
+
+    // routes/products.tsx
+    import type { AppRouteHandle } from "~/types/route";
+
+    export const handle: AppRouteHandle = {
+      breadcrumb: "Products",
+      permissions: ["view:products"],
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Access via useMatches">
+    Use `useMatches()` to access handle data:
+
+    ```tsx
+    import { useMatches } from "react-router";
+
+    export function Component() {
+      const matches = useMatches();
+      
+      // Get current route's handle
+      const currentHandle = matches[matches.length - 1]?.handle;
+      
+      // Get all handles
+      const allHandles = matches.map((match) => match.handle);
+      
+      // Find specific handle
+      const rootHandle = matches.find((m) => m.id === "root")?.handle;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Use Cases
+
+1. **Breadcrumbs**: Show page hierarchy
+2. **Navigation**: Build dynamic nav from route metadata
+3. **Permissions**: Check access control requirements
+4. **Analytics**: Track page categories and labels
+5. **Layout**: Choose layout variant per route
+6. **I18n**: Determine which translations to load
+7. **Scroll**: Control scroll restoration behavior
+8. **SEO**: Add route-specific meta information
+
+## See Also
+
+- [useMatches](/api/hooks/use-matches) - Access route matches and handles
+- [meta](/api/route-module/meta) - Define meta tags

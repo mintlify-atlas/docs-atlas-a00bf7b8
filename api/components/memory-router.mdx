@@ -1,0 +1,147 @@
+---
+title: MemoryRouter
+---
+
+<Modes modes={["declarative"]} />
+
+A declarative Router that stores all entries in memory. Useful for non-browser environments without a DOM API (like testing or React Native).
+
+```tsx
+import { MemoryRouter, Routes, Route } from "react-router";
+
+function App() {
+  return (
+    <MemoryRouter initialEntries={["/", "/about"]} initialIndex={1}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="about" element={<About />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+```
+
+## Type Declaration
+
+```tsx
+export interface MemoryRouterProps {
+  basename?: string;
+  children?: React.ReactNode;
+  initialEntries?: InitialEntry[];
+  initialIndex?: number;
+  unstable_useTransitions?: boolean;
+}
+
+export function MemoryRouter({
+  basename,
+  children,
+  initialEntries,
+  initialIndex,
+  unstable_useTransitions,
+}: MemoryRouterProps): React.ReactElement;
+
+type InitialEntry = string | Partial<Location>;
+```
+
+## Props
+
+<ParamField path="basename" type="string">
+  Application basename for when you can't deploy to the root of the domain, but a subdirectory.
+
+  ```tsx
+  <MemoryRouter basename="/app">
+    <Routes>
+      <Route path="/" /> {/* Matches /app/ */}
+      <Route path="dashboard" /> {/* Matches /app/dashboard */}
+    </Routes>
+  </MemoryRouter>
+  ```
+</ParamField>
+
+<ParamField path="children" type="React.ReactNode">
+  Route components describing your route configuration. Typically contains a `<Routes>` component with nested `<Route>` elements.
+</ParamField>
+
+<ParamField path="initialEntries" type="InitialEntry[]">
+  Initial entries in the in-memory history stack. Each entry can be a string (pathname) or a partial Location object.
+
+  ```tsx
+  <MemoryRouter
+    initialEntries={[
+      "/",
+      "/about",
+      { pathname: "/users", search: "?sort=name", state: { from: "/" } },
+    ]}
+  >
+    <Routes>{/* ... */}</Routes>
+  </MemoryRouter>
+  ```
+</ParamField>
+
+<ParamField path="initialIndex" type="number">
+  Index of `initialEntries` the application should initialize to. Defaults to the last entry.
+
+  ```tsx
+  <MemoryRouter
+    initialEntries={["/", "/about", "/contact"]}
+    initialIndex={1} // Start at "/about"
+  >
+    <Routes>{/* ... */}</Routes>
+  </MemoryRouter>
+  ```
+</ParamField>
+
+<ParamField path="unstable_useTransitions" type="boolean">
+  Control whether router state updates are internally wrapped in [`React.startTransition`](https://react.dev/reference/react/startTransition).
+
+  - When left `undefined`, all router state updates are wrapped in `React.startTransition`
+  - When set to `true`, Link and Form navigations will be wrapped in `React.startTransition` and all router state updates are wrapped in `React.startTransition`
+  - When set to `false`, the router will not leverage `React.startTransition` on any navigations or state changes.
+</ParamField>
+
+## Example
+
+### Testing
+
+```tsx
+import { render } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+
+test("renders about page", () => {
+  render(
+    <MemoryRouter initialEntries={["/about"]}>
+      <App />
+    </MemoryRouter>
+  );
+  // assertions...
+});
+```
+
+### Navigating Between Entries
+
+```tsx
+import { MemoryRouter, Routes, Route, Link } from "react-router";
+
+function App() {
+  return (
+    <MemoryRouter initialEntries={["/", "/about"]} initialIndex={0}>
+      <nav>
+        <Link to="/">Home</Link>
+        <Link to="about">About</Link>
+      </nav>
+
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="about" element={<About />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+```
+
+## Use Cases
+
+- **Testing**: Useful for testing components that use routing without a browser
+- **React Native**: For apps that don't have a browser history stack
+- **Server-side rendering**: For controlling the initial location on the server
+- **Embedding**: When you need multiple isolated routing contexts in a single app

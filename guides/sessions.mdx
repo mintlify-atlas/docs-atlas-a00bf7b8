@@ -1,0 +1,370 @@
+---
+title: Session Management
+---
+
+# Session Management
+
+Learn how to manage user sessions in React Router applications using the Session API.
+
+## Overview
+
+React Router provides a powerful session management system that stores session data server-side while keeping a session ID in a cookie. Sessions are ideal for authentication, user preferences, and temporary data.
+
+## Creating a Session Storage
+
+Create a session storage backend:
+
+```tsx
+// app/sessions.ts
+import { createCookieSessionStorage } from "react-router";
+
+export const { getSession, commitSession, destroySession } =
+  createCookieSessionStorage({
+    cookie: {
+      name: "__session",
+      secrets: [process.env.SESSION_SECRET],
+      sameSite: "lax",
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 7, // 1 week
+    },
+  });
+```
+
+## Reading Session Data
+
+Access session data in loaders and actions:
+
+```tsx
+import { redirect } from "react-router";
+import { getSession } from "~/sessions";
+import type { Route } from "./+types/dashboard";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const userId = session.get("userId");
+
+  if (!userId) {
+    return redirect("/login");
+  }
+
+  const user = await getUser(userId);
+  return { user };
+}
+```
+
+## Setting Session Data
+
+Store data in the session:
+
+```tsx
+import { redirect } from "react-router";
+import { getSession, commitSession } from "~/sessions";
+import type { Route } from "./+types/login";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  const password = formData.get("password");
+
+  const user = await verifyLogin(email, password);
+  if (!user) {
+    return { error: "Invalid credentials" };
+  }
+
+  const session = await getSession(request.headers.get("Cookie"));
+  session.set("userId", user.id);
+
+  return redirect("/dashboard", {
+    headers: {
+      "Set-Cookie": await commitSession(session),
+    },
+  });
+}
+```
+
+## Destroying Sessions
+
+Log users out by destroying their session:
+
+```tsx
+import { redirect } from "react-router";
+import { getSession, destroySession } from "~/sessions";
+import type { Route } from "./+types/logout";
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = await getSession(request.headers.get("Cookie"));
+
+  return redirect("/", {
+    headers: {
+      "Set-Cookie": await destroySession(session),
+    },
+  });
+}
+```
+
+## Flash Messages
+
+Store one-time messages that survive redirects:
+
+```tsx
+import { redirect } from "react-router";
+import { getSession, commitSession } from "~/sessions";
+import type { Route } from "./+types/delete-post";
+
+export async function action({ request, params }: Route.ActionArgs) {
+  await deletePost(params.id);
+
+  const session = await getSession(request.headers.get("Cookie"));
+  session.flash("message", "Post deleted successfully");
+
+  return redirect("/posts", {
+    headers: {
+      "Set-Cookie": await commitSession(session),
+    },
+  });
+}
+
+// Display flash message
+export async function loader({ request }: Route.LoaderArgs) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const message = session.get("message"); // Automatically removed after reading
+
+  return json(
+    { message },
+    {
+      headers: {
+        "Set-Cookie": await commitSession(session),
+      },
+    }
+  );
+}
+
+export default function Posts({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      {loaderData.message && (
+        <div className="flash-message">{loaderData.message}</div>
+      )}
+      {/* Posts list */}
+    </div>
+  );
+}
+```
+
+## Database Session Storage
+
+Store sessions in a database for persistence:
+
+```tsx
+// app/sessions.server.ts
+import { createSessionStorage } from "react-router";
+import { db } from "~/db.server";
+
+export const { getSession, commitSession, destroySession } =
+  createSessionStorage({
+    cookie: {
+      name: "__session",
+      secrets: [process.env.SESSION_SECRET],
+      sameSite: "lax",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+    },
+    async createData(data, expires) {
+      const session = await db.session.create({
+        data: {
+          data: JSON.stringify(data),
+          expiresAt: expires,
+        },
+      });
+      return session.id;
+    },
+    async readData(id) {
+      const session = await db.session.findUnique({ where: { id } });
+      if (!session || session.expiresAt < new Date()) {
+        return null;
+      }
+      return JSON.parse(session.data);
+    },
+    async updateData(id, data, expires) {
+      await db.session.update({
+        where: { id },
+        data: {
+          data: JSON.stringify(data),
+          expiresAt: expires,
+        },
+      });
+    },
+    async deleteData(id) {
+      await db.session.delete({ where: { id } });
+    },
+  });
+```
+
+## Session Utilities
+
+Create helper functions for common session operations:
+
+```tsx
+// app/session.server.ts
+import { redirect } from "react-router";
+import { getSession } from "~/sessions";
+
+export async function requireUserId(
+  request: Request,
+  redirectTo: string = "/login"
+) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const userId = session.get("userId");
+
+  if (!userId) {
+    const searchParams = new URLSearchParams([["redirectTo", redirectTo]]);
+    throw redirect(`/login?${searchParams}`);
+  }
+
+  return userId;
+}
+
+export async function requireUser(request: Request) {
+  const userId = await requireUserId(request);
+  const user = await getUser(userId);
+
+  if (!user) {
+    throw redirect("/login");
+  }
+
+  return user;
+}
+
+export async function requireAdmin(request: Request) {
+  const user = await requireUser(request);
+
+  if (user.role !== "admin") {
+    throw new Response("Forbidden", { status: 403 });
+  }
+
+  return user;
+}
+```
+
+Use in routes:
+
+```tsx
+import { requireUser } from "~/session.server";
+import type { Route } from "./+types/dashboard";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await requireUser(request);
+  return { user };
+}
+```
+
+## Session Timeout
+
+Implement automatic session expiration:
+
+```tsx
+import { redirect } from "react-router";
+import { getSession, commitSession } from "~/sessions";
+
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+export async function requireActiveSession(request: Request) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const userId = session.get("userId");
+  const lastActivity = session.get("lastActivity");
+
+  if (!userId) {
+    throw redirect("/login");
+  }
+
+  const now = Date.now();
+  if (lastActivity && now - lastActivity > SESSION_TIMEOUT) {
+    throw redirect("/login?timeout=true");
+  }
+
+  // Update last activity
+  session.set("lastActivity", now);
+
+  return {
+    userId,
+    headers: {
+      "Set-Cookie": await commitSession(session),
+    },
+  };
+}
+```
+
+## Remember Me
+
+Implement persistent login:
+
+```tsx
+import { getSession, commitSession } from "~/sessions";
+import type { Route } from "./+types/login";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const rememberMe = formData.get("rememberMe") === "on";
+
+  const user = await verifyLogin(formData);
+  if (!user) {
+    return { error: "Invalid credentials" };
+  }
+
+  const session = await getSession(request.headers.get("Cookie"));
+  session.set("userId", user.id);
+
+  const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24; // 30 days or 1 day
+
+  return redirect("/dashboard", {
+    headers: {
+      "Set-Cookie": await commitSession(session, { maxAge }),
+    },
+  });
+}
+```
+
+## Multiple Sessions
+
+Manage different types of sessions:
+
+```tsx
+// app/sessions.ts
+import { createCookieSessionStorage } from "react-router";
+
+// User authentication session
+export const userSession = createCookieSessionStorage({
+  cookie: {
+    name: "__user_session",
+    secrets: [process.env.SESSION_SECRET],
+    httpOnly: true,
+    secure: true,
+    maxAge: 60 * 60 * 24 * 7,
+  },
+});
+
+// Admin session with stricter settings
+export const adminSession = createCookieSessionStorage({
+  cookie: {
+    name: "__admin_session",
+    secrets: [process.env.ADMIN_SESSION_SECRET],
+    httpOnly: true,
+    secure: true,
+    sameSite: "strict",
+    maxAge: 60 * 60, // 1 hour
+  },
+});
+```
+
+## Best Practices
+
+1. **Always use secrets** - Sign session cookies to prevent tampering
+2. **Set httpOnly** - Prevent JavaScript access to session cookies
+3. **Use secure in production** - Ensure HTTPS-only transmission
+4. **Implement session timeout** - Automatically expire inactive sessions
+5. **Store minimal data** - Keep sessions small for performance
+6. **Use flash messages** - Great for one-time notifications after redirects
+7. **Consider database storage** - Better for high-traffic apps or when you need to invalidate all sessions
+8. **Rotate secrets** - Keep multiple secrets for zero-downtime rotation

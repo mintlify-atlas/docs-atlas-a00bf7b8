@@ -1,0 +1,347 @@
+---
+title: links
+---
+
+# links
+
+Defines `<link>` tags to be inserted into the document `<head>` for a route. Commonly used for stylesheets, favicons, and other resource hints.
+
+## Signature
+
+```tsx
+export function links(): LinkDescriptor[]
+```
+
+<ResponseField name="return" type="LinkDescriptor[]">
+  An array of link descriptor objects. Each descriptor becomes a `<link>` element in the document head.
+</ResponseField>
+
+## Basic Example
+
+```tsx
+import type { LinksFunction } from "react-router";
+import stylesUrl from "./styles.css?url";
+
+export const links: LinksFunction = () => {
+  return [
+    { rel: "stylesheet", href: stylesUrl },
+  ];
+};
+
+export default function Component() {
+  // Route rendering
+}
+```
+
+## Multiple Stylesheets
+
+```tsx
+import appStyles from "./app.css?url";
+import componentStyles from "./component.css?url";
+
+export const links: LinksFunction = () => {
+  return [
+    { rel: "stylesheet", href: appStyles },
+    { rel: "stylesheet", href: componentStyles },
+  ];
+};
+```
+
+## External Resources
+
+```tsx
+export const links: LinksFunction = () => {
+  return [
+    {
+      rel: "stylesheet",
+      href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap",
+    },
+  ];
+};
+```
+
+## Prefetch and Preload
+
+```tsx
+export const links: LinksFunction = () => {
+  return [
+    // Preload critical resources
+    {
+      rel: "preload",
+      href: "/fonts/inter-var.woff2",
+      as: "font",
+      type: "font/woff2",
+      crossOrigin: "anonymous",
+    },
+    // Prefetch likely next page
+    {
+      rel: "prefetch",
+      href: "/api/products",
+      as: "fetch",
+    },
+    // DNS prefetch for external domains
+    {
+      rel: "dns-prefetch",
+      href: "https://api.example.com",
+    },
+    // Preconnect to external origins
+    {
+      rel: "preconnect",
+      href: "https://fonts.googleapis.com",
+    },
+  ];
+};
+```
+
+## Favicons and Icons
+
+```tsx
+export const links: LinksFunction = () => {
+  return [
+    {
+      rel: "icon",
+      href: "/favicon.ico",
+      sizes: "any",
+    },
+    {
+      rel: "icon",
+      href: "/icon.svg",
+      type: "image/svg+xml",
+    },
+    {
+      rel: "apple-touch-icon",
+      href: "/apple-touch-icon.png",
+    },
+  ];
+};
+```
+
+## Manifest and Theme
+
+```tsx
+export const links: LinksFunction = () => {
+  return [
+    {
+      rel: "manifest",
+      href: "/site.webmanifest",
+    },
+    {
+      rel: "mask-icon",
+      href: "/safari-pinned-tab.svg",
+      color: "#5bbad5",
+    },
+  ];
+};
+```
+
+## Alternate Links
+
+```tsx
+export const links: LinksFunction = () => {
+  return [
+    {
+      rel: "alternate",
+      type: "application/rss+xml",
+      href: "/feed.xml",
+      title: "Blog RSS Feed",
+    },
+    {
+      rel: "alternate",
+      hrefLang: "es",
+      href: "https://example.com/es",
+    },
+  ];
+};
+```
+
+## Canonical URLs
+
+```tsx
+export const links: LinksFunction = () => {
+  return [
+    {
+      rel: "canonical",
+      href: "https://example.com/products/best-product",
+    },
+  ];
+};
+```
+
+## Media Queries
+
+```tsx
+import lightStyles from "./light.css?url";
+import darkStyles from "./dark.css?url";
+import printStyles from "./print.css?url";
+
+export const links: LinksFunction = () => {
+  return [
+    {
+      rel: "stylesheet",
+      href: lightStyles,
+      media: "(prefers-color-scheme: light)",
+    },
+    {
+      rel: "stylesheet",
+      href: darkStyles,
+      media: "(prefers-color-scheme: dark)",
+    },
+    {
+      rel: "stylesheet",
+      href: printStyles,
+      media: "print",
+    },
+  ];
+};
+```
+
+## TypeScript Type
+
+```tsx
+import type { LinkDescriptor } from "react-router";
+
+// LinkDescriptor has these properties:
+type LinkDescriptor = {
+  rel: string;
+  href: string;
+  as?: string;
+  type?: string;
+  media?: string;
+  integrity?: string;
+  crossOrigin?: "anonymous" | "use-credentials";
+  referrerPolicy?: ReferrerPolicy;
+  sizes?: string;
+  title?: string;
+  color?: string;
+  hrefLang?: string;
+  imageSrcSet?: string;
+  imageSizes?: string;
+  imagesrcset?: string;
+  imagesizes?: string;
+};
+```
+
+## Combining with Parent Routes
+
+```tsx
+// Links are automatically merged from all matching routes:
+
+// app/root.tsx
+export const links: LinksFunction = () => {
+  return [
+    { rel: "stylesheet", href: globalStyles },
+  ];
+};
+
+// app/routes/dashboard.tsx
+export const links: LinksFunction = () => {
+  return [
+    { rel: "stylesheet", href: dashboardStyles },
+  ];
+};
+
+// Result for /dashboard: both globalStyles and dashboardStyles are included
+```
+
+## Dynamic Links
+
+```tsx
+// Links cannot access loader data, but you can conditionally include links:
+
+const isDevelopment = process.env.NODE_ENV === "development";
+
+export const links: LinksFunction = () => {
+  const links: LinkDescriptor[] = [
+    { rel: "stylesheet", href: appStyles },
+  ];
+
+  if (isDevelopment) {
+    links.push({
+      rel: "stylesheet",
+      href: debugStyles,
+    });
+  }
+
+  return links;
+};
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use CSS imports with ?url">
+    Import CSS files with the `?url` suffix to get the URL:
+
+    ```tsx
+    // ✅ Correct
+    import styles from "./styles.css?url";
+    export const links = () => [{ rel: "stylesheet", href: styles }];
+
+    // ❌ Wrong - imports CSS module
+    import styles from "./styles.css";
+    ```
+  </Accordion>
+
+  <Accordion title="Preload critical resources">
+    Use preload for resources needed immediately:
+
+    ```tsx
+    export const links: LinksFunction = () => {
+      return [
+        // Preload hero image
+        {
+          rel: "preload",
+          href: "/images/hero.webp",
+          as: "image",
+          type: "image/webp",
+        },
+        // Preload critical font
+        {
+          rel: "preload",
+          href: "/fonts/heading.woff2",
+          as: "font",
+          type: "font/woff2",
+          crossOrigin: "anonymous",
+        },
+      ];
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Keep styles scoped to routes">
+    Only include styles needed for the current route:
+
+    ```tsx
+    // ✅ Good - each route has its own styles
+    // app/routes/products.tsx
+    export const links = () => [{ rel: "stylesheet", href: productStyles }];
+
+    // app/routes/checkout.tsx  
+    export const links = () => [{ rel: "stylesheet", href: checkoutStyles }];
+
+    // ❌ Bad - loading all styles everywhere
+    // app/root.tsx
+    export const links = () => [
+      { rel: "stylesheet", href: productStyles },
+      { rel: "stylesheet", href: checkoutStyles },
+      // ... many more
+    ];
+    ```
+  </Accordion>
+
+  <Accordion title="Links are removed on route change">
+    Links are automatically removed when navigating away:
+
+    ```tsx
+    // When navigating from /products to /checkout:
+    // 1. productStyles <link> is removed from <head>
+    // 2. checkoutStyles <link> is added to <head>
+    // 3. Global styles (from root.tsx) remain
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [meta](/api/route-module/meta) - Define meta tags
+- [Route Module API](/start/framework/route-module) - Overview of route exports

@@ -1,0 +1,366 @@
+---
+title: Migrating from React Router v6
+order: 1
+---
+
+# Migrating from React Router v6
+
+React Router v7 is a major version upgrade from v6, but the migration path is designed to be incremental. This guide walks you through the process of upgrading your React Router v6 application to v7.
+
+## Prerequisites
+
+React Router v7 requires the following minimum versions:
+
+- **Node.js**: v20 or higher
+- **React**: v18 or higher
+- **react-dom**: v18 or higher
+
+## Migration Strategy
+
+The recommended approach is to adopt all future flags in v6 before upgrading to v7. This allows you to update your app one change at a time, committing and shipping each change incrementally.
+
+## Step 1: Update to Latest v6.x
+
+First, update to the latest minor version of React Router v6 to access all future flags:
+
+```bash
+npm install react-router-dom@6
+```
+
+## Step 2: Enable Future Flags
+
+Enable each future flag one at a time, test your application, and commit the changes. This incremental approach reduces risk.
+
+### v7_relativeSplatPath
+
+**What it changes**: Updates relative path matching and linking for multi-segment splat paths like `dashboard/*`.
+
+**Enable the flag**:
+
+```tsx
+// For declarative routing
+<BrowserRouter
+  future={{
+    v7_relativeSplatPath: true,
+  }}
+/>
+
+// For data routers
+createBrowserRouter(routes, {
+  future: {
+    v7_relativeSplatPath: true,
+  },
+});
+```
+
+**Update your code**:
+
+If you have routes with multi-segment splat paths like `<Route path="dashboard/*">`, split them into parent and child routes:
+
+```diff
+<Routes>
+  <Route path="/" element={<Home />} />
+-  <Route path="dashboard/*" element={<Dashboard />} />
++  <Route path="dashboard">
++    <Route path="*" element={<Dashboard />} />
++  </Route>
+</Routes>
+```
+
+Update relative links to include an extra `..` segment:
+
+```diff
+function Dashboard() {
+  return (
+    <nav>
+-      <Link to="team">Team</Link>
++      <Link to="../team">Team</Link>
+    </nav>
+  );
+}
+```
+
+### v7_startTransition
+
+**What it changes**: Uses `React.useTransition` instead of `React.useState` for router state updates.
+
+**Enable the flag**:
+
+```tsx
+<BrowserRouter
+  future={{
+    v7_startTransition: true,
+  }}
+/>
+
+// or
+<RouterProvider
+  future={{
+    v7_startTransition: true,
+  }}
+/>
+```
+
+**Update your code**:
+
+Move any `React.lazy` calls from inside components to the module scope. `React.lazy` inside components is incompatible with `React.useTransition`.
+
+### v7_fetcherPersist
+
+**Applies to**: `createBrowserRouter` only
+
+**What it changes**: The fetcher lifecycle is now based on when it returns to idle state rather than when its owner component unmounts.
+
+**Enable the flag**:
+
+```tsx
+createBrowserRouter(routes, {
+  future: {
+    v7_fetcherPersist: true,
+  },
+});
+```
+
+**Update your code**:
+
+Review any usage of `useFetchers` - fetchers may persist longer than before. Adjust rendering logic if needed.
+
+### v7_normalizeFormMethod
+
+**Applies to**: `createBrowserRouter` only
+
+**What it changes**: Normalizes `formMethod` fields as uppercase HTTP methods.
+
+**Enable the flag**:
+
+```tsx
+createBrowserRouter(routes, {
+  future: {
+    v7_normalizeFormMethod: true,
+  },
+});
+```
+
+**Update your code**:
+
+Compare `formMethod` to UPPERCASE values:
+
+```diff
+-useNavigation().formMethod === "post"
+-useFetcher().formMethod === "get"
++useNavigation().formMethod === "POST"
++useFetcher().formMethod === "GET"
+```
+
+### v7_partialHydration
+
+**Applies to**: `createBrowserRouter` only
+
+**What it changes**: Enables partial hydration for SSR applications.
+
+**Enable the flag**:
+
+```tsx
+createBrowserRouter(routes, {
+  future: {
+    v7_partialHydration: true,
+  },
+});
+```
+
+**Update your code**:
+
+Replace `fallbackElement` with `HydrateFallback` on your routes:
+
+```diff
+const router = createBrowserRouter([
+  {
+    path: "/",
+    Component: Layout,
++    HydrateFallback: Fallback,
+    children: [],
+  },
+]);
+
+<RouterProvider
+  router={router}
+-  fallbackElement={<Fallback />}
+/>
+```
+
+### v7_skipActionErrorRevalidation
+
+**Applies to**: `createBrowserRouter` only
+
+**What it changes**: Loaders no longer revalidate by default when an action returns a 4xx/5xx status.
+
+**Enable the flag**:
+
+```tsx
+createBrowserRouter(routes, {
+  future: {
+    v7_skipActionErrorRevalidation: true,
+  },
+});
+```
+
+**Update your code**:
+
+If you mutate data in error scenarios, either:
+
+**Option 1**: Refactor to avoid mutations before validation:
+
+```js
+// Before
+async function action() {
+  await mutateSomeData();
+  if (detectError()) {
+    throw new Response(error, { status: 400 });
+  }
+}
+
+// After
+async function action() {
+  if (detectError()) {
+    throw new Response(error, { status: 400 });
+  }
+  await mutateSomeData();
+}
+```
+
+**Option 2**: Opt into revalidation via `shouldRevalidate`:
+
+```js
+function shouldRevalidate({ actionStatus, defaultShouldRevalidate }) {
+  if (actionStatus != null && actionStatus >= 400) {
+    return true;
+  }
+  return defaultShouldRevalidate;
+}
+```
+
+## Step 3: Update Deprecated APIs
+
+Replace `json` and `defer` with raw objects:
+
+```diff
+async function loader() {
+-  return json({ data });
++  return { data };
+}
+```
+
+If you need JSON serialization, use `Response.json()`:
+
+```js
+return Response.json({ data });
+```
+
+## Step 4: Upgrade to v7
+
+Once all future flags are enabled and your app works correctly, upgrade to v7:
+
+```bash
+npm uninstall react-router-dom
+npm install react-router@latest
+```
+
+**Note**: Only `react-router` is needed in your `package.json` for v7.
+
+## Step 5: Update Imports
+
+Change all imports from `react-router-dom` to `react-router`:
+
+```diff
+-import { useLocation } from "react-router-dom";
++import { useLocation } from "react-router";
+```
+
+**Automated script** (macOS/BSD sed):
+
+```bash
+find ./path/to/src \( -name "*.tsx" -o -name "*.ts" -o -name "*.js" -o -name "*.jsx" \) -type f -exec sed -i '' 's|from "react-router-dom"|from "react-router"|g' {} +
+```
+
+**GNU sed** (most Linux distributions):
+
+```bash
+find ./path/to/src \( -name "*.tsx" -o -name "*.ts" -o -name "*.js" -o -name "*.jsx" \) -type f -exec sed -i 's|from "react-router-dom"|from "react-router"|g' {} +
+```
+
+## Step 6: Update DOM-Specific Imports
+
+`RouterProvider` and `HydratedRouter` now come from a deep import:
+
+```diff
+-import { RouterProvider } from "react-router-dom";
++import { RouterProvider } from "react-router/dom";
+```
+
+For non-DOM contexts (like Jest tests), use the top-level import:
+
+```diff
+-import { RouterProvider } from "react-router-dom";
++import { RouterProvider } from "react-router";
+```
+
+## Breaking Changes Summary
+
+### Package Consolidation
+
+- All packages collapsed into `react-router`
+- `react-router-dom` is maintained for compatibility but re-exports from `react-router`
+- Runtime-specific exports moved to `@react-router/node`, `@react-router/cloudflare`, etc.
+
+### Removed APIs
+
+- `defer` (use raw promises)
+- `json` (use raw objects or `Response.json()`)
+- `AbortedDeferredError`
+- `TypedDeferredData`
+- `UNSAFE_DeferredData`
+- Future flags (now default behavior):
+  - `v7_startTransition`
+  - `v7_relativeSplatPath`
+  - `v7_fetcherPersist`
+  - `v7_normalizeFormMethod`
+  - `v7_partialHydration`
+  - `v7_skipActionErrorRevalidation`
+
+### Type Changes
+
+- `useFetcher` generic now expects the function type (e.g., `typeof loader`) instead of the data type
+- Update usage: `useFetcher<typeof loader>()` instead of `useFetcher<LoaderData>()`
+
+### Minimum Version Requirements
+
+- **Node.js**: v16 → v20
+- **React**: Minimum v18 (no change)
+
+## Common Issues
+
+### Relative Links in Splat Routes
+
+If links break after enabling `v7_relativeSplatPath`, ensure you've split multi-segment splat routes and updated relative paths with `../`.
+
+### Fetcher Lifecycle Changes
+
+With `v7_fetcherPersist`, fetchers remain in the router state until idle. If you see stale fetchers in `useFetchers()`, this is expected behavior.
+
+### Form Method Casing
+
+After enabling `v7_normalizeFormMethod`, all `formMethod` checks must use uppercase: `POST`, `GET`, `PUT`, `DELETE`, `PATCH`.
+
+## Next Steps
+
+After completing this migration, consider:
+
+- **Framework Mode**: If you want SSR, type safety, and routing conventions, explore [React Router Framework Mode](/start/framework/installation)
+- **Type Safety**: Learn about [automatic type generation](/explanation/type-safety) for route modules
+- **Prerendering**: Set up [static site generation](/how-to/pre-rendering) for better performance
+
+## Resources
+
+- [React Router v7 Changelog](https://github.com/remix-run/react-router/blob/main/CHANGELOG.md#v700)
+- [Upgrading Guide](/upgrading/v6)
+- [Future Flags Documentation](/upgrading/future)

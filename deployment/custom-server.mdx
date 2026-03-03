@@ -1,0 +1,326 @@
+---
+title: "Custom Server Setup"
+description: "Create custom server configurations for React Router"
+---
+
+## Overview
+
+While React Router provides adapters for common platforms, you can create custom server integrations for any environment that supports the Web Fetch API.
+
+## Core Concepts
+
+All React Router server adapters use the same underlying pattern:
+
+1. Import your server build
+2. Create a request handler with `createRequestHandler`
+3. Convert platform requests to Web API `Request` objects
+4. Convert Web API `Response` objects back to platform responses
+
+## Basic Pattern
+
+Here's the general pattern for any server adapter:
+
+```ts
+import { createRequestHandler } from "react-router";
+import type { ServerBuild } from "react-router";
+
+// Import your server build
+const build = await import("./build/server/index.js");
+
+// Create the request handler
+const handleRequest = createRequestHandler(build);
+
+// Convert platform request to Web API Request
+function toPlatformRequest(platformReq): Request {
+  const url = new URL(platformReq.url, `http://${platformReq.headers.host}`);
+  
+  return new Request(url.href, {
+    method: platformReq.method,
+    headers: platformReq.headers,
+    body: platformReq.body,
+  });
+}
+
+// Convert Web API Response to platform response
+async function fromPlatformResponse(response: Response, platformRes) {
+  platformRes.statusCode = response.status;
+  platformRes.statusMessage = response.statusText;
+  
+  for (const [key, value] of response.headers.entries()) {
+    platformRes.setHeader(key, value);
+  }
+  
+  if (response.body) {
+    // Stream response body
+  } else {
+    platformRes.end();
+  }
+}
+```
+
+## Node.js HTTP Server
+
+Create a custom Node.js server without using the `@react-router/node` package:
+
+```ts
+import { createServer } from "node:http";
+import { createRequestHandler } from "react-router";
+
+const build = await import("./build/server/index.js");
+const handleRequest = createRequestHandler(build);
+
+const server = createServer(async (req, res) => {
+  try {
+    // Build Web API Request
+    const request = new Request(
+      new URL(req.url!, `http://${req.headers.host}`).href,
+      {
+        method: req.method,
+        headers: new Headers(req.headers as Record<string, string>),
+        body:
+          req.method !== "GET" && req.method !== "HEAD"
+            ? req
+            : undefined,
+      }
+    );
+
+    // Get Web API Response
+    const response = await handleRequest(request);
+
+    // Send response
+    res.statusCode = response.status;
+    res.statusMessage = response.statusText;
+
+    for (const [key, value] of response.headers.entries()) {
+      res.setHeader(key, value);
+    }
+
+    if (response.body) {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+      }
+    }
+
+    res.end();
+  } catch (error) {
+    console.error(error);
+    res.statusCode = 500;
+    res.end("Internal Server Error");
+  }
+});
+
+server.listen(3000);
+```
+
+## Deno Server
+
+Create a server for Deno:
+
+```ts
+import { createRequestHandler } from "react-router";
+import * as build from "./build/server/index.js";
+
+const handleRequest = createRequestHandler(build);
+
+Deno.serve({ port: 3000 }, async (request) => {
+  try {
+    return await handleRequest(request);
+  } catch (error) {
+    console.error(error);
+    return new Response("Internal Server Error", { status: 500 });
+  }
+});
+```
+
+## Bun Server
+
+Create a server for Bun:
+
+```ts
+import { createRequestHandler } from "react-router";
+import * as build from "./build/server/index.js";
+
+const handleRequest = createRequestHandler(build);
+
+Bun.serve({
+  port: 3000,
+  async fetch(request) {
+    try {
+      return await handleRequest(request);
+    } catch (error) {
+      console.error(error);
+      return new Response("Internal Server Error", { status: 500 });
+    }
+  },
+});
+```
+
+## Custom Load Context
+
+Pass platform-specific values to your routes:
+
+```ts
+const handleRequest = createRequestHandler(build);
+
+const response = await handleRequest(request, {
+  // Custom context available in loaders/actions
+  env: Deno.env.toObject(),
+  platform: "deno",
+  serverUrl: "https://example.com",
+});
+```
+
+Access in your routes:
+
+```ts
+export async function loader({ context }: Route.LoaderArgs) {
+  console.log(context.platform); // "deno"
+  console.log(context.env.API_KEY);
+  return {};
+}
+```
+
+## Dynamic Build Import
+
+For development, reload the build on each request:
+
+```ts
+const handleRequest = createRequestHandler(
+  // Function that returns the build
+  () => import("./build/server/index.js?" + Date.now())
+);
+```
+
+For production, import once:
+
+```ts
+const build = await import("./build/server/index.js");
+const handleRequest = createRequestHandler(build);
+```
+
+## Mode Configuration
+
+Pass the mode as the second parameter:
+
+```ts
+const handleRequest = createRequestHandler(
+  build,
+  process.env.NODE_ENV // "development" or "production"
+);
+```
+
+This affects:
+- Error stack traces (detailed in development)
+- Asset URLs and caching
+- Source maps
+
+## Streaming Responses
+
+React Router uses streaming by default. Ensure your server supports streaming responses:
+
+```ts
+if (response.body) {
+  const reader = response.body.getReader();
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    
+    // Write chunk to platform response
+    platformRes.write(value);
+  }
+}
+
+platformRes.end();
+```
+
+## Static Asset Serving
+
+Serve your built client assets:
+
+```ts
+import { serve } from "@hono/node-server/serve-static";
+
+// Serve static files
+app.use("/assets/*", serve({ root: "./build/client" }));
+
+// React Router handles all other routes
+app.use("*", async (c) => {
+  const response = await handleRequest(c.req.raw);
+  return response;
+});
+```
+
+## Error Handling
+
+Handle errors appropriately:
+
+```ts
+try {
+  const response = await handleRequest(request, context);
+  return response;
+} catch (error) {
+  console.error(error);
+  
+  if (process.env.NODE_ENV === "development") {
+    return new Response(error.stack, { status: 500 });
+  }
+  
+  return new Response("Internal Server Error", { status: 500 });
+}
+```
+
+## Request Abortion
+
+Support request cancellation when the client disconnects:
+
+```ts
+const controller = new AbortController();
+
+platformReq.on("close", () => {
+  controller.abort();
+});
+
+const request = new Request(url, {
+  method: platformReq.method,
+  headers: platformReq.headers,
+  body: platformReq.body,
+  signal: controller.signal,
+});
+```
+
+## Example Adapters
+
+Refer to the official adapters for implementation examples:
+
+- **Node.js**: `packages/react-router-node/server.ts`
+- **Cloudflare**: `packages/react-router-cloudflare/worker.ts`
+- **Express**: `packages/react-router-express/server.ts`
+
+## Testing Your Adapter
+
+1. Build your application:
+   ```bash
+   npm run build
+   ```
+
+2. Run your custom server:
+   ```bash
+   node server.js
+   ```
+
+3. Test server-side rendering:
+   ```bash
+   curl http://localhost:3000
+   ```
+
+4. Verify static assets load correctly
+
+5. Test dynamic routes and data loading
+
+<Note>
+  Custom servers must support the Web Fetch API (Request/Response). Modern runtimes like Node.js 18+, Deno, and Bun have built-in support.
+</Note>

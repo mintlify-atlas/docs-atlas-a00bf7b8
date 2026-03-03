@@ -1,0 +1,405 @@
+---
+title: 'matchRoutes'
+description: 'Match routes against a URL pathname'
+---
+
+## Summary
+
+Matches the given routes to a location and returns the match data. Useful for server-side rendering, testing, or determining which routes would match a given URL without actually navigating.
+
+## Signature
+
+```typescript
+function matchRoutes<RouteObjectType extends AgnosticRouteObject>(
+  routes: RouteObjectType[],
+  locationArg: Partial<Location> | string,
+  basename?: string
+): AgnosticRouteMatch<string, RouteObjectType>[] | null
+```
+
+## Parameters
+
+<ParamField path="routes" type="RouteObjectType[]" required>
+  The array of route objects to match against. Each route can have `path`, `children`, and other route properties.
+</ParamField>
+
+<ParamField path="locationArg" type="Partial<Location> | string" required>
+  The location to match against. Can be:
+  - A string pathname (e.g., `/dashboard`)
+  - A partial `Location` object with `pathname`, `search`, and `hash`
+</ParamField>
+
+<ParamField path="basename" type="string" default="/">
+  Optional base path to strip from the location before matching. Useful when your app is served from a subdirectory.
+</ParamField>
+
+## Returns
+
+<ResponseField name="matches" type="AgnosticRouteMatch[] | null">
+  An array of matched routes ordered from parent to child, or `null` if no matches were found.
+  
+  Each match object contains:
+  - `params` - URL parameters extracted from the path
+  - `pathname` - The matched portion of the URL
+  - `pathnameBase` - The matched pathname before child routes
+  - `route` - The route object that matched
+</ResponseField>
+
+## Examples
+
+### Basic usage
+
+```tsx
+import { matchRoutes } from "react-router";
+
+const routes = [
+  {
+    path: "/",
+    children: [
+      {
+        path: "dashboard",
+      },
+      {
+        path: "settings",
+      },
+    ],
+  },
+];
+
+const matches = matchRoutes(routes, "/dashboard");
+// [
+//   { params: {}, pathname: "/", pathnameBase: "/", route: {...} },
+//   { params: {}, pathname: "/dashboard", pathnameBase: "/dashboard", route: {...} }
+// ]
+```
+
+### With URL parameters
+
+```tsx
+import { matchRoutes } from "react-router";
+
+const routes = [
+  {
+    path: "/users/:userId",
+    children: [
+      {
+        path: "posts/:postId",
+      },
+    ],
+  },
+];
+
+const matches = matchRoutes(routes, "/users/123/posts/456");
+// [
+//   { 
+//     params: { userId: "123" }, 
+//     pathname: "/users/123",
+//     pathnameBase: "/users/123",
+//     route: {...}
+//   },
+//   { 
+//     params: { userId: "123", postId: "456" },
+//     pathname: "/users/123/posts/456",
+//     pathnameBase: "/users/123/posts/456",
+//     route: {...}
+//   }
+// ]
+```
+
+### With Location object
+
+```tsx
+import { matchRoutes } from "react-router";
+
+const routes = [
+  { path: "/search" },
+];
+
+const matches = matchRoutes(routes, {
+  pathname: "/search",
+  search: "?q=react",
+  hash: "#results",
+});
+```
+
+### With basename
+
+```tsx
+import { matchRoutes } from "react-router";
+
+const routes = [
+  { path: "/dashboard" },
+];
+
+// App is served from /app subdirectory
+const matches = matchRoutes(
+  routes,
+  "/app/dashboard",
+  "/app" // basename
+);
+// Matches the /dashboard route
+```
+
+### Checking for matches
+
+```tsx
+import { matchRoutes } from "react-router";
+
+const routes = [
+  { path: "/" },
+  { path: "/about" },
+];
+
+const matches = matchRoutes(routes, "/contact");
+if (matches === null) {
+  console.log("No route matched");
+} else {
+  console.log(`Matched ${matches.length} route(s)`);
+}
+```
+
+## Common Use Cases
+
+### Server-side rendering
+
+Determine which routes match before rendering:
+
+```tsx
+import { matchRoutes } from "react-router";
+import { routes } from "./routes";
+
+export async function handleRequest(request: Request) {
+  const url = new URL(request.url);
+  const matches = matchRoutes(routes, url.pathname);
+  
+  if (!matches) {
+    return new Response("Not Found", { status: 404 });
+  }
+  
+  // Load data for matched routes
+  const data = await Promise.all(
+    matches.map((match) => match.route.loader?.())
+  );
+  
+  return renderToString({ matches, data });
+}
+```
+
+### Preloading route data
+
+```tsx
+import { matchRoutes } from "react-router";
+
+function preloadRouteData(pathname: string) {
+  const matches = matchRoutes(routes, pathname);
+  
+  if (matches) {
+    matches.forEach((match) => {
+      // Preload data for each matched route
+      if (match.route.loader) {
+        match.route.loader();
+      }
+    });
+  }
+}
+
+// Preload on hover
+<Link 
+  to="/dashboard"
+  onMouseEnter={() => preloadRouteData("/dashboard")}
+>
+  Dashboard
+</Link>
+```
+
+### Access control checks
+
+```tsx
+import { matchRoutes } from "react-router";
+
+function checkAccess(pathname: string, user: User) {
+  const matches = matchRoutes(routes, pathname);
+  
+  if (!matches) return false;
+  
+  return matches.every((match) => {
+    const requiredRole = match.route.meta?.requiredRole;
+    return !requiredRole || user.roles.includes(requiredRole);
+  });
+}
+```
+
+### Extracting params without navigation
+
+```tsx
+import { matchRoutes } from "react-router";
+
+const routes = [
+  { path: "/users/:userId/posts/:postId" },
+];
+
+function getParamsFromUrl(url: string) {
+  const matches = matchRoutes(routes, url);
+  return matches?.[0]?.params || {};
+}
+
+const params = getParamsFromUrl("/users/123/posts/456");
+// { userId: "123", postId: "456" }
+```
+
+### Testing route configuration
+
+```tsx
+import { matchRoutes } from "react-router";
+import { describe, it, expect } from "vitest";
+
+describe("Routes", () => {
+  it("matches dashboard route", () => {
+    const matches = matchRoutes(routes, "/dashboard");
+    expect(matches).not.toBeNull();
+    expect(matches?.[0].route.path).toBe("/dashboard");
+  });
+  
+  it("matches dynamic user route", () => {
+    const matches = matchRoutes(routes, "/users/123");
+    expect(matches?.[0].params).toEqual({ userId: "123" });
+  });
+  
+  it("returns null for unknown routes", () => {
+    const matches = matchRoutes(routes, "/unknown");
+    expect(matches).toBeNull();
+  });
+});
+```
+
+### Building breadcrumbs
+
+```tsx
+import { matchRoutes } from "react-router";
+
+function buildBreadcrumbs(pathname: string) {
+  const matches = matchRoutes(routes, pathname);
+  
+  if (!matches) return [];
+  
+  return matches.map((match) => ({
+    label: match.route.meta?.breadcrumb || match.route.path,
+    path: match.pathname,
+  }));
+}
+
+const breadcrumbs = buildBreadcrumbs("/users/123/posts/456");
+// [
+//   { label: "Users", path: "/users/123" },
+//   { label: "Posts", path: "/users/123/posts/456" }
+// ]
+```
+
+## Route Matching Behavior
+
+### Nested routes
+
+Child routes are only matched if their parent matches:
+
+```tsx
+const routes = [
+  {
+    path: "/parent",
+    children: [
+      { path: "child" },
+    ],
+  },
+];
+
+matchRoutes(routes, "/parent/child"); // Matches both parent and child
+matchRoutes(routes, "/child"); // null - child requires parent
+```
+
+### Index routes
+
+```tsx
+const routes = [
+  {
+    path: "/parent",
+    children: [
+      { index: true }, // Matches /parent
+      { path: "child" }, // Matches /parent/child
+    ],
+  },
+];
+
+matchRoutes(routes, "/parent"); // Matches parent and index
+matchRoutes(routes, "/parent/child"); // Matches parent and child
+```
+
+### Wildcard routes
+
+```tsx
+const routes = [
+  { path: "/" },
+  { path: "*" }, // Catch-all
+];
+
+matchRoutes(routes, "/anything"); // Matches wildcard route
+```
+
+## Performance Considerations
+
+- Route matching is synchronous and fast
+- Results can be cached if routes don't change
+- For large route trees, consider memoizing results
+
+```tsx
+import { matchRoutes } from "react-router";
+import { useMemo } from "react";
+
+function useRouteMatches(pathname: string) {
+  return useMemo(
+    () => matchRoutes(routes, pathname),
+    [pathname]
+  );
+}
+```
+
+## Type Safety
+
+Use TypeScript generics for type-safe route matching:
+
+```tsx
+import { matchRoutes, RouteObject } from "react-router";
+
+interface CustomRoute extends RouteObject {
+  meta?: {
+    title: string;
+    requiresAuth: boolean;
+  };
+}
+
+const routes: CustomRoute[] = [
+  {
+    path: "/dashboard",
+    meta: { title: "Dashboard", requiresAuth: true },
+  },
+];
+
+const matches = matchRoutes<CustomRoute>(routes, "/dashboard");
+if (matches) {
+  matches.forEach((match) => {
+    console.log(match.route.meta?.title); // Type-safe access
+  });
+}
+```
+
+## Related Functions
+
+- [`matchPath`](/api/utils/match-path) - Match a single path pattern
+- [`resolvePath`](/api/utils/resolve-path) - Resolve relative paths
+- [`generatePath`](/api/utils/generate-path) - Generate paths from patterns
+
+## Notes
+
+- Returns `null` if no routes match (not an empty array)
+- Matches are ordered from parent to child (root first, leaf last)
+- The `basename` is stripped before matching but included in the returned pathnames
+- Dynamic segments (`:param`) are extracted into the `params` object
+- Optional segments (`path?`) and wildcards (`*`) are supported

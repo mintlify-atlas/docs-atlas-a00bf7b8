@@ -1,0 +1,413 @@
+---
+title: Pre-rendering (SSG)
+---
+
+# Pre-rendering (SSG)
+
+Learn how to pre-render static pages at build time for optimal performance and SEO.
+
+## Overview
+
+Pre-rendering (Static Site Generation) generates HTML pages at build time, providing:
+
+- Instant page loads from CDN
+- Perfect SEO with fully-rendered HTML
+- Lower server costs
+- Better performance at scale
+
+## Configuring Pre-rendering
+
+Define pages to pre-render in your config:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  async prerender() {
+    return [
+      "/",
+      "/about",
+      "/contact",
+      "/products",
+    ];
+  },
+} satisfies Config;
+```
+
+## Dynamic Path Pre-rendering
+
+Generate paths from your data:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  async prerender() {
+    const posts = await db.post.findMany();
+    const products = await db.product.findMany();
+
+    return [
+      "/",
+      "/blog",
+      ...posts.map((post) => `/blog/${post.slug}`),
+      "/products",
+      ...products.map((product) => `/products/${product.id}`),
+    ];
+  },
+} satisfies Config;
+```
+
+## Pre-rendering with Loaders
+
+Loaders run at build time for pre-rendered routes:
+
+```tsx
+// app/routes/blog.$slug.tsx
+import type { Route } from "./+types/blog.$slug";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const post = await getPost(params.slug);
+
+  if (!post) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return { post };
+}
+
+export default function BlogPost({ loaderData }: Route.ComponentProps) {
+  return (
+    <article>
+      <h1>{loaderData.post.title}</h1>
+      <time>{loaderData.post.publishedAt}</time>
+      <div dangerouslySetInnerHTML={{ __html: loaderData.post.content }} />
+    </article>
+  );
+}
+```
+
+## Advanced Pre-render Configuration
+
+Customize pre-rendering behavior:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  async prerender({ getStaticPaths }) {
+    const routes = await getStaticPaths();
+
+    return {
+      // List of paths to pre-render
+      paths: [
+        "/",
+        "/about",
+        ...routes,
+      ],
+
+      // Number of concurrent renders
+      concurrency: 10,
+
+      // Retry failed renders
+      retryCount: 3,
+      retryDelay: 500,
+
+      // Follow redirects up to this many times
+      maxRedirects: 5,
+
+      // Timeout for each render
+      timeout: 10000,
+    };
+  },
+} satisfies Config;
+```
+
+## Fetching Data for Pre-rendering
+
+Query your database or API at build time:
+
+```ts
+// react-router.config.ts
+import { db } from "./app/db.server";
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  async prerender() {
+    // Fetch all published posts
+    const posts = await db.post.findMany({
+      where: { published: true },
+      select: { slug: true },
+    });
+
+    // Fetch all active categories
+    const categories = await db.category.findMany({
+      where: { active: true },
+      select: { slug: true },
+    });
+
+    return [
+      // Static pages
+      "/",
+      "/about",
+      "/blog",
+
+      // Dynamic blog posts
+      ...posts.map((post) => `/blog/${post.slug}`),
+
+      // Category pages
+      ...categories.map((cat) => `/blog/category/${cat.slug}`),
+    ];
+  },
+} satisfies Config;
+```
+
+## Partial Pre-rendering
+
+Mix pre-rendered and dynamic pages:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  // Pre-render only these routes
+  async prerender() {
+    return [
+      "/",           // Home page
+      "/about",      // About page
+      "/pricing",    // Pricing page
+    ];
+  },
+
+  // Other routes render on-demand
+} satisfies Config;
+```
+
+## Build-Time Environment
+
+Access build-time environment variables:
+
+```tsx
+// app/routes/blog._index.tsx
+import type { Route } from "./+types/blog._index";
+
+export async function loader({}: Route.LoaderArgs) {
+  // This runs at build time for pre-rendered pages
+  const posts = await fetch(
+    `${process.env.CMS_API_URL}/posts`,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.CMS_API_KEY}`,
+      },
+    }
+  ).then((r) => r.json());
+
+  return { posts };
+}
+```
+
+## Incremental Static Regeneration
+
+Rebuild specific pages on-demand:
+
+```tsx
+// app/routes/blog.$slug.tsx
+import type { Route } from "./+types/blog.$slug";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const post = await getPost(params.slug);
+
+  if (!post) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return json(
+    { post },
+    {
+      headers: {
+        // Revalidate after 1 hour
+        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      },
+    }
+  );
+}
+```
+
+## Sitemap Generation
+
+Generate a sitemap from pre-rendered paths:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+import { writeFileSync } from "fs";
+
+export default {
+  async prerender() {
+    const posts = await db.post.findMany({
+      select: { slug: true, updatedAt: true },
+    });
+
+    const paths = [
+      { path: "/", priority: 1.0 },
+      { path: "/about", priority: 0.8 },
+      ...posts.map((post) => ({
+        path: `/blog/${post.slug}`,
+        lastmod: post.updatedAt.toISOString(),
+        priority: 0.6,
+      })),
+    ];
+
+    // Generate sitemap.xml
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${paths
+  .map(
+    (p) => `  <url>
+    <loc>https://example.com${p.path}</loc>
+    ${p.lastmod ? `<lastmod>${p.lastmod}</lastmod>` : ""}
+    <priority>${p.priority}</priority>
+  </url>`
+  )
+  .join("\n")}
+</urlset>`;
+
+    writeFileSync("public/sitemap.xml", sitemap);
+
+    return paths.map((p) => p.path);
+  },
+} satisfies Config;
+```
+
+## RSS Feed Generation
+
+Create RSS feeds during pre-rendering:
+
+```ts
+// react-router.config.ts
+import { writeFileSync } from "fs";
+
+export default {
+  async prerender() {
+    const posts = await db.post.findMany({
+      where: { published: true },
+      orderBy: { publishedAt: "desc" },
+      take: 20,
+    });
+
+    // Generate RSS feed
+    const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>My Blog</title>
+    <link>https://example.com</link>
+    <description>Blog posts</description>
+    ${posts
+      .map(
+        (post) => `
+    <item>
+      <title>${post.title}</title>
+      <link>https://example.com/blog/${post.slug}</link>
+      <description>${post.excerpt}</description>
+      <pubDate>${post.publishedAt.toUTCString()}</pubDate>
+    </item>`
+      )
+      .join("")}
+  </channel>
+</rss>`;
+
+    writeFileSync("public/rss.xml", rss);
+
+    return posts.map((post) => `/blog/${post.slug}`);
+  },
+} satisfies Config;
+```
+
+## Build Optimization
+
+Optimize pre-rendering performance:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  async prerender() {
+    // Fetch data once, use for multiple pages
+    const [posts, products, categories] = await Promise.all([
+      db.post.findMany(),
+      db.product.findMany(),
+      db.category.findMany(),
+    ]);
+
+    const paths = [
+      "/",
+      ...posts.map((p) => `/blog/${p.slug}`),
+      ...products.map((p) => `/products/${p.id}`),
+      ...categories.map((c) => `/category/${c.slug}`),
+    ];
+
+    return {
+      paths,
+      concurrency: 20, // Render 20 pages in parallel
+    };
+  },
+} satisfies Config;
+```
+
+## Deployment
+
+Deploy pre-rendered sites to static hosts:
+
+```bash
+# Build with pre-rendering
+npm run build
+
+# Deploy build/client to:
+# - Netlify
+# - Vercel
+# - Cloudflare Pages
+# - AWS S3 + CloudFront
+# - GitHub Pages
+```
+
+## Handling 404s
+
+Pre-render a custom 404 page:
+
+```ts
+// react-router.config.ts
+export default {
+  async prerender() {
+    return [
+      "/",
+      "/404", // Pre-render 404 page
+      // ... other pages
+    ];
+  },
+} satisfies Config;
+```
+
+Configure your host:
+
+```toml
+# netlify.toml
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404
+```
+
+## Best Practices
+
+1. **Pre-render static content** - Marketing pages, blog posts, documentation
+2. **Skip user-specific pages** - Don't pre-render dashboards or personalized content
+3. **Use concurrency** - Speed up builds by rendering pages in parallel
+4. **Generate sitemaps** - Help search engines discover your pages
+5. **Optimize images** - Compress and resize images at build time
+6. **Cache headers** - Set long cache times for pre-rendered HTML
+7. **Monitor build times** - Keep builds fast as your site grows
+8. **Validate paths** - Ensure all pre-rendered paths return 200 status

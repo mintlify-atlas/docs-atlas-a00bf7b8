@@ -1,0 +1,399 @@
+---
+title: React Suspense Integration
+---
+
+# React Suspense Integration
+
+Learn how to use React Suspense with React Router for declarative loading states.
+
+## Overview
+
+React Router integrates seamlessly with React's Suspense API, allowing you to show fallback UIs while data is loading. This provides a better user experience with declarative loading states.
+
+## Basic Suspense Usage
+
+Wrap components in Suspense boundaries:
+
+```tsx
+import { Suspense } from "react";
+import { Await } from "react-router";
+import type { Route } from "./+types/product.$id";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const productPromise = getProduct(params.id);
+  const reviewsPromise = getReviews(params.id);
+
+  return {
+    product: await productPromise, // Wait for critical data
+    reviews: reviewsPromise,        // Defer non-critical data
+  };
+}
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>{loaderData.product.name}</h1>
+      <p>{loaderData.product.description}</p>
+
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Await resolve={loaderData.reviews}>
+          {(reviews) => <ReviewsList reviews={reviews} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+
+function ReviewsSkeleton() {
+  return (
+    <div className="skeleton">
+      <div className="skeleton-line" />
+      <div className="skeleton-line" />
+      <div className="skeleton-line" />
+    </div>
+  );
+}
+```
+
+## Defer Data Loading
+
+Use `defer` to stream non-critical data:
+
+```tsx
+import { defer } from "react-router";
+import type { Route } from "./+types/dashboard";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await requireUser(request); // Critical data
+
+  return defer({
+    user,
+    stats: getStats(user.id),           // Deferred
+    notifications: getNotifications(user.id), // Deferred
+    activities: getActivities(user.id),       // Deferred
+  });
+}
+
+export default function Dashboard({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Welcome, {loaderData.user.name}</h1>
+
+      <Suspense fallback={<StatsSkeleton />}>
+        <Await resolve={loaderData.stats}>
+          {(stats) => <StatsCard stats={stats} />}
+        </Await>
+      </Suspense>
+
+      <Suspense fallback={<NotificationsSkeleton />}>
+        <Await resolve={loaderData.notifications}>
+          {(notifications) => <NotificationsList notifications={notifications} />}
+        </Await>
+      </Suspense>
+
+      <Suspense fallback={<ActivitiesSkeleton />}>
+        <Await resolve={loaderData.activities}>
+          {(activities) => <ActivitiesTimeline activities={activities} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Error Boundaries with Suspense
+
+Handle errors in deferred data:
+
+```tsx
+import { Suspense } from "react";
+import { Await, useAsyncError } from "react-router";
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>{loaderData.product.name}</h1>
+
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Await resolve={loaderData.reviews} errorElement={<ReviewsError />}>
+          {(reviews) => <ReviewsList reviews={reviews} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+
+function ReviewsError() {
+  const error = useAsyncError();
+
+  return (
+    <div className="error">
+      <p>Failed to load reviews</p>
+      <button onClick={() => window.location.reload()}>Retry</button>
+    </div>
+  );
+}
+```
+
+## Parallel Loading
+
+Load multiple resources in parallel:
+
+```tsx
+import { defer } from "react-router";
+import type { Route } from "./+types/blog.$slug";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const post = await getPost(params.slug);
+
+  // Load related data in parallel
+  return defer({
+    post,
+    relatedPosts: getRelatedPosts(post.id),
+    comments: getComments(post.id),
+    author: getAuthor(post.authorId),
+  });
+}
+
+export default function BlogPost({ loaderData }: Route.ComponentProps) {
+  return (
+    <article>
+      <h1>{loaderData.post.title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: loaderData.post.content }} />
+
+      <Suspense fallback={<AuthorSkeleton />}>
+        <Await resolve={loaderData.author}>
+          {(author) => <AuthorCard author={author} />}
+        </Await>
+      </Suspense>
+
+      <Suspense fallback={<CommentsSkeleton />}>
+        <Await resolve={loaderData.comments}>
+          {(comments) => <CommentsList comments={comments} />}
+        </Await>
+      </Suspense>
+
+      <Suspense fallback={<RelatedPostsSkeleton />}>
+        <Await resolve={loaderData.relatedPosts}>
+          {(relatedPosts) => <RelatedPosts posts={relatedPosts} />}
+        </Await>
+      </Suspense>
+    </article>
+  );
+}
+```
+
+## Nested Suspense Boundaries
+
+Create granular loading states:
+
+```tsx
+export default function Feed({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <Suspense fallback={<FeedSkeleton />}>
+        <Await resolve={loaderData.posts}>
+          {(posts) => (
+            <div>
+              {posts.map((post) => (
+                <div key={post.id}>
+                  <h2>{post.title}</h2>
+                  <p>{post.excerpt}</p>
+
+                  {/* Nested suspense for comments */}
+                  <Suspense fallback={<CommentsSkeleton />}>
+                    <Await resolve={getComments(post.id)}>
+                      {(comments) => (
+                        <CommentsList comments={comments} />
+                      )}
+                    </Await>
+                  </Suspense>
+                </div>
+              ))}
+            </div>
+          )}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Skeleton Screens
+
+Create effective loading skeletons:
+
+```tsx
+export function ProductCardSkeleton() {
+  return (
+    <div className="product-card skeleton">
+      <div className="skeleton-image" />
+      <div className="skeleton-text skeleton-title" />
+      <div className="skeleton-text skeleton-price" />
+      <div className="skeleton-button" />
+    </div>
+  );
+}
+
+export function ProductGridSkeleton() {
+  return (
+    <div className="product-grid">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <ProductCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+```
+
+Style skeletons:
+
+```css
+.skeleton {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.skeleton-image {
+  width: 100%;
+  height: 200px;
+  background: #e0e0e0;
+  border-radius: 8px;
+}
+
+.skeleton-text {
+  height: 16px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+.skeleton-title {
+  width: 70%;
+}
+
+.skeleton-price {
+  width: 30%;
+}
+```
+
+## Progressive Enhancement
+
+Improve perceived performance:
+
+```tsx
+import { defer } from "react-router";
+import type { Route } from "./+types/search";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q") || "";
+
+  // Get initial results quickly
+  const initialResults = await searchProducts(query, { limit: 10 });
+
+  // Load full results in background
+  const fullResults = searchProducts(query, { limit: 100 });
+
+  return defer({
+    query,
+    initialResults,
+    fullResults,
+  });
+}
+
+export default function Search({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Search: {loaderData.query}</h1>
+
+      {/* Show initial results immediately */}
+      <div>
+        {loaderData.initialResults.map((product) => (
+          <ProductCard key={product.id} product={product} />
+        ))}
+      </div>
+
+      {/* Load remaining results */}
+      <Suspense fallback={<div>Loading more results...</div>}>
+        <Await resolve={loaderData.fullResults}>
+          {(products) => (
+            <div>
+              {products.slice(10).map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          )}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Timeout Fallbacks
+
+Show fallback after a delay:
+
+```tsx
+import { Suspense, useState, useEffect } from "react";
+
+function SuspenseWithTimeout({
+  children,
+  fallback,
+  timeout = 200,
+}: {
+  children: React.ReactNode;
+  fallback: React.ReactNode;
+  timeout?: number;
+}) {
+  const [showFallback, setShowFallback] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowFallback(true), timeout);
+    return () => clearTimeout(timer);
+  }, [timeout]);
+
+  return (
+    <Suspense fallback={showFallback ? fallback : null}>
+      {children}
+    </Suspense>
+  );
+}
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>{loaderData.product.name}</h1>
+
+      <SuspenseWithTimeout
+        fallback={<ReviewsSkeleton />}
+        timeout={200}
+      >
+        <Await resolve={loaderData.reviews}>
+          {(reviews) => <ReviewsList reviews={reviews} />}
+        </Await>
+      </SuspenseWithTimeout>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Defer non-critical data** - Load important content first
+2. **Use meaningful skeletons** - Match the shape of actual content
+3. **Keep fallbacks simple** - Avoid complex loading states
+4. **Handle errors gracefully** - Provide retry mechanisms
+5. **Avoid layout shift** - Reserve space for loading content
+6. **Consider mobile** - Simpler skeletons on slower connections
+7. **Test loading states** - Throttle network to see fallbacks
+8. **Use suspense boundaries wisely** - Don't wrap everything in one boundary

@@ -1,0 +1,441 @@
+---
+title: SPA Mode
+---
+
+# SPA Mode
+
+Learn how to build Single Page Applications (SPAs) with React Router, client-side only rendering, and no server component.
+
+## Overview
+
+SPA Mode allows you to build React Router applications that run entirely in the browser, without server-side rendering. This is ideal for:
+
+- Static hosting (GitHub Pages, Netlify, Vercel)
+- Applications without server requirements
+- Progressive migration from client-only apps
+- Electron or Tauri desktop applications
+
+## Configuring SPA Mode
+
+Disable SSR in your React Router config:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  ssr: false,
+} satisfies Config;
+```
+
+## Client-Only Rendering
+
+With SPA mode, all rendering happens in the browser:
+
+```tsx
+// app/root.tsx
+import {
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+} from "react-router";
+
+export default function Root() {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        <Outlet />
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+## Loaders in SPA Mode
+
+Loaders run in the browser, fetching data from APIs:
+
+```tsx
+// app/routes/products.tsx
+import type { Route } from "./+types/products";
+
+export async function loader({}: Route.LoaderArgs) {
+  // Fetch from your API
+  const response = await fetch("https://api.example.com/products");
+  const products = await response.json();
+  return { products };
+}
+
+export default function Products({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Products</h1>
+      {loaderData.products.map((product) => (
+        <div key={product.id}>
+          <h2>{product.name}</h2>
+          <p>{product.description}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Actions in SPA Mode
+
+Actions also run client-side:
+
+```tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/create-product";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+
+  const response = await fetch("https://api.example.com/products", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: formData.get("name"),
+      price: formData.get("price"),
+    }),
+  });
+
+  if (!response.ok) {
+    return { error: "Failed to create product" };
+  }
+
+  const product = await response.json();
+  return redirect(`/products/${product.id}`);
+}
+
+export default function CreateProduct({ actionData }: Route.ComponentProps) {
+  return (
+    <Form method="post">
+      <input type="text" name="name" required />
+      <input type="number" name="price" required />
+      {actionData?.error && <p>{actionData.error}</p>}
+      <button type="submit">Create</button>
+    </Form>
+  );
+}
+```
+
+## Authentication
+
+Handle authentication client-side:
+
+```tsx
+// app/lib/auth.ts
+const TOKEN_KEY = "auth_token";
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+export async function requireAuth() {
+  const token = getToken();
+  if (!token) {
+    throw redirect("/login");
+  }
+  return token;
+}
+
+// app/routes/dashboard.tsx
+import { requireAuth } from "~/lib/auth";
+import type { Route } from "./+types/dashboard";
+
+export async function loader({}: Route.LoaderArgs) {
+  const token = await requireAuth();
+
+  const response = await fetch("https://api.example.com/user", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  const user = await response.json();
+  return { user };
+}
+```
+
+## Environment Variables
+
+Access client-side environment variables:
+
+```tsx
+// Vite exposes VITE_* variables to the client
+const API_URL = import.meta.env.VITE_API_URL;
+const API_KEY = import.meta.env.VITE_API_KEY;
+
+export async function loader({}: Route.LoaderArgs) {
+  const response = await fetch(`${API_URL}/products`, {
+    headers: { "X-API-Key": API_KEY },
+  });
+  return response.json();
+}
+```
+
+## Static Deployment
+
+Build and deploy to static hosts:
+
+```bash
+# Build your SPA
+npm run build
+
+# Deploy the build/client directory to:
+# - Netlify
+# - Vercel
+# - GitHub Pages
+# - AWS S3
+# - Any static host
+```
+
+Configure server for client-side routing:
+
+```toml
+# netlify.toml
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+```
+
+```json
+// vercel.json
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+```
+
+## Loading States
+
+Show loading indicators for client-side navigation:
+
+```tsx
+import { useNavigation } from "react-router";
+
+export default function Root() {
+  const navigation = useNavigation();
+  const isNavigating = navigation.state === "loading";
+
+  return (
+    <html lang="en">
+      <head>
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        {isNavigating && (
+          <div className="loading-bar">
+            <div className="loading-progress" />
+          </div>
+        )}
+        <Outlet />
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+## Error Handling
+
+Handle API errors gracefully:
+
+```tsx
+import type { Route } from "./+types/products";
+
+export async function loader({}: Route.LoaderArgs) {
+  try {
+    const response = await fetch("https://api.example.com/products");
+
+    if (!response.ok) {
+      throw new Response("Failed to load products", {
+        status: response.status,
+      });
+    }
+
+    return response.json();
+  } catch (error) {
+    throw new Response("Network error", { status: 503 });
+  }
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} Error</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+
+  return <div>Something went wrong</div>;
+}
+```
+
+## Offline Support
+
+Add service worker for offline functionality:
+
+```tsx
+// app/entry.client.tsx
+import { startTransition, StrictMode } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { HydratedRouter } from "react-router/dom";
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js");
+  });
+}
+
+startTransition(() => {
+  hydrateRoot(
+    document,
+    <StrictMode>
+      <HydratedRouter />
+    </StrictMode>
+  );
+});
+```
+
+## Local Storage Cache
+
+Cache API responses locally:
+
+```tsx
+function getCached<T>(key: string): T | null {
+  try {
+    const cached = localStorage.getItem(key);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      const age = Date.now() - timestamp;
+      if (age < 5 * 60 * 1000) { // 5 minutes
+        return data;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function setCache<T>(key: string, data: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      data,
+      timestamp: Date.now(),
+    }));
+  } catch {}
+}
+
+export async function loader({}: Route.LoaderArgs) {
+  const cacheKey = "products";
+  const cached = getCached(cacheKey);
+
+  if (cached) {
+    return { products: cached };
+  }
+
+  const response = await fetch("https://api.example.com/products");
+  const products = await response.json();
+
+  setCache(cacheKey, products);
+  return { products };
+}
+```
+
+## Progressive Web App
+
+Add PWA capabilities:
+
+```json
+// public/manifest.json
+{
+  "name": "My App",
+  "short_name": "App",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+```tsx
+// app/root.tsx
+export default function Root() {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#000000" />
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        <Outlet />
+      </body>
+    </html>
+  );
+}
+```
+
+## SPA vs SSR Trade-offs
+
+**SPA Advantages:**
+- Simpler deployment (static hosting)
+- No server infrastructure needed
+- Lower hosting costs
+- Works offline with service workers
+
+**SPA Disadvantages:**
+- Slower initial page load
+- SEO challenges (requires careful meta tag management)
+- No server-side data fetching benefits
+- Larger initial JavaScript bundle
+
+## Best Practices
+
+1. **Code splitting** - Use lazy loading to reduce initial bundle size
+2. **Cache API responses** - Reduce network requests
+3. **Handle offline** - Provide graceful degradation
+4. **Optimize assets** - Compress images and minify code
+5. **Use CDN** - Serve static assets from edge locations
+6. **Monitor performance** - Track load times and bundle sizes
+7. **Security** - Never expose secrets in client code
+8. **Meta tags** - Set appropriate tags for social sharing and SEO

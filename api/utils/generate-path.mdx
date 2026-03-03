@@ -1,0 +1,432 @@
+---
+title: 'generatePath'
+description: 'Generate URL paths from patterns with parameters'
+---
+
+## Summary
+
+Returns a path with params interpolated into the pattern. Useful for programmatically creating URLs from route patterns and parameter values.
+
+This is the inverse of path matching - instead of extracting params from a path, it creates a path from params.
+
+## Signature
+
+```typescript
+function generatePath<Path extends string>(
+  originalPath: Path,
+  params?: {
+    [key in PathParam<Path>]: string | null;
+  }
+): string
+```
+
+## Parameters
+
+<ParamField path="originalPath" type="string" required>
+  The path pattern containing parameter placeholders. Parameters are denoted with `:paramName` syntax.
+  
+  Examples:
+  - `/users/:userId`
+  - `/posts/:postId/comments/:commentId`
+  - `/files/*`
+</ParamField>
+
+<ParamField path="params" type="object">
+  An object mapping parameter names to their values. Parameter values should be strings or `null`.
+  
+  Required parameters must have non-null values. Optional parameters can be `null` or `undefined`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="path" type="string">
+  The generated path with all parameters interpolated.
+</ResponseField>
+
+## Examples
+
+### Basic parameter interpolation
+
+```tsx
+import { generatePath } from "react-router";
+
+generatePath("/users/:userId", { userId: "123" });
+// "/users/123"
+
+generatePath("/posts/:postId", { postId: "abc" });
+// "/posts/abc"
+```
+
+### Multiple parameters
+
+```tsx
+import { generatePath } from "react-router";
+
+generatePath(
+  "/users/:userId/posts/:postId",
+  { userId: "123", postId: "456" }
+);
+// "/users/123/posts/456"
+
+generatePath(
+  "/:lang/products/:category/:id",
+  { lang: "en", category: "shoes", id: "blue-sneakers" }
+);
+// "/en/products/shoes/blue-sneakers"
+```
+
+### Optional parameters
+
+```tsx
+import { generatePath } from "react-router";
+
+// With optional param
+generatePath("/users/:userId?", { userId: "123" });
+// "/users/123"
+
+// Without optional param
+generatePath("/users/:userId?", {});
+// "/users"
+
+generatePath("/users/:userId?", { userId: null });
+// "/users"
+```
+
+### Wildcard paths
+
+```tsx
+import { generatePath } from "react-router";
+
+generatePath("/files/*", { "*": "documents/report.pdf" });
+// "/files/documents/report.pdf"
+
+generatePath("/files/*filepath", { filepath: "images/photo.jpg" });
+// "/files/images/photo.jpg"
+```
+
+### No parameters
+
+```tsx
+import { generatePath } from "react-router";
+
+generatePath("/about");
+// "/about"
+
+generatePath("/contact", {});
+// "/contact"
+```
+
+## Common Use Cases
+
+### Building navigation links
+
+```tsx
+import { generatePath, Link } from "react-router";
+
+interface UserLinkProps {
+  userId: string;
+  children: React.ReactNode;
+}
+
+function UserLink({ userId, children }: UserLinkProps) {
+  const path = generatePath("/users/:userId", { userId });
+  return <Link to={path}>{children}</Link>;
+}
+
+// Usage
+<UserLink userId="123">View Profile</UserLink>
+```
+
+### Programmatic navigation
+
+```tsx
+import { generatePath, useNavigate } from "react-router";
+
+function ProductList({ products }: { products: Product[] }) {
+  const navigate = useNavigate();
+  
+  const viewProduct = (productId: string) => {
+    const path = generatePath("/products/:productId", { productId });
+    navigate(path);
+  };
+  
+  return (
+    <ul>
+      {products.map((product) => (
+        <li key={product.id} onClick={() => viewProduct(product.id)}>
+          {product.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### API URL construction
+
+```tsx
+import { generatePath } from "react-router";
+
+const API_ROUTES = {
+  user: "/api/users/:userId",
+  userPosts: "/api/users/:userId/posts",
+  post: "/api/posts/:postId",
+};
+
+async function fetchUser(userId: string) {
+  const url = generatePath(API_ROUTES.user, { userId });
+  const response = await fetch(url);
+  return response.json();
+}
+
+async function fetchUserPosts(userId: string) {
+  const url = generatePath(API_ROUTES.userPosts, { userId });
+  const response = await fetch(url);
+  return response.json();
+}
+```
+
+### Dynamic breadcrumbs
+
+```tsx
+import { generatePath } from "react-router";
+
+interface Breadcrumb {
+  label: string;
+  pattern: string;
+  params: Record<string, string>;
+}
+
+function Breadcrumbs({ items }: { items: Breadcrumb[] }) {
+  return (
+    <nav>
+      {items.map((item, index) => {
+        const path = generatePath(item.pattern, item.params);
+        return (
+          <span key={index}>
+            {index > 0 && " / "}
+            <Link to={path}>{item.label}</Link>
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+// Usage
+<Breadcrumbs
+  items={[
+    { label: "Users", pattern: "/users", params: {} },
+    { label: "John", pattern: "/users/:userId", params: { userId: "123" } },
+    { label: "Posts", pattern: "/users/:userId/posts", params: { userId: "123" } },
+  ]}
+/>
+```
+
+### Batch URL generation
+
+```tsx
+import { generatePath } from "react-router";
+
+function generateUserUrls(userIds: string[]) {
+  return userIds.map((userId) => 
+    generatePath("/users/:userId", { userId })
+  );
+}
+
+const urls = generateUserUrls(["1", "2", "3"]);
+// ["/users/1", "/users/2", "/users/3"]
+```
+
+### Form redirects
+
+```tsx
+import { generatePath, redirect } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const user = await createUser(formData);
+  
+  const path = generatePath("/users/:userId", { userId: user.id });
+  return redirect(path);
+}
+```
+
+## Type Safety
+
+TypeScript automatically infers required parameters:
+
+```tsx
+import { generatePath } from "react-router";
+
+// TypeScript knows userId is required
+generatePath("/users/:userId", { userId: "123" }); // ✓
+
+// @ts-expect-error - missing userId
+generatePath("/users/:userId", {});
+
+// @ts-expect-error - unknown parameter
+generatePath("/users/:userId", { userName: "123" });
+
+// Multiple params are required
+generatePath(
+  "/users/:userId/posts/:postId",
+  { userId: "1", postId: "2" } // ✓
+);
+
+// Optional params are... optional
+generatePath("/users/:userId?", {}); // ✓
+generatePath("/users/:userId?", { userId: "123" }); // ✓
+```
+
+## Parameter Encoding
+
+Parameter values are automatically URL-encoded:
+
+```tsx
+import { generatePath } from "react-router";
+
+generatePath("/search/:query", { query: "hello world" });
+// "/search/hello%20world"
+
+generatePath("/users/:name", { name: "John/Doe" });
+// "/users/John%2FDoe"
+
+generatePath("/tags/:tag", { tag: "c++" });
+// "/tags/c%2B%2B"
+```
+
+## Edge Cases
+
+### Missing required parameters
+
+```tsx
+import { generatePath } from "react-router";
+
+// Throws error: Missing ":userId" param
+try {
+  generatePath("/users/:userId", {});
+} catch (error) {
+  console.error(error);
+}
+```
+
+### Null vs undefined
+
+```tsx
+import { generatePath } from "react-router";
+
+// Optional param with null
+generatePath("/users/:userId?", { userId: null });
+// "/users"
+
+// Optional param with undefined
+generatePath("/users/:userId?", { userId: undefined });
+// "/users"
+
+// Optional param with empty string
+generatePath("/users/:userId?", { userId: "" });
+// "/users/" (empty string is used)
+```
+
+### Extra parameters
+
+```tsx
+import { generatePath } from "react-router";
+
+// Extra params are ignored
+generatePath(
+  "/users/:userId",
+  { userId: "123", extra: "ignored" }
+);
+// "/users/123"
+```
+
+### Leading/trailing slashes
+
+```tsx
+import { generatePath } from "react-router";
+
+generatePath("/users/:userId", { userId: "123" });
+// "/users/123"
+
+generatePath("users/:userId", { userId: "123" });
+// "users/123" (no leading slash)
+
+generatePath("/users/:userId/", { userId: "123" });
+// "/users/123/" (trailing slash preserved)
+```
+
+## Pattern Examples
+
+### Simple dynamic route
+
+```tsx
+generatePath("/posts/:id", { id: "123" });
+// "/posts/123"
+```
+
+### Nested dynamic routes
+
+```tsx
+generatePath(
+  "/users/:userId/posts/:postId/comments/:commentId",
+  { userId: "1", postId: "2", commentId: "3" }
+);
+// "/users/1/posts/2/comments/3"
+```
+
+### With file extensions
+
+```tsx
+generatePath("/files/:filename.pdf", { filename: "report" });
+// "/files/report.pdf"
+```
+
+### With hyphens and underscores
+
+```tsx
+generatePath("/api/:api_version/users/:user-id", {
+  api_version: "v1",
+  "user-id": "123",
+});
+// "/api/v1/users/123"
+```
+
+## Performance
+
+`generatePath` is a fast, synchronous operation suitable for use in render functions:
+
+```tsx
+function UserList({ users }: { users: User[] }) {
+  return (
+    <ul>
+      {users.map((user) => {
+        // Safe to call in render
+        const path = generatePath("/users/:userId", { userId: user.id });
+        return (
+          <li key={user.id}>
+            <Link to={path}>{user.name}</Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+```
+
+## Related Functions
+
+- [`matchPath`](/api/utils/match-path) - Extract params from paths (inverse operation)
+- [`resolvePath`](/api/utils/resolve-path) - Resolve relative paths
+- [`useParams`](/api/hooks/use-params) - Access current route params
+
+## Notes
+
+- Parameter names must match exactly (case-sensitive)
+- Parameters are URL-encoded automatically
+- Required parameters throw if missing
+- Optional parameters (`:param?`) can be omitted
+- Wildcard segments (`*`) capture remaining path
+- Extra parameters in the object are ignored
+- Empty string parameters are treated as values (not omitted)

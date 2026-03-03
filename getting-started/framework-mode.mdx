@@ -1,0 +1,400 @@
+---
+title: Framework Mode
+description: Complete guide to React Router Framework Mode with Vite plugin, type safety, and SSR/SPA support
+---
+
+# Framework Mode
+
+Framework Mode is the full-featured way to use React Router. It wraps Data Mode with a Vite plugin to add type-safe routing, intelligent code splitting, and flexible rendering strategies (SPA, SSR, SSG).
+
+## Quick Start
+
+<Steps>
+
+### Create a new project
+
+```bash
+npx create-react-router@latest my-app
+cd my-app
+npm install
+npm run dev
+```
+
+### Open your browser
+
+Visit `http://localhost:5173` to see your app running.
+
+</Steps>
+
+## What You Get
+
+Framework Mode provides:
+
+- **Type Safety**: Auto-generated types for params, loader data, and actions
+- **Code Splitting**: Automatic route-based code splitting
+- **SSR/SPA/SSG**: Choose your rendering strategy per route
+- **File-based or Config-based Routing**: Use what works for your team
+- **Optimized Builds**: Production-ready bundling with Vite
+- **Development Server**: Fast HMR and instant feedback
+
+## Project Structure
+
+A typical Framework Mode project looks like this:
+
+```
+my-app/
+├── app/
+│   ├── routes/
+│   │   ├── _index.tsx       # Home page (/)
+│   │   ├── about.tsx         # About page (/about)
+│   │   └── products.$id.tsx  # Product detail (/products/:id)
+│   ├── root.tsx              # Root layout
+│   └── routes.ts             # Route configuration
+├── public/                   # Static assets
+├── react-router.config.ts    # React Router config
+└── vite.config.ts            # Vite config
+```
+
+## Configuring Routes
+
+<Tabs>
+  <Tab title="File-based (Recommended)">
+    Use the file system to define your routes with `flatRoutes()`:
+
+    ```ts filename="app/routes.ts"
+    import { type RouteConfig } from "@react-router/dev/routes";
+    import { flatRoutes } from "@react-router/fs-routes";
+
+    export default flatRoutes() satisfies RouteConfig;
+    ```
+
+    File naming conventions:
+
+    ```
+    app/routes/
+    ├── _index.tsx              → /
+    ├── about.tsx               → /about
+    ├── blog.$slug.tsx          → /blog/:slug
+    ├── settings.profile.tsx    → /settings/profile
+    └── _layout.tsx             → pathless layout route
+    ```
+  </Tab>
+
+  <Tab title="Config-based">
+    Manually configure routes using helper functions:
+
+    ```ts filename="app/routes.ts"
+    import {
+      type RouteConfig,
+      route,
+      index,
+      layout,
+      prefix,
+    } from "@react-router/dev/routes";
+
+    export default [
+      index("./home.tsx"),
+      route("about", "./about.tsx"),
+
+      layout("./auth/layout.tsx", [
+        route("login", "./auth/login.tsx"),
+        route("register", "./auth/register.tsx"),
+      ]),
+
+      ...prefix("concerts", [
+        index("./concerts/home.tsx"),
+        route(":city", "./concerts/city.tsx"),
+        route("trending", "./concerts/trending.tsx"),
+      ]),
+    ] satisfies RouteConfig;
+    ```
+  </Tab>
+
+  <Tab title="Hybrid">
+    Combine both approaches:
+
+    ```ts filename="app/routes.ts"
+    import { type RouteConfig, route } from "@react-router/dev/routes";
+    import { flatRoutes } from "@react-router/fs-routes";
+
+    export default [
+      route("/", "./home.tsx"),
+      ...(await flatRoutes()),
+    ] satisfies RouteConfig;
+    ```
+  </Tab>
+</Tabs>
+
+## Route Modules
+
+Route modules define behavior for each route using exports:
+
+<CodeGroup>
+
+```tsx Basic
+// app/routes/product.$id.tsx
+import type { Route } from "./+types/product.$id";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const product = await fetchProduct(params.id);
+  return { product };
+}
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>{loaderData.product.name}</h1>
+      <p>{loaderData.product.description}</p>
+    </div>
+  );
+}
+```
+
+```tsx With Action
+// app/routes/products.$id.edit.tsx
+import type { Route } from "./+types/products.$id.edit";
+import { Form, redirect } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const product = await fetchProduct(params.id);
+  return { product };
+}
+
+export async function action({ request, params }: Route.ActionArgs) {
+  const formData = await request.formData();
+  await updateProduct(params.id, formData);
+  return redirect(`/products/${params.id}`);
+}
+
+export default function EditProduct({ loaderData }: Route.ComponentProps) {
+  return (
+    <Form method="post">
+      <input name="name" defaultValue={loaderData.product.name} />
+      <button type="submit">Save</button>
+    </Form>
+  );
+}
+```
+
+```tsx Full Example
+// app/routes/teams.$teamId.tsx
+import type { Route } from "./+types/teams.$teamId";
+import { useNavigation } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const team = await db.team.findUnique({
+    where: { id: params.teamId },
+  });
+  if (!team) throw new Response("Not Found", { status: 404 });
+  return { team };
+}
+
+export async function action({ request, params }: Route.ActionArgs) {
+  const formData = await request.formData();
+  await db.team.update({
+    where: { id: params.teamId },
+    data: { name: formData.get("name") },
+  });
+  return { success: true };
+}
+
+export function ErrorBoundary() {
+  return <div>Something went wrong loading this team!</div>;
+}
+
+export default function Team({ loaderData }: Route.ComponentProps) {
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+
+  return (
+    <div>
+      <h1>{loaderData.team.name}</h1>
+      <Form method="post">
+        <input name="name" defaultValue={loaderData.team.name} />
+        <button disabled={isSubmitting}>
+          {isSubmitting ? "Saving..." : "Save"}
+        </button>
+      </Form>
+    </div>
+  );
+}
+```
+
+</CodeGroup>
+
+## Type Safety
+
+Framework Mode automatically generates types for your routes:
+
+```tsx
+import type { Route } from "./+types/product.$id";
+//                              ^
+//          Auto-generated from route file name
+
+export async function loader({ params }: Route.LoaderArgs) {
+  //                           ^
+  //         params.id is type-safe!
+  const product = await fetchProduct(params.id);
+  return { product };
+}
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  //                              ^
+  //            loaderData.product is type-safe!
+  return <h1>{loaderData.product.name}</h1>;
+}
+```
+
+<Note>
+Types are generated automatically on file changes during development. No manual type definitions needed!
+</Note>
+
+## Nested Routes and Layouts
+
+<Steps>
+
+### Create a parent layout
+
+```tsx filename="app/routes/dashboard.tsx"
+import { Outlet } from "react-router";
+
+export default function DashboardLayout() {
+  return (
+    <div>
+      <aside>
+        <nav>{/* sidebar navigation */}</nav>
+      </aside>
+      <main>
+        <Outlet /> {/* Child routes render here */}
+      </main>
+    </div>
+  );
+}
+```
+
+### Configure nested routes
+
+```ts filename="app/routes.ts"
+import { route, index } from "@react-router/dev/routes";
+
+export default [
+  route("dashboard", "./dashboard.tsx", [
+    index("./dashboard/home.tsx"),        // /dashboard
+    route("settings", "./dashboard/settings.tsx"),  // /dashboard/settings
+    route("profile", "./dashboard/profile.tsx"),    // /dashboard/profile
+  ]),
+];
+```
+
+</Steps>
+
+## Data Loading Strategies
+
+<Tabs>
+  <Tab title="Server (SSR)">
+    ```tsx
+    // Runs on server for SSR, and on client for navigation
+    export async function loader({ params }: Route.LoaderArgs) {
+      const data = await db.getData(params.id);
+      return { data };
+    }
+    ```
+  </Tab>
+
+  <Tab title="Client Only">
+    ```tsx
+    // Only runs in the browser
+    export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+      const res = await fetch(`/api/data/${params.id}`);
+      return res.json();
+    }
+
+    export function HydrateFallback() {
+      return <div>Loading...</div>;
+    }
+    ```
+  </Tab>
+
+  <Tab title="Hybrid">
+    ```tsx
+    // Server loader for SSR
+    export async function loader({ params }: Route.LoaderArgs) {
+      return await db.getData(params.id);
+    }
+
+    // Client loader for SPA navigation
+    export async function clientLoader({
+      params,
+      serverLoader,
+    }: Route.ClientLoaderArgs) {
+      const serverData = await serverLoader();
+      const clientData = await fetch(`/api/extra/${params.id}`);
+      return { ...serverData, ...clientData };
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Rendering Strategies
+
+Configure in `react-router.config.ts`:
+
+<CodeGroup>
+
+```ts SPA
+export default {
+  ssr: false,
+};
+```
+
+```ts SSR
+export default {
+  ssr: true,
+};
+```
+
+```ts SSG (Pre-rendering)
+export default {
+  async prerender() {
+    const products = await db.product.findMany();
+    return products.map(p => `/products/${p.id}`);
+  },
+};
+```
+
+</CodeGroup>
+
+## Vite Plugin Setup
+
+The plugin is configured in `vite.config.ts`:
+
+```ts filename="vite.config.ts"
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [reactRouter()],
+});
+```
+
+## Next Steps
+
+<Steps>
+
+### Learn Route Modules
+
+Explore all the exports available in route modules: `loader`, `action`, `meta`, `headers`, `ErrorBoundary`, and more.
+
+### Add Authentication
+
+Implement protected routes with loaders and redirects.
+
+### Deploy Your App
+
+Deploy to Vercel, Cloudflare, or any Node.js host with adapters.
+
+</Steps>
+
+<Note>
+Framework Mode gives you the full power of React Router with the best developer experience.
+</Note>

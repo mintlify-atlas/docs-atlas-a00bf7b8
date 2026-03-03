@@ -1,0 +1,367 @@
+---
+title: 'matchPath'
+description: 'Match a URL pathname against a path pattern'
+---
+
+## Summary
+
+Performs pattern matching on a URL pathname and returns information about the match. Useful for checking if a path matches a pattern and extracting URL parameters.
+
+Unlike `matchRoutes` which works with route trees, `matchPath` works with a single path pattern.
+
+## Signature
+
+```typescript
+function matchPath<
+  ParamKey extends ParamParseKey<Path>,
+  Path extends string
+>(
+  pattern: PathPattern<Path> | Path,
+  pathname: string
+): PathMatch<ParamKey> | null
+```
+
+## Parameters
+
+<ParamField path="pattern" type="PathPattern<Path> | string" required>
+  The pattern to match against. Can be:
+  - A string path pattern (e.g., `/users/:id`)
+  - A `PathPattern` object with `path`, `caseSensitive`, and `end` properties
+  
+  When a string is provided, it's treated as `{ path, caseSensitive: false, end: true }`.
+</ParamField>
+
+<ParamField path="pathname" type="string" required>
+  The URL pathname to match against the pattern (e.g., `/users/123`).
+</ParamField>
+
+## PathPattern Object
+
+```typescript
+interface PathPattern<Path extends string = string> {
+  path: Path;              // Pattern with optional :params and /*
+  caseSensitive?: boolean; // Match case-sensitively
+  end?: boolean;          // Match entire pathname (true) or just prefix (false)
+}
+```
+
+## Returns
+
+<ResponseField name="match" type="PathMatch<ParamKey> | null">
+  A match object if the pattern matches, or `null` if it doesn't match.
+  
+  The match object contains:
+  - `params` - Extracted URL parameters
+  - `pathname` - The matched portion of the pathname
+  - `pathnameBase` - The matched pathname before wildcards
+  - `pattern` - The pattern that was matched
+</ResponseField>
+
+## Examples
+
+### Basic string pattern
+
+```tsx
+import { matchPath } from "react-router";
+
+const match = matchPath("/users/:userId", "/users/123");
+// {
+//   params: { userId: "123" },
+//   pathname: "/users/123",
+//   pathnameBase: "/users/123",
+//   pattern: { path: "/users/:userId", caseSensitive: false, end: true }
+// }
+
+const noMatch = matchPath("/users/:userId", "/posts/456");
+// null
+```
+
+### Multiple parameters
+
+```tsx
+import { matchPath } from "react-router";
+
+const match = matchPath(
+  "/users/:userId/posts/:postId",
+  "/users/123/posts/456"
+);
+// {
+//   params: { userId: "123", postId: "456" },
+//   pathname: "/users/123/posts/456",
+//   ...
+// }
+```
+
+### Wildcard pattern
+
+```tsx
+import { matchPath } from "react-router";
+
+const match = matchPath("/files/*", "/files/documents/report.pdf");
+// {
+//   params: { "*": "documents/report.pdf" },
+//   pathname: "/files/documents/report.pdf",
+//   pathnameBase: "/files",
+//   ...
+// }
+```
+
+### Case-sensitive matching
+
+```tsx
+import { matchPath } from "react-router";
+
+const pattern = {
+  path: "/Users/:id",
+  caseSensitive: true,
+};
+
+matchPath(pattern, "/Users/123"); // Matches
+matchPath(pattern, "/users/123"); // null (case mismatch)
+```
+
+### Partial matching (prefix)
+
+```tsx
+import { matchPath } from "react-router";
+
+const pattern = {
+  path: "/users",
+  end: false, // Don't require full match
+};
+
+matchPath(pattern, "/users"); // Matches
+matchPath(pattern, "/users/123"); // Also matches (prefix)
+matchPath(pattern, "/posts"); // null
+```
+
+### Full vs. partial matching
+
+```tsx
+import { matchPath } from "react-router";
+
+// Full match (default: end: true)
+matchPath("/users", "/users"); // Matches
+matchPath("/users", "/users/123"); // null
+
+// Partial match (end: false)
+matchPath({ path: "/users", end: false }, "/users"); // Matches
+matchPath({ path: "/users", end: false }, "/users/123"); // Matches
+```
+
+## Common Use Cases
+
+### Active link styling
+
+```tsx
+import { matchPath, useLocation } from "react-router";
+
+function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
+  const location = useLocation();
+  const isActive = matchPath(to, location.pathname) !== null;
+  
+  return (
+    <a
+      href={to}
+      className={isActive ? "active" : ""}
+    >
+      {children}
+    </a>
+  );
+}
+```
+
+### Conditional rendering based on route
+
+```tsx
+import { matchPath, useLocation } from "react-router";
+
+function Sidebar() {
+  const location = useLocation();
+  const isUserPage = matchPath("/users/*", location.pathname);
+  
+  if (isUserPage) {
+    return <UserSidebar />;
+  }
+  
+  return <DefaultSidebar />;
+}
+```
+
+### Extracting params from pathname
+
+```tsx
+import { matchPath } from "react-router";
+
+function getUserIdFromPath(pathname: string): string | null {
+  const match = matchPath("/users/:userId", pathname);
+  return match?.params.userId || null;
+}
+
+const userId = getUserIdFromPath("/users/123"); // "123"
+```
+
+### Route-based permissions
+
+```tsx
+import { matchPath } from "react-router";
+
+function requiresAuth(pathname: string): boolean {
+  const protectedPatterns = [
+    "/dashboard/*",
+    "/settings/*",
+    "/profile",
+  ];
+  
+  return protectedPatterns.some((pattern) => 
+    matchPath(pattern, pathname) !== null
+  );
+}
+```
+
+### Pattern validation
+
+```tsx
+import { matchPath } from "react-router";
+
+function isValidProductUrl(url: string): boolean {
+  const match = matchPath("/products/:id", url);
+  
+  if (!match) return false;
+  
+  // Validate ID format
+  const id = match.params.id;
+  return /^\d+$/.test(id);
+}
+```
+
+### Building breadcrumbs
+
+```tsx
+import { matchPath } from "react-router";
+
+const breadcrumbPatterns = [
+  { pattern: "/", label: "Home" },
+  { pattern: "/users", label: "Users" },
+  { pattern: "/users/:userId", label: "User Details" },
+  { pattern: "/users/:userId/posts", label: "Posts" },
+];
+
+function getBreadcrumbs(pathname: string) {
+  return breadcrumbPatterns
+    .filter(({ pattern }) => matchPath(pattern, pathname))
+    .map(({ label }) => label);
+}
+
+getBreadcrumbs("/users/123/posts");
+// ["Home", "Users", "User Details", "Posts"]
+```
+
+## Pattern Syntax
+
+### Dynamic segments
+
+```tsx
+// Single parameter
+matchPath("/users/:id", "/users/123");
+// params: { id: "123" }
+
+// Multiple parameters
+matchPath("/users/:userId/posts/:postId", "/users/1/posts/2");
+// params: { userId: "1", postId: "2" }
+
+// Parameters with naming
+matchPath("/posts/:post_id", "/posts/abc-123");
+// params: { post_id: "abc-123" }
+```
+
+### Optional segments
+
+```tsx
+matchPath("/users/:id?", "/users");
+// params: { id: undefined }
+
+matchPath("/users/:id?", "/users/123");
+// params: { id: "123" }
+```
+
+### Wildcards
+
+```tsx
+// Catch-all at the end
+matchPath("/files/*", "/files/docs/report.pdf");
+// params: { "*": "docs/report.pdf" }
+
+// Named wildcard
+matchPath("/files/*filepath", "/files/docs/report.pdf");
+// params: { filepath: "docs/report.pdf" }
+```
+
+### Static segments
+
+```tsx
+matchPath("/about/team", "/about/team"); // Matches
+matchPath("/about/team", "/about/contact"); // null
+```
+
+## Type Safety
+
+TypeScript automatically infers parameter types:
+
+```tsx
+import { matchPath } from "react-router";
+
+const match = matchPath("/users/:userId/posts/:postId", pathname);
+
+if (match) {
+  // TypeScript knows params has userId and postId
+  const userId: string = match.params.userId;
+  const postId: string = match.params.postId;
+  
+  // @ts-expect-error - unknown param
+  const invalid = match.params.unknown;
+}
+```
+
+## Performance
+
+`matchPath` compiles patterns into regular expressions and caches them internally for performance. Repeated matches against the same pattern are fast.
+
+```tsx
+// Pattern is compiled once and reused
+for (const pathname of pathnames) {
+  const match = matchPath("/users/:id", pathname);
+}
+```
+
+## Comparison with matchRoutes
+
+| Feature | `matchPath` | `matchRoutes` |
+|---------|-------------|---------------|
+| Input | Single pattern | Route tree |
+| Output | Single match | Array of matches |
+| Nesting | No | Yes |
+| Use case | Simple pattern matching | Full route matching |
+
+```tsx
+// matchPath - single pattern
+const match = matchPath("/users/:id", "/users/123");
+
+// matchRoutes - route tree
+const matches = matchRoutes(routes, "/users/123");
+```
+
+## Related Functions
+
+- [`matchRoutes`](/api/utils/match-routes) - Match against a route tree
+- [`generatePath`](/api/utils/generate-path) - Generate paths from patterns
+- [`resolvePath`](/api/utils/resolve-path) - Resolve relative paths
+
+## Notes
+
+- Pattern matching is case-insensitive by default
+- Parameters can contain any characters except `/`
+- Wildcards (`*`) match zero or more segments
+- Use `end: false` for prefix matching
+- Returns `null` (not `undefined`) when there's no match
+- Trailing slashes are normalized automatically

@@ -1,0 +1,480 @@
+---
+title: useRouteError
+---
+
+# useRouteError
+
+Accesses the error thrown during an `action`, `loader`, or component render to be used in a route module `ErrorBoundary`.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useRouteError(): unknown
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="error" type="unknown">
+  The error that was thrown during route loading, action execution, or rendering. Can be any value - Error objects, Response objects, or any thrown value.
+</ResponseField>
+
+## Usage
+
+### Basic error boundary
+
+```tsx
+import { useRouteError } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  return (
+    <div>
+      <h1>Something went wrong</h1>
+      <p>{error?.message || "Unknown error"}</p>
+    </div>
+  );
+}
+
+export async function loader() {
+  throw new Error("Failed to load data");
+}
+
+export default function Component() {
+  return <div>This won't render if loader throws</div>;
+}
+```
+
+### Handle Response errors
+
+```tsx
+import { useRouteError, isRouteErrorResponse } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+  
+  return <div>Unknown error</div>;
+}
+
+export async function loader({ params }) {
+  const data = await fetchData(params.id);
+  
+  if (!data) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  
+  return data;
+}
+```
+
+### Different error types
+
+```tsx
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) {
+      return <NotFound />;
+    }
+    
+    if (error.status === 401) {
+      return <Unauthorized />;
+    }
+    
+    if (error.status === 503) {
+      return <ServiceUnavailable />;
+    }
+  }
+  
+  if (error instanceof Error) {
+    return (
+      <div>
+        <h1>Error</h1>
+        <p>{error.message}</p>
+        <pre>{error.stack}</pre>
+      </div>
+    );
+  }
+  
+  return <div>Unknown error occurred</div>;
+}
+```
+
+### Custom error types
+
+```tsx
+class ValidationError extends Error {
+  constructor(
+    message: string,
+    public fields: Record<string, string>
+  ) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+export async function action({ request }) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  
+  if (!email?.includes("@")) {
+    throw new ValidationError("Invalid form", {
+      email: "Email must be valid",
+    });
+  }
+  
+  return { success: true };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (error instanceof ValidationError) {
+    return (
+      <div>
+        <h2>Validation Failed</h2>
+        <ul>
+          {Object.entries(error.fields).map(([field, message]) => (
+            <li key={field}>
+              {field}: {message}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  
+  return <div>Error: {error?.message}</div>;
+}
+```
+
+### JSON error data
+
+```tsx
+export async function loader() {
+  const data = await fetchData();
+  
+  if (!data) {
+    throw Response.json(
+      { message: "Data not found", code: "NOT_FOUND" },
+      { status: 404 }
+    );
+  }
+  
+  return data;
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status}</h1>
+        <p>{error.data.message}</p>
+        <p>Error code: {error.data.code}</p>
+      </div>
+    );
+  }
+  
+  return <div>Unknown error</div>;
+}
+```
+
+## Common Patterns
+
+### 404 Not Found
+
+```tsx
+export async function loader({ params }) {
+  const post = await db.post.findUnique({
+    where: { id: params.id },
+  });
+  
+  if (!post) {
+    throw new Response("Post not found", { status: 404 });
+  }
+  
+  return { post };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return (
+      <div className="not-found">
+        <h1>404</h1>
+        <p>This post doesn't exist</p>
+        <Link to="/posts">View all posts</Link>
+      </div>
+    );
+  }
+  
+  throw error; // Re-throw to parent ErrorBoundary
+}
+```
+
+### Authentication errors
+
+```tsx
+export async function loader({ request }) {
+  const user = await requireUser(request);
+  
+  if (!user) {
+    throw new Response("Unauthorized", { status: 401 });
+  }
+  
+  return { user };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error) && error.status === 401) {
+    return (
+      <div>
+        <h1>Access Denied</h1>
+        <p>You must be logged in to view this page</p>
+        <Link to="/login">Go to Login</Link>
+      </div>
+    );
+  }
+  
+  return <GeneralError error={error} />;
+}
+```
+
+### Development vs production errors
+
+```tsx
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const isDev = process.env.NODE_ENV === "development";
+  
+  if (error instanceof Error) {
+    return (
+      <div>
+        <h1>Application Error</h1>
+        <p>{error.message}</p>
+        
+        {isDev && (
+          <details>
+            <summary>Stack Trace</summary>
+            <pre>{error.stack}</pre>
+          </details>
+        )}
+        
+        {!isDev && (
+          <p>Please try again or contact support</p>
+        )}
+      </div>
+    );
+  }
+  
+  return <div>An error occurred</div>;
+}
+```
+
+### Logging errors
+
+```tsx
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  useEffect(() => {
+    // Log to error tracking service
+    if (error) {
+      console.error("Route error:", error);
+      // Sentry.captureException(error);
+    }
+  }, [error]);
+  
+  return <div>Something went wrong</div>;
+}
+```
+
+### Retry mechanism
+
+```tsx
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const retry = () => {
+    // Force reload by navigating to same URL
+    navigate(location.pathname, { replace: true });
+  };
+  
+  return (
+    <div>
+      <h1>Error</h1>
+      <p>{error?.message}</p>
+      <button onClick={retry}>Try Again</button>
+    </div>
+  );
+}
+```
+
+### Nested error boundaries
+
+```tsx
+// Root error boundary - catches all
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  return (
+    <html>
+      <head>
+        <title>Error</title>
+      </head>
+      <body>
+        <h1>Application Error</h1>
+        <p>{error?.message || "Something went wrong"}</p>
+      </body>
+    </html>
+  );
+}
+
+// Route-specific error boundary
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  // Handle specific errors
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <RouteNotFound />;
+  }
+  
+  // Let root boundary handle others
+  throw error;
+}
+```
+
+### User-friendly error messages
+
+```tsx
+const errorMessages: Record<number, string> = {
+  400: "The request was invalid. Please check your input.",
+  401: "You need to log in to access this page.",
+  403: "You don't have permission to access this.",
+  404: "We couldn't find what you're looking for.",
+  500: "Our servers encountered an error. Please try again later.",
+  503: "The service is temporarily unavailable.",
+};
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    const message = errorMessages[error.status] || "An error occurred";
+    
+    return (
+      <div className="error-page">
+        <h1>{error.status}</h1>
+        <p>{message}</p>
+      </div>
+    );
+  }
+  
+  return <div>An unexpected error occurred</div>;
+}
+```
+
+## Type Safety
+
+### Type guards
+
+```tsx
+function isValidationError(error: unknown): error is ValidationError {
+  return error instanceof Error && error.name === "ValidationError";
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isValidationError(error)) {
+    // TypeScript knows error is ValidationError
+    return <div>{error.fields}</div>;
+  }
+  
+  if (isRouteErrorResponse(error)) {
+    // TypeScript knows error is Response
+    return <div>{error.status}</div>;
+  }
+  
+  if (error instanceof Error) {
+    // TypeScript knows error is Error
+    return <div>{error.message}</div>;
+  }
+  
+  return <div>Unknown error</div>;
+}
+```
+
+### Custom error interface
+
+```tsx
+interface AppError {
+  message: string;
+  code: string;
+  details?: Record<string, any>;
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    const appError = error.data as AppError;
+    
+    return (
+      <div>
+        <h1>{appError.code}</h1>
+        <p>{appError.message}</p>
+      </div>
+    );
+  }
+}
+```
+
+## Important Notes
+
+### Error propagation
+
+If an `ErrorBoundary` throws or re-throws an error, it propagates to the parent route's `ErrorBoundary`.
+
+### Root error boundary
+
+Always define an `ErrorBoundary` in your root route to catch all unhandled errors.
+
+### Render errors vs loader/action errors
+
+The hook catches errors from:
+- Route `loader` functions
+- Route `action` functions  
+- Component rendering (including child components)
+
+## Related
+
+- [`ErrorBoundary`](/start/framework/route-module#errorboundary) - Route error boundary export
+- [`isRouteErrorResponse`](/api/utils/is-route-error-response) - Check if error is a Response
+- [`loader`](/start/framework/route-module#loader) - Define route loader
+- [`action`](/start/framework/route-module#action) - Define route action

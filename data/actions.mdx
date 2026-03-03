@@ -1,0 +1,443 @@
+---
+title: Actions
+---
+
+# Actions
+
+Actions handle data mutations like creating, updating, and deleting records. They run in response to form submissions and programmatic submissions.
+
+## Basic Action
+
+Actions receive form data from `POST`, `PUT`, `PATCH`, or `DELETE` requests:
+
+```tsx filename=app/routes/projects.new.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/projects.new";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const name = formData.get("name");
+  const description = formData.get("description");
+  
+  const project = await db.project.create({
+    data: { name, description },
+  });
+  
+  return redirect(`/projects/${project.id}`);
+}
+
+export default function NewProject() {
+  return (
+    <Form method="post">
+      <input type="text" name="name" required />
+      <textarea name="description" />
+      <button type="submit">Create Project</button>
+    </Form>
+  );
+}
+```
+
+## Using `Form`
+
+The `Form` component triggers actions when submitted:
+
+```tsx
+import { Form } from "react-router";
+
+export default function DeleteProject({ loaderData }: Route.ComponentProps) {
+  return (
+    <Form method="post" action="/projects/delete">
+      <input type="hidden" name="id" value={loaderData.project.id} />
+      <button type="submit">Delete</button>
+    </Form>
+  );
+}
+```
+
+## Action Arguments
+
+Actions receive the same arguments as loaders:
+
+```tsx
+export async function action({
+  request,  // Fetch Request object
+  params,   // URL parameters from the route path
+  context,  // Router context
+}: Route.ActionArgs) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  
+  switch (intent) {
+    case "create":
+      return createItem(formData);
+    case "update":
+      return updateItem(params.id, formData);
+    case "delete":
+      return deleteItem(params.id);
+    default:
+      throw new Response("Invalid intent", { status: 400 });
+  }
+}
+```
+
+## Form Data Formats
+
+### URL Encoded (default)
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  const password = formData.get("password");
+  
+  return await login(email, password);
+}
+```
+
+### JSON
+
+```tsx
+import { Form } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const data = await request.json();
+  return await createUser(data);
+}
+
+export default function Signup() {
+  return (
+    <Form method="post" encType="application/json">
+      <input type="email" name="email" />
+      <input type="password" name="password" />
+      <button type="submit">Sign Up</button>
+    </Form>
+  );
+}
+```
+
+### Multipart (file uploads)
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const file = formData.get("avatar") as File;
+  
+  const buffer = await file.arrayBuffer();
+  const url = await uploadToStorage(buffer, file.name);
+  
+  return { avatarUrl: url };
+}
+
+export default function UploadAvatar() {
+  return (
+    <Form method="post" encType="multipart/form-data">
+      <input type="file" name="avatar" accept="image/*" />
+      <button type="submit">Upload</button>
+    </Form>
+  );
+}
+```
+
+## Returning Data
+
+Actions can return data to be used in the UI:
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  
+  // Validate
+  if (!email || !email.includes("@")) {
+    return {
+      error: "Please enter a valid email address",
+    };
+  }
+  
+  await subscribeToNewsletter(email);
+  return { success: true };
+}
+
+export default function Newsletter() {
+  const actionData = useActionData<typeof action>();
+  
+  return (
+    <Form method="post">
+      <input type="email" name="email" />
+      <button type="submit">Subscribe</button>
+      
+      {actionData?.error && (
+        <p className="error">{actionData.error}</p>
+      )}
+      {actionData?.success && (
+        <p className="success">Subscribed!</p>
+      )}
+    </Form>
+  );
+}
+```
+
+## Using `useActionData`
+
+Access action data with the `useActionData` hook:
+
+```tsx
+import { Form, useActionData } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const body = await request.formData();
+  const name = body.get("visitorsName");
+  return { message: `Hello, ${name}` };
+}
+
+export default function Greeting() {
+  const data = useActionData<typeof action>();
+  
+  return (
+    <Form method="post">
+      <input type="text" name="visitorsName" />
+      {data ? data.message : "Waiting..."}
+    </Form>
+  );
+}
+```
+
+## Redirecting After Actions
+
+```tsx
+import { redirect } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  
+  const post = await db.post.create({
+    data: {
+      title: formData.get("title"),
+      content: formData.get("content"),
+    },
+  });
+  
+  // Redirect to the new post
+  return redirect(`/posts/${post.id}`);
+}
+```
+
+## Multiple Actions per Form
+
+Use button values to differentiate actions:
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  
+  if (intent === "save") {
+    return await saveDraft(formData);
+  }
+  
+  if (intent === "publish") {
+    return await publishPost(formData);
+  }
+  
+  throw new Response("Invalid intent", { status: 400 });
+}
+
+export default function PostEditor() {
+  return (
+    <Form method="post">
+      <input type="text" name="title" />
+      <textarea name="content" />
+      
+      <button type="submit" name="intent" value="save">
+        Save Draft
+      </button>
+      <button type="submit" name="intent" value="publish">
+        Publish
+      </button>
+    </Form>
+  );
+}
+```
+
+## Programmatic Submission
+
+Submit forms programmatically with `useSubmit`:
+
+```tsx
+import { useSubmit } from "react-router";
+
+export default function SearchBox() {
+  const submit = useSubmit();
+  
+  return (
+    <Form
+      onChange={(e) => {
+        submit(e.currentTarget);
+      }}
+    >
+      <input type="text" name="q" />
+    </Form>
+  );
+}
+```
+
+Submit JSON data:
+
+```tsx
+import { useSubmit } from "react-router";
+
+export default function SaveButton() {
+  const submit = useSubmit();
+  
+  const handleSave = () => {
+    submit(
+      { title: "My Post", content: "..." },
+      {
+        method: "post",
+        encType: "application/json",
+      }
+    );
+  };
+  
+  return <button onClick={handleSave}>Save</button>;
+}
+```
+
+## Navigation State
+
+Track form submission state with `useNavigation`:
+
+```tsx
+import { Form, useNavigation } from "react-router";
+
+export default function ContactForm() {
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+  
+  return (
+    <Form method="post">
+      <input type="email" name="email" />
+      <textarea name="message" />
+      
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? "Sending..." : "Send"}
+      </button>
+    </Form>
+  );
+}
+```
+
+## Error Handling
+
+```tsx
+import { isRouteErrorResponse, useRouteError } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  
+  if (!email) {
+    throw new Response("Email is required", { status: 400 });
+  }
+  
+  try {
+    await sendEmail(email);
+    return { success: true };
+  } catch (error) {
+    throw new Response("Failed to send email", { status: 500 });
+  }
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+  
+  return <div>An error occurred</div>;
+}
+```
+
+## Validation
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  const password = formData.get("password");
+  
+  const errors: Record<string, string> = {};
+  
+  if (!email || !email.includes("@")) {
+    errors.email = "Valid email is required";
+  }
+  
+  if (!password || password.length < 8) {
+    errors.password = "Password must be at least 8 characters";
+  }
+  
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+  
+  return await createAccount({ email, password });
+}
+
+export default function Signup() {
+  const actionData = useActionData<typeof action>();
+  
+  return (
+    <Form method="post">
+      <div>
+        <input type="email" name="email" />
+        {actionData?.errors?.email && (
+          <span className="error">{actionData.errors.email}</span>
+        )}
+      </div>
+      
+      <div>
+        <input type="password" name="password" />
+        {actionData?.errors?.password && (
+          <span className="error">{actionData.errors.password}</span>
+        )}
+      </div>
+      
+      <button type="submit">Sign Up</button>
+    </Form>
+  );
+}
+```
+
+## Client Actions
+
+Use `clientAction` for client-only mutations:
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  // Runs on server
+  const formData = await request.formData();
+  return await updateUser(formData);
+}
+
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+  // Runs on client
+  const result = await serverAction();
+  
+  // Update client cache
+  cache.invalidate('user');
+  
+  return result;
+}
+```
+
+## Related
+
+- [Loaders](/data/loaders) - Loading data
+- [Fetchers](/data/fetchers) - Mutations without navigation
+- [Optimistic UI](/data/optimistic-ui) - Update UI before action completes

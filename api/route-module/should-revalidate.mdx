@@ -1,0 +1,415 @@
+---
+title: shouldRevalidate
+---
+
+# shouldRevalidate
+
+Optimizes data loading by allowing you to skip loader execution when it's not necessary.
+
+## Signature
+
+```tsx
+export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean
+```
+
+<ParamField path="args" type="ShouldRevalidateFunctionArgs" required>
+  Arguments passed to the shouldRevalidate function
+
+  <Expandable title="properties">
+    <ParamField path="currentUrl" type="URL" required>
+      The URL before the navigation/revalidation
+    </ParamField>
+
+    <ParamField path="currentParams" type="Params" required>
+      Dynamic route params before the navigation
+    </ParamField>
+
+    <ParamField path="nextUrl" type="URL" required>
+      The URL being navigated to (or currentUrl for non-navigation revalidations)
+    </ParamField>
+
+    <ParamField path="nextParams" type="Params" required>
+      Dynamic route params for the next location
+    </ParamField>
+
+    <ParamField path="formMethod" type="string">
+      The form submission method (GET, POST, etc.) that triggered revalidation
+    </ParamField>
+
+    <ParamField path="formAction" type="string">
+      The form action URL that triggered revalidation
+    </ParamField>
+
+    <ParamField path="formEncType" type="string">
+      The form encoding type
+    </ParamField>
+
+    <ParamField path="formData" type="FormData">
+      Form submission data (when encType is urlencoded or multipart)
+    </ParamField>
+
+    <ParamField path="json" type="any">
+      Form submission data (when encType is application/json)
+    </ParamField>
+
+    <ParamField path="text" type="string">
+      Form submission data (when encType is text/plain)
+    </ParamField>
+
+    <ParamField path="actionStatus" type="number">
+      HTTP status code from the action response
+    </ParamField>
+
+    <ParamField path="actionResult" type="any">
+      Data returned from the action
+    </ParamField>
+
+    <ParamField path="defaultShouldRevalidate" type="boolean" required>
+      React Router's default revalidation logic result. Return this when you don't have a specific optimization.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  - `true` to run the loader
+  - `false` to skip the loader and keep existing data
+</ResponseField>
+
+## Default Behavior
+
+By default, React Router revalidates (re-runs loaders) in these cases:
+- After an action is called (form submission)
+- When URL search params change
+- When a link is clicked to the same URL (user clicks "refresh")
+- When params change for the route
+
+React Router does NOT revalidate when:
+- Navigating to a different route with the same parent
+- Params haven't changed
+- No action was called
+
+## Basic Example
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  return { products: await fetchProducts(params.category) };
+}
+
+export function shouldRevalidate({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) {
+  // Only revalidate if category param changed
+  return currentParams.category !== nextParams.category;
+}
+```
+
+## Skip Revalidation on Specific Actions
+
+```tsx
+export function shouldRevalidate({
+  formAction,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // Don't revalidate when updating user preferences
+  if (formAction === "/api/preferences") {
+    return false;
+  }
+  
+  // Use default behavior for everything else
+  return defaultShouldRevalidate;
+}
+```
+
+## Revalidate Based on Action Result
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const success = await updateProfile(formData);
+  
+  // Include a flag in the result
+  return { success, shouldRevalidate: success };
+}
+
+export function shouldRevalidate({
+  actionResult,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // Only revalidate if action was successful
+  if (actionResult && "shouldRevalidate" in actionResult) {
+    return actionResult.shouldRevalidate;
+  }
+  
+  return defaultShouldRevalidate;
+}
+```
+
+## Skip Revalidation on Search Param Changes
+
+```tsx
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // Only revalidate if pathname changed, not search params
+  if (currentUrl.pathname === nextUrl.pathname) {
+    return false;
+  }
+  
+  return defaultShouldRevalidate;
+}
+
+export default function SearchResults() {
+  const [searchParams] = useSearchParams();
+  const data = useLoaderData<typeof loader>();
+  
+  // Filter client-side based on search params
+  const filtered = data.products.filter((p) =>
+    p.name.includes(searchParams.get("q") || "")
+  );
+  
+  return <ProductList products={filtered} />;
+}
+```
+
+## Revalidate Only on Specific Param Changes
+
+```tsx
+export function shouldRevalidate({
+  currentParams,
+  nextParams,
+  currentUrl,
+  nextUrl,
+}: ShouldRevalidateFunctionArgs) {
+  // Params we care about
+  const significantParams = ["category", "brand"];
+  
+  // Check if any significant param changed
+  const paramsChanged = significantParams.some(
+    (param) => currentParams[param] !== nextParams[param]
+  );
+  
+  // Or if the pathname changed
+  const pathnameChanged = currentUrl.pathname !== nextUrl.pathname;
+  
+  return paramsChanged || pathnameChanged;
+}
+```
+
+## Time-Based Revalidation
+
+```tsx
+let lastFetch = 0;
+const CACHE_TIME = 60_000; // 1 minute
+
+export async function loader() {
+  lastFetch = Date.now();
+  return { data: await fetchData() };
+}
+
+export function shouldRevalidate({
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // Revalidate if cache is stale
+  const isStale = Date.now() - lastFetch > CACHE_TIME;
+  
+  if (isStale) {
+    return true;
+  }
+  
+  return defaultShouldRevalidate;
+}
+```
+
+## Revalidate on Specific Form Methods
+
+```tsx
+export function shouldRevalidate({
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // Always revalidate on POST/PUT/DELETE
+  if (formMethod && ["POST", "PUT", "DELETE"].includes(formMethod)) {
+    return true;
+  }
+  
+  // Skip revalidation on GET (search forms)
+  if (formMethod === "GET") {
+    return false;
+  }
+  
+  return defaultShouldRevalidate;
+}
+```
+
+## Inspect Action Status
+
+```tsx
+export function shouldRevalidate({
+  actionStatus,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // Don't revalidate on client errors (4xx)
+  if (actionStatus && actionStatus >= 400 && actionStatus < 500) {
+    return false;
+  }
+  
+  return defaultShouldRevalidate;
+}
+```
+
+## Complex Example
+
+```tsx
+export function shouldRevalidate({
+  currentParams,
+  nextParams,
+  currentUrl,
+  nextUrl,
+  formAction,
+  formMethod,
+  actionResult,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // Always revalidate after mutations
+  if (formMethod && formMethod !== "GET") {
+    return true;
+  }
+  
+  // Don't revalidate if action explicitly says not to
+  if (actionResult?.skipRevalidation) {
+    return false;
+  }
+  
+  // Only revalidate if the product ID changed
+  if (currentParams.productId !== nextParams.productId) {
+    return true;
+  }
+  
+  // Don't revalidate on tab/section changes (query params)
+  if (
+    currentUrl.pathname === nextUrl.pathname &&
+    currentParams.productId === nextParams.productId
+  ) {
+    return false;
+  }
+  
+  return defaultShouldRevalidate;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always consider defaultShouldRevalidate">
+    Use the default behavior as a fallback to avoid missing important revalidations:
+
+    ```tsx
+    export function shouldRevalidate({
+      currentParams,
+      nextParams,
+      defaultShouldRevalidate,
+    }: ShouldRevalidateFunctionArgs) {
+      // Your custom logic
+      if (currentParams.id === nextParams.id) {
+        return false;
+      }
+      
+      // ✅ Fall back to default
+      return defaultShouldRevalidate;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Be conservative with skipping revalidation">
+    It's better to revalidate unnecessarily than to show stale data:
+
+    ```tsx
+    // ❌ Too aggressive - might show stale data
+    export function shouldRevalidate() {
+      return false; // Never revalidate
+    }
+
+    // ✅ Conservative - only skip when safe
+    export function shouldRevalidate({
+      currentParams,
+      nextParams,
+      defaultShouldRevalidate,
+    }) {
+      // Only skip when we're certain data hasn't changed
+      if (currentParams.id === nextParams.id && !formMethod) {
+        return false;
+      }
+      return defaultShouldRevalidate;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use for expensive loaders">
+    Only add shouldRevalidate when loader is computationally expensive:
+
+    ```tsx
+    // Worth optimizing - expensive query
+    export async function loader({ params }: Route.LoaderArgs) {
+      return {
+        analytics: await runComplexAnalytics(params.reportId),
+      };
+    }
+
+    export function shouldRevalidate({ currentParams, nextParams }) {
+      return currentParams.reportId !== nextParams.reportId;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Test thoroughly">
+    Ensure your revalidation logic doesn't break data updates:
+
+    ```tsx
+    // Test cases to verify:
+    // 1. Navigation between different items
+    // 2. Form submissions
+    // 3. Search param changes
+    // 4. Same URL clicks (refresh)
+    // 5. Action success/failure
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Patterns
+
+### Parent/Child Route Coordination
+
+```tsx
+// Parent doesn't need to reload when child params change
+export function shouldRevalidate({
+  currentParams,
+  nextParams,
+}: ShouldRevalidateFunctionArgs) {
+  // Only revalidate if parent params changed
+  return currentParams.parentId !== nextParams.parentId;
+}
+```
+
+### List/Detail Pattern
+
+```tsx
+// List route - don't revalidate when viewing details
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+}: ShouldRevalidateFunctionArgs) {
+  // Only revalidate if list was mutated
+  if (formMethod && formMethod !== "GET") {
+    return true;
+  }
+  
+  // Don't revalidate when navigating to/from detail
+  return false;
+}
+```
+
+## See Also
+
+- [loader](/api/route-module/loader) - Server data loading
+- [action](/api/route-module/action) - Server mutations

@@ -1,0 +1,350 @@
+---
+title: useLoaderData
+---
+
+# useLoaderData
+
+Returns the data from the closest route `loader` or `clientLoader`.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useLoaderData<T = any>(): SerializeFrom<T>
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="data" type="SerializeFrom<T>">
+  The data returned from the route's `loader` or `clientLoader` function. The type is automatically serialized for server loaders.
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+```tsx
+import { useLoaderData } from "react-router";
+
+export async function loader() {
+  const invoices = await db.invoices.findAll();
+  return { invoices };
+}
+
+export default function Invoices() {
+  const { invoices } = useLoaderData();
+  
+  return (
+    <ul>
+      {invoices.map((invoice) => (
+        <li key={invoice.id}>{invoice.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### With TypeScript (Framework mode)
+
+In Framework mode, types are automatically generated:
+
+```tsx
+import type { Route } from "./+types.invoices";
+
+export async function loader() {
+  const invoices = await db.invoices.findAll();
+  return { invoices };
+}
+
+export default function Invoices() {
+  // Type is inferred from loader return type
+  const { invoices } = useLoaderData<typeof loader>();
+  
+  return (
+    <ul>
+      {invoices.map((invoice) => (
+        <li key={invoice.id}>{invoice.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### With TypeScript (Data mode)
+
+In Data mode, manually type the hook:
+
+```tsx
+interface LoaderData {
+  invoices: Invoice[];
+}
+
+const loader = async () => {
+  const invoices = await db.invoices.findAll();
+  return { invoices };
+};
+
+function Invoices() {
+  const { invoices } = useLoaderData<LoaderData>();
+  
+  return (
+    <ul>
+      {invoices.map((invoice) => (
+        <li key={invoice.id}>{invoice.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### Return Response objects
+
+You can return `Response` objects from loaders:
+
+```tsx
+export async function loader() {
+  const invoices = await db.invoices.findAll();
+  
+  return Response.json(
+    { invoices },
+    {
+      headers: {
+        "Cache-Control": "max-age=300",
+      },
+    }
+  );
+}
+
+export default function Invoices() {
+  // Response is automatically unwrapped
+  const { invoices } = useLoaderData();
+  return <InvoiceList invoices={invoices} />;
+}
+```
+
+### Client loaders
+
+Access data from `clientLoader`:
+
+```tsx
+export async function clientLoader() {
+  // Run only in the browser
+  const cachedData = localStorage.getItem("invoices");
+  if (cachedData) {
+    return JSON.parse(cachedData);
+  }
+  
+  const invoices = await fetch("/api/invoices").then(r => r.json());
+  localStorage.setItem("invoices", JSON.stringify(invoices));
+  return invoices;
+}
+
+export default function Invoices() {
+  const invoices = useLoaderData();
+  return <InvoiceList invoices={invoices} />;
+}
+```
+
+### With route params
+
+```tsx
+export async function loader({ params }) {
+  const invoice = await db.invoices.find(params.invoiceId);
+  
+  if (!invoice) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  
+  return { invoice };
+}
+
+export default function Invoice() {
+  const { invoice } = useLoaderData();
+  
+  return (
+    <div>
+      <h1>{invoice.name}</h1>
+      <p>Amount: ${invoice.amount}</p>
+    </div>
+  );
+}
+```
+
+### With request data
+
+```tsx
+export async function loader({ request }) {
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q");
+  
+  const results = await searchInvoices(query);
+  return { results, query };
+}
+
+export default function SearchResults() {
+  const { results, query } = useLoaderData();
+  
+  return (
+    <div>
+      <h1>Results for: {query}</h1>
+      <ResultsList results={results} />
+    </div>
+  );
+}
+```
+
+## Common Patterns
+
+### Loading state
+
+Loaders are called before the component renders, so there's no loading state in the component:
+
+```tsx
+export default function Invoices() {
+  // Data is always available when component renders
+  const { invoices } = useLoaderData();
+  
+  // No need for:
+  // if (!invoices) return <Loading />;
+  
+  return <InvoiceList invoices={invoices} />;
+}
+```
+
+Use [`useNavigation`](/api/hooks/use-navigation) for global loading UI.
+
+### Error handling
+
+Throw errors in loaders to render the `ErrorBoundary`:
+
+```tsx
+export async function loader({ params }) {
+  const invoice = await db.invoices.find(params.invoiceId);
+  
+  if (!invoice) {
+    // This will render the ErrorBoundary
+    throw new Response("Invoice not found", { status: 404 });
+  }
+  
+  return { invoice };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <div>Invoice not found</div>;
+  }
+  
+  return <div>Something went wrong</div>;
+}
+
+export default function Invoice() {
+  // invoice is always defined here
+  const { invoice } = useLoaderData();
+  return <InvoiceDetail invoice={invoice} />;
+}
+```
+
+### Parallel data loading
+
+Load multiple resources in parallel:
+
+```tsx
+export async function loader({ params }) {
+  const [invoice, customer, payments] = await Promise.all([
+    db.invoices.find(params.invoiceId),
+    db.customers.find(params.customerId),
+    db.payments.findByInvoice(params.invoiceId),
+  ]);
+  
+  return { invoice, customer, payments };
+}
+
+export default function InvoiceDetail() {
+  const { invoice, customer, payments } = useLoaderData();
+  
+  return (
+    <div>
+      <h1>{invoice.name}</h1>
+      <CustomerInfo customer={customer} />
+      <PaymentHistory payments={payments} />
+    </div>
+  );
+}
+```
+
+### Deferred data
+
+Defer slow data loading:
+
+```tsx
+import { defer, Await } from "react-router";
+import { Suspense } from "react";
+
+export async function loader() {
+  // Fast data - await immediately
+  const critical = await getCriticalData();
+  
+  // Slow data - defer loading
+  const slow = getSlowData();
+  
+  return defer({ critical, slow });
+}
+
+export default function Page() {
+  const { critical, slow } = useLoaderData();
+  
+  return (
+    <div>
+      {/* Renders immediately */}
+      <CriticalData data={critical} />
+      
+      {/* Shows fallback while loading */}
+      <Suspense fallback={<Loading />}>
+        <Await resolve={slow}>
+          {(data) => <SlowData data={data} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Type Safety
+
+### SerializeFrom
+
+The `SerializeFrom` type ensures data is JSON-serializable:
+
+```tsx
+// Date objects are converted to strings
+export async function loader() {
+  return {
+    date: new Date(),  // Becomes string
+    data: { id: 1 },
+  };
+}
+
+export default function Component() {
+  const data = useLoaderData<typeof loader>();
+  
+  // TypeScript knows date is a string, not Date
+  data.date;  // string
+}
+```
+
+## Related
+
+- [`loader`](/start/framework/route-module#loader) - Define route loader
+- [`clientLoader`](/start/framework/route-module#clientloader) - Client-only loader
+- [`useRouteLoaderData`](/api/hooks/use-route-loader-data) - Access parent route data
+- [`useActionData`](/api/hooks/use-action-data) - Access action data
+- [`useNavigation`](/api/hooks/use-navigation) - Track loading state

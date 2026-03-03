@@ -1,0 +1,461 @@
+---
+title: Progressive Enhancement
+description: Build resilient apps that work without JavaScript
+---
+
+# Progressive Enhancement
+
+Progressive enhancement is a strategy that emphasizes core functionality first, then layers on enhanced experiences for users with modern browsers and fast connections.
+
+## Philosophy
+
+> Progressive enhancement is a strategy in web design that puts emphasis on web content first, allowing everyone to access the basic content and functionality of a web page, whilst users with additional browser features or faster Internet access receive the enhanced version instead.
+
+React Router embraces progressive enhancement by building on HTML fundamentals, making apps that work before JavaScript loads.
+
+## Why It Matters
+
+### Performance
+
+**100% of users have slow connections 5% of the time**
+
+Even with fast internet, network conditions vary. Progressive enhancement ensures your app works during those critical moments.
+
+### Resilience  
+
+**Everybody has JavaScript disabled until it loads**
+
+Your app should function before JavaScript finishes downloading and parsing.
+
+### Simplicity
+
+**Building progressively is often simpler**
+
+Starting with HTML forms and URLs reduces complexity and state management.
+
+## Forms Without JavaScript
+
+Forms work before JavaScript loads:
+
+```tsx
+export function AddToCart({ id }) {
+  return (
+    <Form method="post" action="/add-to-cart">
+      <input type="hidden" name="id" value={id} />
+      <button type="submit">Add To Cart</button>
+    </Form>
+  );
+}
+```
+
+**Without JavaScript**: Standard form submission  
+**With JavaScript**: Client-side handling with `useFetcher`
+
+## Progressive Form Enhancement
+
+Layer on client-side features:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export function AddToCart({ id }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form method="post" action="/add-to-cart">
+      <input type="hidden" name="id" value={id} />
+      <button type="submit">
+        {fetcher.state === "submitting"
+          ? "Adding..."
+          : "Add To Cart"}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+**Before JavaScript**: Full page reload  
+**After JavaScript**: Inline submission with loading state
+
+## Links Without JavaScript
+
+Navigation works before JavaScript:
+
+```tsx
+<Link to="/account">Account</Link>
+```
+
+Renders as:
+
+```html
+<a href="/account">Account</a>
+```
+
+**Without JavaScript**: Browser navigation  
+**With JavaScript**: Client-side routing with transitions
+
+## Search Without JavaScript
+
+Build a search that works progressively:
+
+```tsx
+export function SearchBox() {
+  return (
+    <Form method="get" action="/search">
+      <input type="search" name="query" />
+      <button type="submit">Search</button>
+    </Form>
+  );
+}
+```
+
+**Without JavaScript**: Submits to `/search?query=...`  
+**With JavaScript**: Client-side navigation
+
+### Enhanced Version
+
+Add loading states:
+
+```tsx
+import { useNavigation, Form } from "react-router";
+
+export function SearchBox() {
+  const navigation = useNavigation();
+  const isSearching = navigation.location?.pathname === "/search";
+  
+  return (
+    <Form method="get" action="/search">
+      <input type="search" name="query" />
+      {isSearching ? <Spinner /> : <SearchIcon />}
+    </Form>
+  );
+}
+```
+
+## URL as State
+
+Use URLs instead of client state:
+
+```tsx
+// ❌ Don't do this
+const [filter, setFilter] = useState("all");
+const [sort, setSort] = useState("date");
+
+// ✅ Do this - use URL search params
+export function loader({ request }) {
+  const url = new URL(request.url);
+  const filter = url.searchParams.get("filter") ?? "all";
+  const sort = url.searchParams.get("sort") ?? "date";
+  
+  return getItems({ filter, sort });
+}
+
+export function Component() {
+  const data = useLoaderData();
+  
+  return (
+    <div>
+      <Form method="get">
+        <select name="filter" defaultValue="all">
+          <option value="all">All</option>
+          <option value="active">Active</option>
+        </select>
+        
+        <select name="sort" defaultValue="date">
+          <option value="date">Date</option>
+          <option value="name">Name</option>
+        </select>
+        
+        <button type="submit">Apply</button>
+      </Form>
+      
+      <List items={data.items} />
+    </div>
+  );
+}
+```
+
+Benefits:
+- Works without JavaScript
+- Shareable URLs
+- Browser back/forward
+- No state synchronization
+
+## Pagination
+
+Build pagination that works progressively:
+
+```tsx
+export async function loader({ request }) {
+  const url = new URL(request.url);
+  const page = parseInt(url.searchParams.get("page") ?? "1");
+  
+  return getPaginatedItems(page);
+}
+
+export function Component() {
+  const data = useLoaderData();
+  
+  return (
+    <div>
+      <List items={data.items} />
+      
+      <nav>
+        <Link to={`?page=${data.page - 1}`}>Previous</Link>
+        <Link to={`?page=${data.page + 1}`}>Next</Link>
+      </nav>
+    </div>
+  );
+}
+```
+
+### Enhanced Pagination
+
+Add optimistic UI:
+
+```tsx
+import { useNavigation } from "react-router";
+
+export function Component() {
+  const data = useLoaderData();
+  const navigation = useNavigation();
+  
+  const nextPage = navigation.location
+    ? new URL(navigation.location.search).searchParams.get("page")
+    : null;
+  
+  return (
+    <div>
+      <List items={data.items} loading={navigation.state === "loading"} />
+      
+      <nav>
+        <Link to={`?page=${data.page - 1}`}>
+          {nextPage === String(data.page - 1) ? "Loading..." : "Previous"}
+        </Link>
+      </nav>
+    </div>
+  );
+}
+```
+
+## Tabs Without JavaScript
+
+Tabbed interfaces work via URLs:
+
+```tsx
+export function loader({ params }) {
+  const tab = params.tab ?? "overview";
+  return getTabContent(tab);
+}
+
+export function Component() {
+  const data = useLoaderData();
+  const params = useParams();
+  const currentTab = params.tab ?? "overview";
+  
+  return (
+    <div>
+      <nav>
+        <Link
+          to="/dashboard/overview"
+          className={currentTab === "overview" ? "active" : ""}
+        >
+          Overview
+        </Link>
+        <Link
+          to="/dashboard/analytics"
+          className={currentTab === "analytics" ? "active" : ""}
+        >
+          Analytics
+        </Link>
+      </nav>
+      
+      <div>{data.content}</div>
+    </div>
+  );
+}
+```
+
+## Optimistic UI
+
+Show immediate feedback before server responds:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export function LikeButton({ id, liked, count }) {
+  const fetcher = useFetcher();
+  
+  // Optimistic state
+  const isLiked = fetcher.formData
+    ? fetcher.formData.get("liked") === "true"
+    : liked;
+  
+  const likeCount = fetcher.formData
+    ? count + (isLiked ? 1 : -1)
+    : count;
+  
+  return (
+    <fetcher.Form method="post" action="/like">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="liked" value={!isLiked} />
+      
+      <button type="submit">
+        {isLiked ? "♥" : "♡"} {likeCount}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+## File Uploads
+
+Handle file uploads progressively:
+
+```tsx
+export function Component() {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form
+      method="post"
+      action="/upload"
+      encType="multipart/form-data"
+    >
+      <input type="file" name="file" />
+      <button type="submit">
+        {fetcher.state === "submitting"
+          ? "Uploading..."
+          : "Upload"}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+## Performance Benefits
+
+Progressively enhanced apps load faster:
+
+```
+SPA:
+  HTML        |---|                          
+  JavaScript      |----------|
+  Data                       |------|
+                                     👆 page ready
+
+Progressive:
+                 👇 first byte
+  HTML        |---|------------|
+  JavaScript      |----------|
+  Data        |------|
+                     👆 page ready
+```
+
+## Testing Progressive Enhancement
+
+### Disable JavaScript
+
+Test in your browser:
+
+1. Open DevTools
+2. Settings → Debugger → Disable JavaScript
+3. Reload page
+4. Verify core functionality works
+
+### Slow 3G Testing
+
+1. Open DevTools
+2. Network tab → Throttling → Slow 3G
+3. Test user experience during loading
+
+### Automated Testing
+
+```tsx
+import { test } from "@playwright/test";
+
+test("form works without JavaScript", async ({ page, context }) => {
+  // Disable JavaScript
+  await context.addInitScript(() => {
+    delete window.navigator;
+  });
+  
+  await page.goto("/");
+  await page.fill("input[name=query]", "test");
+  await page.click("button[type=submit]");
+  
+  // Verify it navigated to results
+  await page.waitForURL("/search?query=test");
+});
+```
+
+## Best Practices
+
+1. **Start with HTML**: Forms, links, URLs first
+2. **Layer JavaScript**: Add interactivity progressively
+3. **Test both states**: With and without JavaScript
+4. **Use semantic HTML**: Proper form elements and ARIA
+5. **Prefer URLs**: Over client-side state
+
+## Common Patterns
+
+### Modal Dialogs
+
+```tsx
+// Works as separate page
+export function Component() {
+  return (
+    <dialog open>
+      <h2>Edit Profile</h2>
+      <Form method="post">
+        <input name="name" />
+        <button>Save</button>
+      </Form>
+    </dialog>
+  );
+}
+
+// Enhanced with client-side modal
+export function EnhancedComponent() {
+  const [open, setOpen] = useState(true);
+  
+  if (!open) return null;
+  
+  return (
+    <dialog open onClose={() => setOpen(false)}>
+      {/* Same form */}
+    </dialog>
+  );
+}
+```
+
+### Autocomplete
+
+```tsx
+// Basic: Submit for results
+<Form method="get" action="/search">
+  <input name="q" list="suggestions" />
+  <datalist id="suggestions">
+    <option value="React Router" />
+  </datalist>
+</Form>
+
+// Enhanced: Live results
+const fetcher = useFetcher();
+
+<fetcher.Form method="get" action="/suggestions">
+  <input
+    name="q"
+    onChange={e => fetcher.submit(e.target.form)}
+  />
+  {fetcher.data?.map(item => (
+    <option key={item.id}>{item.name}</option>
+  ))}
+</fetcher.Form>
+```
+
+## Related
+
+- [Forms](../start/framework/forms)
+- [Data Loading](../start/data/data-loading)
+- [State Management](../explanation/state-management)

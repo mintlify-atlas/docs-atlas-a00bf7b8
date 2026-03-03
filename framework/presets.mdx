@@ -1,0 +1,435 @@
+---
+title: Presets
+---
+
+# Presets
+
+Presets are reusable configuration packages that integrate React Router with deployment platforms, tools, and frameworks.
+
+## Overview
+
+A preset is a package that provides:
+
+- Default React Router configuration
+- Platform-specific optimizations
+- Custom build hooks
+- Deployment integrations
+
+## Using Presets
+
+Add presets to your `react-router.config.ts`:
+
+```typescript
+import { cloudflarePreset } from "@react-router/cloudflare";
+
+export default {
+  presets: [cloudflarePreset()],
+} satisfies Config;
+```
+
+## Available Presets
+
+### Cloudflare
+
+Deploy to Cloudflare Pages or Workers:
+
+```bash
+npm install @react-router/cloudflare
+```
+
+```typescript
+import { cloudflarePreset } from "@react-router/cloudflare";
+
+export default {
+  presets: [cloudflarePreset()],
+} satisfies Config;
+```
+
+### Vercel
+
+Deploy to Vercel:
+
+```bash
+npm install @react-router/vercel
+```
+
+```typescript
+import { vercelPreset } from "@react-router/vercel";
+
+export default {
+  presets: [vercelPreset()],
+} satisfies Config;
+```
+
+### Netlify
+
+Deploy to Netlify:
+
+```bash
+npm install @react-router/netlify
+```
+
+```typescript
+import { netlifyPreset } from "@react-router/netlify";
+
+export default {
+  presets: [netlifyPreset()],
+} satisfies Config;
+```
+
+## Creating Custom Presets
+
+Create your own preset for custom integrations:
+
+```typescript
+import type { Preset } from "@react-router/dev/config";
+
+export function myPreset(): Preset {
+  return {
+    name: "my-preset",
+    
+    async reactRouterConfig({ reactRouterUserConfig }) {
+      // Return config overrides
+      return {
+        serverModuleFormat: "esm",
+        buildDirectory: "dist",
+        
+        async buildEnd({ buildManifest, reactRouterConfig, viteConfig }) {
+          // Run after build completes
+          console.log("Build finished!");
+          
+          // Deploy, generate files, etc.
+          await deployToMyPlatform(buildManifest);
+        },
+      };
+    },
+    
+    async reactRouterConfigResolved({ reactRouterConfig }) {
+      // Called after all config is resolved
+      console.log("Config resolved:", reactRouterConfig);
+    },
+  };
+}
+```
+
+## Preset API
+
+### `name`
+
+A unique identifier for your preset:
+
+```typescript
+export function myPreset(): Preset {
+  return {
+    name: "my-preset",
+  };
+}
+```
+
+### `reactRouterConfig()`
+
+Provide default configuration:
+
+```typescript
+export function myPreset(): Preset {
+  return {
+    name: "my-preset",
+    
+    reactRouterConfig({ reactRouterUserConfig }) {
+      return {
+        // Set defaults
+        serverModuleFormat: "esm",
+        ssr: true,
+        
+        // Conditional config based on user config
+        buildDirectory: reactRouterUserConfig.buildDirectory || "build",
+        
+        // Build hooks
+        async buildEnd({ buildManifest }) {
+          // Post-build logic
+        },
+      };
+    },
+  };
+}
+```
+
+### `reactRouterConfigResolved()`
+
+Run code after config is fully resolved:
+
+```typescript
+export function myPreset(): Preset {
+  return {
+    name: "my-preset",
+    
+    async reactRouterConfigResolved({ reactRouterConfig }) {
+      // Validate config
+      if (reactRouterConfig.ssr === false) {
+        throw new Error("This preset requires SSR to be enabled");
+      }
+      
+      // Write files
+      await writeFile("config.json", JSON.stringify(reactRouterConfig));
+      
+      // Set up platform-specific configuration
+      await setupDeployment(reactRouterConfig);
+    },
+  };
+}
+```
+
+## Configuration Merging
+
+Presets are merged in order with user config:
+
+```typescript
+export default {
+  presets: [
+    presetA(), // Applied first
+    presetB(), // Applied second
+  ],
+  
+  // User config takes priority
+  buildDirectory: "custom-build",
+} satisfies Config;
+```
+
+Merge order:
+1. Preset A config
+2. Preset B config (overrides A)
+3. User config (overrides presets)
+
+## Excluded Keys
+
+The `presets` key itself cannot be set by presets:
+
+```typescript
+// ❌ Not allowed
+export function myPreset(): Preset {
+  return {
+    reactRouterConfig() {
+      return {
+        presets: [anotherPreset()], // Error!
+      };
+    },
+  };
+}
+```
+
+## Build Hooks
+
+Use `buildEnd` for post-build operations:
+
+```typescript
+export function deploymentPreset(): Preset {
+  return {
+    name: "deployment-preset",
+    
+    reactRouterConfig() {
+      return {
+        async buildEnd({ buildManifest, reactRouterConfig, viteConfig }) {
+          console.log("Deploying to production...");
+          
+          // Access build output
+          const routes = Object.keys(buildManifest.routes);
+          console.log(`Built ${routes.length} routes`);
+          
+          // Read build files
+          const clientDir = path.join(
+            reactRouterConfig.buildDirectory,
+            "client"
+          );
+          const files = await fs.readdir(clientDir, { recursive: true });
+          
+          // Deploy to CDN
+          await uploadToCDN(files);
+          
+          // Deploy server
+          const serverFile = path.join(
+            reactRouterConfig.buildDirectory,
+            "server",
+            reactRouterConfig.serverBuildFile
+          );
+          await deployServer(serverFile);
+          
+          console.log("Deployment complete!");
+        },
+      };
+    },
+  };
+}
+```
+
+## Platform-Specific Examples
+
+### Custom Server Adapter
+
+```typescript
+import type { Preset } from "@react-router/dev/config";
+import fs from "node:fs/promises";
+
+export function customServerPreset(): Preset {
+  return {
+    name: "custom-server",
+    
+    reactRouterConfig() {
+      return {
+        serverModuleFormat: "esm",
+        
+        async buildEnd({ reactRouterConfig }) {
+          // Generate server adapter
+          const adapterCode = `
+import { createRequestHandler } from "@react-router/express";
+import express from "express";
+import * as build from "./server/index.js";
+
+const app = express();
+app.use(express.static("build/client"));
+app.all("*", createRequestHandler({ build }));
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(\`Server running on port \${port}\`);
+});
+          `;
+          
+          await fs.writeFile(
+            path.join(reactRouterConfig.buildDirectory, "server.js"),
+            adapterCode
+          );
+        },
+      };
+    },
+  };
+}
+```
+
+### Docker Deployment
+
+```typescript
+export function dockerPreset(): Preset {
+  return {
+    name: "docker",
+    
+    async reactRouterConfigResolved({ reactRouterConfig }) {
+      // Generate Dockerfile
+      const dockerfile = `
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY ${reactRouterConfig.buildDirectory} ./build
+EXPOSE 3000
+CMD ["node", "build/server/index.js"]
+      `;
+      
+      await fs.writeFile("Dockerfile", dockerfile);
+      
+      // Generate .dockerignore
+      const dockerignore = `
+node_modules
+.git
+*.log
+.env
+      `;
+      
+      await fs.writeFile(".dockerignore", dockerignore);
+    },
+  };
+}
+```
+
+## Validation
+
+Validate user configuration in presets:
+
+```typescript
+export function validatedPreset(): Preset {
+  return {
+    name: "validated",
+    
+    async reactRouterConfigResolved({ reactRouterConfig }) {
+      // Require SSR
+      if (!reactRouterConfig.ssr) {
+        throw new Error("This preset requires SSR to be enabled");
+      }
+      
+      // Require specific module format
+      if (reactRouterConfig.serverModuleFormat !== "esm") {
+        throw new Error("This preset requires ESM module format");
+      }
+      
+      // Check for required environment variables
+      if (!process.env.DEPLOY_TOKEN) {
+        throw new Error("DEPLOY_TOKEN environment variable is required");
+      }
+    },
+  };
+}
+```
+
+## Multiple Presets
+
+Combine multiple presets:
+
+```typescript
+import { cloudflarePreset } from "@react-router/cloudflare";
+import { analyticsPreset } from "./presets/analytics";
+import { monitoringPreset } from "./presets/monitoring";
+
+export default {
+  presets: [
+    cloudflarePreset(),
+    analyticsPreset(),
+    monitoringPreset(),
+  ],
+} satisfies Config;
+```
+
+## Preset Options
+
+Allow configuration of presets:
+
+```typescript
+interface MyPresetOptions {
+  apiKey?: string;
+  region?: "us" | "eu";
+}
+
+export function myPreset(options: MyPresetOptions = {}): Preset {
+  return {
+    name: "my-preset",
+    
+    reactRouterConfig() {
+      return {
+        async buildEnd() {
+          const apiKey = options.apiKey || process.env.API_KEY;
+          const region = options.region || "us";
+          
+          await deployTo(region, { apiKey });
+        },
+      };
+    },
+  };
+}
+```
+
+Usage:
+
+```typescript
+export default {
+  presets: [
+    myPreset({
+      apiKey: "...",
+      region: "eu",
+    }),
+  ],
+} satisfies Config;
+```
+
+## See Also
+
+- [Vite Plugin](/framework/vite-plugin)
+- [Server Bundles](/framework/server-bundles)
+- [Server Rendering](/framework/server-rendering)

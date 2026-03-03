@@ -1,0 +1,279 @@
+---
+title: Nested Routes
+description: Learn how to create nested route hierarchies in React Router
+---
+
+# Nested Routes
+
+Nested routes allow you to compose complex UIs by nesting routes inside parent routes. Child routes render inside their parent's `<Outlet />` component, creating a hierarchical layout structure.
+
+## Basic Nested Routes
+
+Define child routes using the `children` parameter:
+
+```ts
+// app/routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("dashboard", "routes/dashboard.tsx", [
+    route("overview", "routes/dashboard/overview.tsx"),
+    route("analytics", "routes/dashboard/analytics.tsx"),
+    route("settings", "routes/dashboard/settings.tsx"),
+  ]),
+];
+```
+
+This creates the following URL structure:
+- `/dashboard` → renders `dashboard.tsx`
+- `/dashboard/overview` → renders `dashboard.tsx` with `overview.tsx` in the outlet
+- `/dashboard/analytics` → renders `dashboard.tsx` with `analytics.tsx` in the outlet
+- `/dashboard/settings` → renders `dashboard.tsx` with `settings.tsx` in the outlet
+
+## Parent Route Component
+
+The parent route must render an `<Outlet />` where child routes appear:
+
+```tsx
+// app/routes/dashboard.tsx
+import { Outlet, NavLink } from "react-router";
+
+export default function Dashboard() {
+  return (
+    <div className="dashboard">
+      <nav>
+        <NavLink to="overview">Overview</NavLink>
+        <NavLink to="analytics">Analytics</NavLink>
+        <NavLink to="settings">Settings</NavLink>
+      </nav>
+      
+      <main>
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+```
+
+## Multi-Level Nesting
+
+Routes can be nested to any depth:
+
+```ts
+// app/routes.ts
+import { route, index } from "@react-router/dev/routes";
+
+export default [
+  route("app", "routes/app.tsx", [
+    route("projects", "routes/app/projects.tsx", [
+      index("routes/app/projects/list.tsx"),
+      route(":id", "routes/app/projects/detail.tsx", [
+        route("edit", "routes/app/projects/edit.tsx"),
+        route("settings", "routes/app/projects/settings.tsx"),
+      ]),
+    ]),
+  ]),
+];
+```
+
+URL structure:
+- `/app/projects` → app.tsx > projects.tsx > list.tsx
+- `/app/projects/123` → app.tsx > projects.tsx > detail.tsx
+- `/app/projects/123/edit` → app.tsx > projects.tsx > detail.tsx > edit.tsx
+
+## Shared Layouts with Nested Routes
+
+Nested routes are perfect for shared layouts:
+
+```ts
+// app/routes.ts
+import { route, layout } from "@react-router/dev/routes";
+
+export default [
+  layout("routes/marketing-layout.tsx", [
+    route("about", "routes/about.tsx"),
+    route("contact", "routes/contact.tsx"),
+    route("pricing", "routes/pricing.tsx"),
+  ]),
+  
+  layout("routes/app-layout.tsx", [
+    route("dashboard", "routes/dashboard.tsx"),
+    route("profile", "routes/profile.tsx"),
+  ]),
+];
+```
+
+## Pathless Layout Routes
+
+Use `layout()` to create routes that don't add URL segments:
+
+```ts
+// app/routes.ts
+import { route, layout, index } from "@react-router/dev/routes";
+
+export default [
+  route("account", "routes/account.tsx", [
+    layout("routes/account/private-layout.tsx", [
+      route("orders", "routes/account/orders.tsx"),
+      route("profile", "routes/account/profile.tsx"),
+    ]),
+    layout("routes/account/public-layout.tsx", [
+      route("login", "routes/account/login.tsx"),
+      route("signup", "routes/account/signup.tsx"),
+    ]),
+  ]),
+];
+```
+
+Both layouts share the `/account` URL prefix but provide different UI wrappers.
+
+## Data Loading in Nested Routes
+
+Each route in the hierarchy can load its own data:
+
+```tsx
+// app/routes/dashboard.tsx
+import type { Route } from "./+types/dashboard";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  return { user: await getUser(request) };
+}
+
+export default function Dashboard({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Welcome, {loaderData.user.name}</h1>
+      <Outlet />
+    </div>
+  );
+}
+```
+
+```tsx
+// app/routes/dashboard/analytics.tsx
+import type { Route } from "./+types/dashboard/analytics";
+
+export async function loader() {
+  return { stats: await getAnalytics() };
+}
+
+export default function Analytics({ loaderData }: Route.ComponentProps) {
+  return <div>Stats: {loaderData.stats}</div>;
+}
+```
+
+Both loaders run in parallel when navigating to `/dashboard/analytics`.
+
+## Accessing Parent Data
+
+Child routes can access parent route data using `useMatches()`:
+
+```tsx
+// app/routes/dashboard/analytics.tsx
+import { useMatches } from "react-router";
+
+export default function Analytics() {
+  const matches = useMatches();
+  const dashboardData = matches.find(m => m.id === "routes/dashboard")?.data;
+  
+  return <div>User: {dashboardData.user.name}</div>;
+}
+```
+
+## Nested Navigation
+
+Use relative paths in links within nested routes:
+
+```tsx
+// app/routes/dashboard.tsx
+import { NavLink, Outlet } from "react-router";
+
+export default function Dashboard() {
+  return (
+    <div>
+      <nav>
+        {/* Relative to /dashboard */}
+        <NavLink to="overview">Overview</NavLink>
+        <NavLink to="analytics">Analytics</NavLink>
+        
+        {/* Absolute path */}
+        <NavLink to="/dashboard/settings">Settings</NavLink>
+        
+        {/* Go up one level */}
+        <NavLink to="..">Back to Home</NavLink>
+      </nav>
+      <Outlet />
+    </div>
+  );
+}
+```
+
+## File-Based Nested Routes
+
+When using `flatRoutes()`, use dot notation for nesting:
+
+```
+app/routes/
+├── dashboard.tsx                    # /dashboard
+├── dashboard.overview.tsx           # /dashboard/overview
+├── dashboard.analytics.tsx          # /dashboard/analytics
+└── dashboard.settings.tsx           # /dashboard/settings
+```
+
+See [File Conventions](/routing/file-conventions) for more details.
+
+## Opt-Out of Parent Layout
+
+In file-based routing, use trailing underscore to skip parent segments:
+
+```
+app/routes/
+├── app.tsx                          # /app
+├── app.dashboard.tsx                # /app/dashboard
+└── app_.settings.tsx                # /settings (skips /app)
+```
+
+Or in manual config:
+
+```ts
+export default [
+  route("app", "routes/app.tsx", [
+    route("dashboard", "routes/dashboard.tsx"),
+  ]),
+  // Settings is NOT nested under /app
+  route("settings", "routes/settings.tsx"),
+];
+```
+
+## Error Boundaries in Nested Routes
+
+Each route can export an error boundary:
+
+```tsx
+// app/routes/dashboard.tsx
+import { useRouteError } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  return (
+    <div>
+      <h1>Dashboard Error</h1>
+      <p>{error.message}</p>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  return <Outlet />;
+}
+```
+
+Errors in child routes will bubble up to the nearest parent error boundary.
+
+## Best Practices
+
+1. **Shallow hierarchies**: Keep nesting to 3-4 levels maximum
+2. **Logical grouping**: Nest routes that share UI, not just URL structure
+3. **Parallel loading**: Leverage React Router's automatic parallel data loading
+4. **Layout reuse**: Use pathless layouts to share UI without affecting URLs
+5. **Independent routes**: Don't nest routes that don't share layout just for URL structure

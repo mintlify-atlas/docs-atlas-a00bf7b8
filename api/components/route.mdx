@@ -1,0 +1,259 @@
+---
+title: Route
+---
+
+<Modes modes={["declarative", "data"]} />
+
+Configures an element to render when a pattern matches the current location. It must be rendered within a `<Routes>` element.
+
+```tsx
+import { Route, Routes } from "react-router";
+
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="about" element={<About />} />
+  <Route path="users/:id" element={<User />} />
+</Routes>
+```
+
+## Type Declaration
+
+```tsx
+export interface PathRouteProps {
+  caseSensitive?: boolean;
+  path?: string;
+  id?: string;
+  lazy?: LazyRouteFunction<NonIndexRouteObject>;
+  middleware?: RouteMiddleware;
+  loader?: RouteLoader;
+  action?: RouteAction;
+  hasErrorBoundary?: boolean;
+  shouldRevalidate?: ShouldRevalidateFunction;
+  handle?: any;
+  index?: false;
+  children?: React.ReactNode;
+  element?: React.ReactNode | null;
+  hydrateFallbackElement?: React.ReactNode | null;
+  errorElement?: React.ReactNode | null;
+  Component?: React.ComponentType | null;
+  HydrateFallback?: React.ComponentType | null;
+  ErrorBoundary?: React.ComponentType | null;
+}
+
+export interface IndexRouteProps {
+  caseSensitive?: boolean;
+  path?: string;
+  id?: string;
+  lazy?: LazyRouteFunction<IndexRouteObject>;
+  middleware?: RouteMiddleware;
+  loader?: RouteLoader;
+  action?: RouteAction;
+  hasErrorBoundary?: boolean;
+  shouldRevalidate?: ShouldRevalidateFunction;
+  handle?: any;
+  index: true;
+  children?: undefined;
+  element?: React.ReactNode | null;
+  hydrateFallbackElement?: React.ReactNode | null;
+  errorElement?: React.ReactNode | null;
+  Component?: React.ComponentType | null;
+  HydrateFallback?: React.ComponentType | null;
+  ErrorBoundary?: React.ComponentType | null;
+}
+
+export type RouteProps = PathRouteProps | IndexRouteProps;
+
+export function Route(props: RouteProps): React.ReactElement | null;
+```
+
+## Props
+
+<ParamField path="path" type="string">
+  The path pattern to match. Supports URL parameters with `:` and wildcards with `*`.
+
+  ```tsx
+  <Route path="/" />
+  <Route path="about" />
+  <Route path="users/:id" />
+  <Route path="files/*" />
+  ```
+</ParamField>
+
+<ParamField path="element" type="React.ReactNode">
+  The React element to render when this route matches. Mutually exclusive with `Component`.
+
+  ```tsx
+  <Route path="/" element={<Home />} />
+  <Route path="about" element={<About />} />
+  ```
+</ParamField>
+
+<ParamField path="Component" type="React.ComponentType">
+  The React component to render when this route matches. Mutually exclusive with `element`. Useful for code splitting.
+
+  ```tsx
+  <Route path="/" Component={Home} />
+  <Route path="about" Component={About} />
+  ```
+</ParamField>
+
+<ParamField path="index" type="boolean">
+  Whether this is an index route. Index routes render when the parent route's path matches exactly.
+
+  ```tsx
+  <Route path="users" element={<UsersLayout />}>
+    <Route index element={<UsersList />} /> {/* Renders at /users */}
+    <Route path=":id" element={<UserProfile />} /> {/* Renders at /users/:id */}
+  </Route>
+  ```
+</ParamField>
+
+<ParamField path="caseSensitive" type="boolean">
+  Whether the path should be case-sensitive. Defaults to `false`.
+
+  ```tsx
+  <Route path="About" caseSensitive element={<About />} />
+  {/* Matches /About but not /about */}
+  ```
+</ParamField>
+
+<ParamField path="loader" type="RouteLoader" modes={["data", "framework"]}>
+  The route loader function. See the [loader documentation](../route-object#loader).
+
+  ```tsx
+  <Route
+    path="users/:id"
+    loader={({ params }) => fetchUser(params.id)}
+    element={<User />}
+  />
+  ```
+</ParamField>
+
+<ParamField path="action" type="RouteAction" modes={["data", "framework"]}>
+  The route action function. See the [action documentation](../route-object#action).
+
+  ```tsx
+  <Route
+    path="users/:id/edit"
+    action={({ request, params }) => updateUser(params.id, request)}
+    element={<EditUser />}
+  />
+  ```
+</ParamField>
+
+<ParamField path="errorElement" type="React.ReactNode">
+  The React element to render if an error occurs in this route. Mutually exclusive with `ErrorBoundary`.
+
+  ```tsx
+  <Route
+    path="/"
+    element={<Home />}
+    errorElement={<ErrorPage />}
+  />
+  ```
+</ParamField>
+
+<ParamField path="ErrorBoundary" type="React.ComponentType">
+  The React component to render if an error occurs in this route. Mutually exclusive with `errorElement`.
+
+  ```tsx
+  <Route path="/" element={<Home />} ErrorBoundary={ErrorPage} />
+  ```
+</ParamField>
+
+<ParamField path="lazy" type="LazyRouteFunction" modes={["data", "framework"]}>
+  A function that returns a promise resolving to the route object. Used for code-splitting routes.
+
+  ```tsx
+  <Route path="admin" lazy={() => import("./admin-route")} />
+  ```
+</ParamField>
+
+<ParamField path="handle" type="any">
+  Any application-specific data. This is useful for breadcrumbs, page titles, etc.
+
+  ```tsx
+  <Route
+    path="users/:id"
+    element={<User />}
+    handle={{ crumb: (data) => data.user.name }}
+  />
+  ```
+</ParamField>
+
+<ParamField path="id" type="string">
+  A unique identifier for this route. Auto-generated if not provided.
+</ParamField>
+
+<ParamField path="children" type="React.ReactNode">
+  Nested route elements.
+
+  ```tsx
+  <Route path="users" element={<UsersLayout />}>
+    <Route index element={<UsersList />} />
+    <Route path=":id" element={<UserProfile />} />
+  </Route>
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Route
+
+```tsx
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="about" element={<About />} />
+</Routes>
+```
+
+### Dynamic Segments
+
+```tsx
+<Routes>
+  <Route path="users/:userId" element={<User />} />
+  <Route path="posts/:postId/comments/:commentId" element={<Comment />} />
+</Routes>
+```
+
+### Nested Routes
+
+```tsx
+<Routes>
+  <Route path="users" element={<UsersLayout />}>
+    <Route index element={<UsersList />} />
+    <Route path=":id" element={<UserProfile />} />
+    <Route path=":id/edit" element={<EditUser />} />
+  </Route>
+</Routes>
+```
+
+### With Data Loading
+
+```tsx
+<Route
+  path="users/:id"
+  loader={async ({ params }) => {
+    const user = await fetchUser(params.id);
+    return { user };
+  }}
+  element={<User />}
+  errorElement={<UserError />}
+/>
+```
+
+### Splat Routes
+
+```tsx
+<Routes>
+  <Route path="files/*" element={<Files />} />
+  <Route path="*" element={<NotFound />} />
+</Routes>
+```
+
+## Notes
+
+- A `<Route>` should only be used as a child of `<Routes>`
+- Index routes cannot have children
+- Routes are ranked by specificity during matching
+- Use `<Outlet />` in parent route elements to render child routes

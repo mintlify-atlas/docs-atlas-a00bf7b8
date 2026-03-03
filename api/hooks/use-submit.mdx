@@ -1,0 +1,464 @@
+---
+title: useSubmit
+---
+
+# useSubmit
+
+The imperative version of `<Form>` that lets you submit a form from code instead of a user interaction.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useSubmit(): SubmitFunction
+
+interface SubmitFunction {
+  (
+    target: SubmitTarget,
+    options?: SubmitOptions
+  ): Promise<void>;
+}
+
+type SubmitTarget =
+  | HTMLFormElement
+  | FormData
+  | Record<string, any>;
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="submit" type="SubmitFunction">
+  A function that submits data to a route action.
+  
+  <ParamField path="target" type="SubmitTarget" required>
+    The data to submit. Can be:
+    - An `HTMLFormElement` - submits the form
+    - A `FormData` object - submits the form data
+    - A plain object - converted to `FormData` (or JSON if `encType` is `"application/json"`)
+  </ParamField>
+  
+  <ParamField path="options" type="SubmitOptions">
+    <Expandable title="properties">
+      <ResponseField name="method" type="'get' | 'post' | 'put' | 'patch' | 'delete'">
+        HTTP method. Defaults to `"get"`.
+      </ResponseField>
+      
+      <ResponseField name="action" type="string">
+        The URL to submit to. Defaults to the current route.
+      </ResponseField>
+      
+      <ResponseField name="encType" type="'application/x-www-form-urlencoded' | 'multipart/form-data' | 'application/json'">
+        Encoding type for the form data. Defaults to `"application/x-www-form-urlencoded"`.
+      </ResponseField>
+      
+      <ResponseField name="replace" type="boolean">
+        Replace the current entry in the history stack.
+      </ResponseField>
+      
+      <ResponseField name="state" type="any">
+        State to pass to the next location.
+      </ResponseField>
+      
+      <ResponseField name="preventScrollReset" type="boolean">
+        Prevent scroll position from resetting to the top.
+      </ResponseField>
+      
+      <ResponseField name="flushSync" type="boolean">
+        Wrap the state update in `ReactDOM.flushSync`.
+      </ResponseField>
+      
+      <ResponseField name="navigate" type="boolean">
+        Whether to navigate after submission. Set to `false` to use like a fetcher. Defaults to `true`.
+      </ResponseField>
+      
+      <ResponseField name="fetcherKey" type="string">
+        When `navigate` is `false`, the key for the fetcher to use.
+      </ResponseField>
+    </Expandable>
+  </ParamField>
+</ResponseField>
+
+## Usage
+
+### Submit on form change
+
+```tsx
+import { Form, useSubmit } from "react-router";
+
+function SearchForm() {
+  const submit = useSubmit();
+  
+  return (
+    <Form onChange={(e) => submit(e.currentTarget)}>
+      <input type="search" name="q" />
+      <button type="submit">Search</button>
+    </Form>
+  );
+}
+```
+
+### Submit with button click
+
+```tsx
+function Component() {
+  const submit = useSubmit();
+  
+  return (
+    <button
+      onClick={() => {
+        submit(
+          { intent: "delete", id: "123" },
+          { method: "post" }
+        );
+      }}
+    >
+      Delete
+    </button>
+  );
+}
+```
+
+### Submit FormData
+
+```tsx
+function FileUpload() {
+  const submit = useSubmit();
+  
+  return (
+    <input
+      type="file"
+      onChange={(e) => {
+        const formData = new FormData();
+        formData.append("file", e.target.files[0]);
+        
+        submit(formData, {
+          method: "post",
+          encType: "multipart/form-data",
+        });
+      }}
+    />
+  );
+}
+```
+
+### Submit JSON
+
+```tsx
+function SaveButton() {
+  const submit = useSubmit();
+  const data = { name: "John", email: "john@example.com" };
+  
+  return (
+    <button
+      onClick={() => {
+        submit(
+          data,
+          {
+            method: "post",
+            encType: "application/json",
+          }
+        );
+      }}
+    >
+      Save
+    </button>
+  );
+}
+```
+
+### Submit to different action
+
+```tsx
+function MultiActionForm() {
+  const submit = useSubmit();
+  
+  return (
+    <Form>
+      <input type="text" name="name" />
+      
+      <button
+        type="button"
+        onClick={(e) => {
+          submit(e.currentTarget.form, {
+            method: "post",
+            action: "/save",
+          });
+        }}
+      >
+        Save
+      </button>
+      
+      <button
+        type="button"
+        onClick={(e) => {
+          submit(e.currentTarget.form, {
+            method: "post",
+            action: "/publish",
+          });
+        }}
+      >
+        Publish
+      </button>
+    </Form>
+  );
+}
+```
+
+### Use as fetcher
+
+```tsx
+function Component() {
+  const submit = useSubmit();
+  
+  const deleteItem = (id: string) => {
+    submit(
+      { id },
+      {
+        method: "post",
+        action: "/items/delete",
+        navigate: false,  // Don't navigate, like a fetcher
+        fetcherKey: `delete-${id}`,
+      }
+    );
+  };
+  
+  return <button onClick={() => deleteItem("123")}>Delete</button>;
+}
+```
+
+## Common Patterns
+
+### Debounced search
+
+```tsx
+import { useMemo } from "react";
+import { useSubmit } from "react-router";
+import debounce from "lodash.debounce";
+
+function SearchInput() {
+  const submit = useSubmit();
+  
+  const debouncedSubmit = useMemo(
+    () =>
+      debounce((form: HTMLFormElement) => {
+        submit(form);
+      }, 300),
+    [submit]
+  );
+  
+  return (
+    <Form onChange={(e) => debouncedSubmit(e.currentTarget)}>
+      <input type="search" name="q" />
+    </Form>
+  );
+}
+```
+
+### Auto-save form
+
+```tsx
+function AutoSaveForm() {
+  const submit = useSubmit();
+  
+  const handleChange = (e: React.FormEvent<HTMLFormElement>) => {
+    submit(e.currentTarget, {
+      method: "post",
+      replace: true,  // Don't add history entries
+    });
+  };
+  
+  return (
+    <Form onChange={handleChange}>
+      <input type="text" name="title" />
+      <textarea name="body" />
+    </Form>
+  );
+}
+```
+
+### Confirm before submit
+
+```tsx
+function DeleteButton({ itemId }) {
+  const submit = useSubmit();
+  
+  const handleDelete = () => {
+    if (confirm("Are you sure?")) {
+      submit(
+        { id: itemId },
+        { method: "post", action: "/delete" }
+      );
+    }
+  };
+  
+  return <button onClick={handleDelete}>Delete</button>;
+}
+```
+
+### Submit on interval
+
+```tsx
+function HeartbeatForm() {
+  const submit = useSubmit();
+  const formRef = useRef<HTMLFormElement>(null);
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (formRef.current) {
+        submit(formRef.current, {
+          method: "post",
+          replace: true,
+        });
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [submit]);
+  
+  return (
+    <Form ref={formRef}>
+      <input type="hidden" name="heartbeat" value="true" />
+    </Form>
+  );
+}
+```
+
+### Programmatic logout
+
+```tsx
+function LogoutButton() {
+  const submit = useSubmit();
+  
+  return (
+    <button
+      onClick={() => {
+        submit(null, {
+          method: "post",
+          action: "/logout",
+        });
+      }}
+    >
+      Logout
+    </button>
+  );
+}
+```
+
+### Submit with loading state
+
+```tsx
+function SaveButton({ data }) {
+  const submit = useSubmit();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+  
+  return (
+    <button
+      onClick={() => submit(data, { method: "post" })}
+      disabled={isSubmitting}
+    >
+      {isSubmitting ? "Saving..." : "Save"}
+    </button>
+  );
+}
+```
+
+### Submit multiple forms
+
+```tsx
+function BulkActions({ items }) {
+  const submit = useSubmit();
+  
+  const deleteAll = () => {
+    items.forEach((item) => {
+      submit(
+        { id: item.id },
+        {
+          method: "post",
+          action: "/delete",
+          navigate: false,
+          fetcherKey: `delete-${item.id}`,
+        }
+      );
+    });
+  };
+  
+  return <button onClick={deleteAll}>Delete All</button>;
+}
+```
+
+## Encoding Types
+
+### application/x-www-form-urlencoded (default)
+
+```tsx
+submit(
+  { name: "John", email: "john@example.com" },
+  { method: "post" }
+);
+// Sent as: name=John&email=john%40example.com
+```
+
+### multipart/form-data
+
+```tsx
+const formData = new FormData();
+formData.append("file", fileInput.files[0]);
+
+submit(formData, {
+  method: "post",
+  encType: "multipart/form-data",
+});
+```
+
+### application/json
+
+```tsx
+submit(
+  {
+    user: {
+      name: "John",
+      settings: { theme: "dark" },
+    },
+  },
+  {
+    method: "post",
+    encType: "application/json",
+  }
+);
+// Sent as: {"user":{"name":"John","settings":{"theme":"dark"}}}
+```
+
+## Type Safety
+
+```tsx
+interface FormData {
+  name: string;
+  email: string;
+}
+
+function Component() {
+  const submit = useSubmit();
+  
+  const handleSubmit = (data: FormData) => {
+    submit(data, {
+      method: "post",
+      action: "/api/users",
+    });
+  };
+}
+```
+
+## Related
+
+- [`Form`](/api/components/form) - Declarative form component
+- [`useFetcher`](/api/hooks/use-fetcher) - Form submission without navigation
+- [`useNavigation`](/api/hooks/use-navigation) - Track submission state
+- [`action`](/start/framework/route-module#action) - Define route action

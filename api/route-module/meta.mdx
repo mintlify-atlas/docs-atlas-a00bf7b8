@@ -1,0 +1,382 @@
+---
+title: meta
+---
+
+# meta
+
+Defines metadata tags for a route, including title, description, Open Graph tags, and other `<meta>` elements in the document `<head>`.
+
+## Signature
+
+```tsx
+export function meta(args: MetaArgs): MetaDescriptor[]
+```
+
+<ParamField path="args" type="MetaArgs" required>
+  Arguments passed to the meta function
+
+  <Expandable title="properties">
+    <ParamField path="data" type="SerializeFrom<Loader>" deprecated>
+      Deprecated. Use `loaderData` instead.
+    </ParamField>
+
+    <ParamField path="loaderData" type="SerializeFrom<Loader>">
+      Data returned from this route's loader or clientLoader
+    </ParamField>
+
+    <ParamField path="params" type="Params" required>
+      Dynamic route params for the current route
+    </ParamField>
+
+    <ParamField path="location" type="Location" required>
+      The current location object
+    </ParamField>
+
+    <ParamField path="matches" type="MetaMatches" required>
+      Array of parent route matches with their data
+    </ParamField>
+
+    <ParamField path="error" type="unknown">
+      The error if one occurred (only available in error boundary)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="MetaDescriptor[]">
+  An array of meta descriptors. Each descriptor becomes a `<meta>` or `<title>` element.
+</ResponseField>
+
+## Basic Example
+
+```tsx
+import type { MetaFunction } from "react-router";
+
+export const meta: MetaFunction = () => {
+  return [
+    { title: "My App" },
+    { name: "description", content: "Welcome to my app" },
+  ];
+};
+```
+
+## Using Loader Data
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  const product = await fetchProduct(params.productId);
+  return { product };
+}
+
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  return [
+    { title: loaderData.product.name },
+    { name: "description", content: loaderData.product.description },
+  ];
+};
+```
+
+## Open Graph Tags
+
+```tsx
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const { article } = loaderData;
+  
+  return [
+    { title: article.title },
+    { property: "og:title", content: article.title },
+    { property: "og:description", content: article.summary },
+    { property: "og:image", content: article.imageUrl },
+    { property: "og:type", content: "article" },
+    { property: "og:url", content: `https://example.com/articles/${article.slug}` },
+  ];
+};
+```
+
+## Twitter Card
+
+```tsx
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const { post } = loaderData;
+  
+  return [
+    { title: post.title },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:site", content: "@myapp" },
+    { name: "twitter:title", content: post.title },
+    { name: "twitter:description", content: post.excerpt },
+    { name: "twitter:image", content: post.coverImage },
+  ];
+};
+```
+
+## Charset and Viewport
+
+```tsx
+export const meta: MetaFunction = () => {
+  return [
+    { charSet: "utf-8" },
+    { name: "viewport", content: "width=device-width,initial-scale=1" },
+  ];
+};
+```
+
+## Dynamic Title with Params
+
+```tsx
+export const meta: MetaFunction<typeof loader> = ({ loaderData, params }) => {
+  return [
+    { title: `${loaderData.user.name} - User Profile` },
+    { name: "description", content: `Profile page for ${loaderData.user.name}` },
+  ];
+};
+```
+
+## Accessing Parent Route Data
+
+```tsx
+import type { MetaFunction } from "react-router";
+import type { loader as rootLoader } from "~/root";
+
+export const meta: MetaFunction<
+  typeof loader,
+  { root: typeof rootLoader }
+> = ({ loaderData, matches }) => {
+  // Find parent route data
+  const rootData = matches.find((match) => match.id === "root")?.loaderData;
+  
+  return [
+    { title: `${loaderData.product.name} - ${rootData.siteName}` },
+  ];
+};
+```
+
+## Merging Parent Meta
+
+```tsx
+export const meta: MetaFunction<typeof loader> = ({ loaderData, matches }) => {
+  // Get meta from parent routes
+  const parentMeta = matches.flatMap((match) => match.meta ?? []);
+  
+  // Override or add to parent meta
+  return [
+    ...parentMeta,
+    { title: loaderData.product.name },
+    { name: "description", content: loaderData.product.description },
+  ];
+};
+```
+
+## Conditional Meta Based on Location
+
+```tsx
+export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => {
+  const isPreview = location.search.includes("preview=true");
+  
+  return [
+    { title: loaderData.page.title },
+    ...(isPreview ? [{ name: "robots", content: "noindex" }] : []),
+  ];
+};
+```
+
+## JSON-LD Structured Data
+
+```tsx
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const { product } = loaderData;
+  
+  return [
+    { title: product.name },
+    {
+      "script:ld+json": {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        name: product.name,
+        description: product.description,
+        image: product.imageUrl,
+        offers: {
+          "@type": "Offer",
+          price: product.price,
+          priceCurrency: "USD",
+        },
+      },
+    },
+  ];
+};
+```
+
+## Error Meta
+
+```tsx
+export const meta: MetaFunction = ({ error }) => {
+  if (error) {
+    return [
+      { title: "Error" },
+      { name: "description", content: "An error occurred" },
+      { name: "robots", content: "noindex" },
+    ];
+  }
+  
+  return [
+    { title: "My Page" },
+  ];
+};
+```
+
+## All Meta Descriptor Types
+
+```tsx
+export const meta: MetaFunction = () => {
+  return [
+    // Title
+    { title: "Page Title" },
+    
+    // Charset
+    { charSet: "utf-8" },
+    
+    // Standard meta tags
+    { name: "description", content: "Page description" },
+    { name: "keywords", content: "react, router" },
+    { name: "author", content: "John Doe" },
+    { name: "viewport", content: "width=device-width,initial-scale=1" },
+    { name: "robots", content: "index,follow" },
+    
+    // Open Graph
+    { property: "og:title", content: "Page Title" },
+    { property: "og:description", content: "Description" },
+    { property: "og:image", content: "https://example.com/image.jpg" },
+    
+    // HTTP Equiv
+    { httpEquiv: "content-type", content: "text/html; charset=UTF-8" },
+    { httpEquiv: "x-ua-compatible", content: "IE=edge" },
+    
+    // JSON-LD
+    { "script:ld+json": { /* structured data */ } },
+    
+    // Custom tag
+    { tagName: "meta", property: "custom", content: "value" },
+  ];
+};
+```
+
+## SEO Best Practices
+
+```tsx
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+  const { article } = loaderData;
+  const url = `https://example.com/articles/${article.slug}`;
+  
+  return [
+    // Essential meta tags
+    { title: `${article.title} | My Blog` },
+    { name: "description", content: article.summary },
+    
+    // Open Graph
+    { property: "og:type", content: "article" },
+    { property: "og:title", content: article.title },
+    { property: "og:description", content: article.summary },
+    { property: "og:image", content: article.coverImage },
+    { property: "og:url", content: url },
+    
+    // Twitter
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: article.title },
+    { name: "twitter:description", content: article.summary },
+    { name: "twitter:image", content: article.coverImage },
+    
+    // Article meta
+    { property: "article:published_time", content: article.publishedAt },
+    { property: "article:author", content: article.author.name },
+    
+    // Structured data
+    {
+      "script:ld+json": {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        headline: article.title,
+        description: article.summary,
+        image: article.coverImage,
+        datePublished: article.publishedAt,
+        author: {
+          "@type": "Person",
+          name: article.author.name,
+        },
+      },
+    },
+  ];
+};
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use type-safe meta with loader types">
+    Pass your loader type to MetaFunction for autocomplete:
+
+    ```tsx
+    export async function loader() {
+      return { product: { name: "Widget", price: 29.99 } };
+    }
+
+    export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+      loaderData.product.name; // ✅ Typed!
+      return [{ title: loaderData.product.name }];
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Keep titles under 60 characters">
+    Search engines typically display the first 50-60 characters:
+
+    ```tsx
+    export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+      const title = loaderData.product.name.length > 50
+        ? `${loaderData.product.name.slice(0, 50)}...`
+        : loaderData.product.name;
+      
+      return [{ title }];
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Descriptions should be 150-160 characters">
+    Optimal length for search result snippets:
+
+    ```tsx
+    const truncateDescription = (text: string, maxLength = 155) => {
+      if (text.length <= maxLength) return text;
+      return text.slice(0, maxLength).trim() + "...";
+    };
+
+    export const meta: MetaFunction<typeof loader> = ({ loaderData }) => {
+      return [
+        { 
+          name: "description", 
+          content: truncateDescription(loaderData.product.description) 
+        },
+      ];
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Meta tags are merged from leaf to root">
+    Child route meta overrides parent route meta:
+
+    ```tsx
+    // app/root.tsx
+    export const meta = () => [{ title: "My App" }];
+
+    // app/routes/products.$id.tsx
+    export const meta = ({ loaderData }) => [
+      // This overrides root title
+      { title: `${loaderData.product.name} | My App` }
+    ];
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [links](/api/route-module/links) - Define link tags
+- [loader](/api/route-module/loader) - Load data for meta
+- [MetaFunction](/api/types/meta-function) - Full type reference

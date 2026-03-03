@@ -1,0 +1,283 @@
+---
+title: Link
+---
+
+A progressively enhanced `<a href>` wrapper to enable navigation with client-side routing.
+
+```tsx
+import { Link } from "react-router";
+
+<Link to="/dashboard">Dashboard</Link>
+```
+
+## Type Declaration
+
+```tsx
+export interface LinkProps
+  extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
+  discover?: DiscoverBehavior;
+  prefetch?: PrefetchBehavior;
+  reloadDocument?: boolean;
+  replace?: boolean;
+  state?: any;
+  preventScrollReset?: boolean;
+  relative?: RelativeRoutingType;
+  to: To;
+  viewTransition?: boolean;
+  unstable_defaultShouldRevalidate?: boolean;
+  unstable_mask?: To;
+}
+
+export const Link: React.ForwardRefExoticComponent<
+  LinkProps & React.RefAttributes<HTMLAnchorElement>
+>;
+
+type To = string | Partial<Path>;
+type DiscoverBehavior = "render" | "none";
+type PrefetchBehavior = "none" | "intent" | "render" | "viewport";
+type RelativeRoutingType = "route" | "path";
+```
+
+## Props
+
+<ParamField path="to" type="To" required>
+  Can be a string or a partial Path object:
+
+  ```tsx
+  <Link to="/dashboard" />
+
+  <Link
+    to={{
+      pathname: "/dashboard",
+      search: "?sort=name",
+      hash: "#section",
+    }}
+  />
+  ```
+</ParamField>
+
+<ParamField path="replace" type="boolean">
+  Replaces the current entry in the History stack instead of pushing a new one.
+
+  ```tsx
+  <Link to="/dashboard" replace />
+  ```
+
+  ```
+  # with a history stack like this
+  A -> B
+
+  # normal link click pushes a new entry
+  A -> B -> C
+
+  # but with `replace`, B is replaced by C
+  A -> C
+  ```
+</ParamField>
+
+<ParamField path="state" type="any">
+  Adds persistent client side routing state to the next location.
+
+  ```tsx
+  <Link to="/profile" state={{ from: "dashboard" }} />
+  ```
+
+  The location state is accessed from the `location`:
+
+  ```tsx
+  function Profile() {
+    const location = useLocation();
+    console.log(location.state); // { from: "dashboard" }
+  }
+  ```
+</ParamField>
+
+<ParamField path="preventScrollReset" type="boolean" modes={["data", "framework"]}>
+  Prevents the scroll position from being reset to the top of the window when the link is clicked and the app is using ScrollRestoration.
+
+  ```tsx
+  <Link to="?tab=one" preventScrollReset />
+  ```
+</ParamField>
+
+<ParamField path="relative" type="RelativeRoutingType">
+  Defines the relative path behavior for the link.
+
+  ```tsx
+  <Link to=".." /> {/* default: "route" */}
+  <Link to=".." relative="route" />
+  <Link to=".." relative="path" />
+  ```
+
+  - **route** (default) - Resolves relative to the route pattern
+  - **path** - Resolves relative to the URL path
+</ParamField>
+
+<ParamField path="reloadDocument" type="boolean">
+  Will use document navigation instead of client side routing when the link is clicked.
+
+  ```tsx
+  <Link to="/logout" reloadDocument />
+  ```
+</ParamField>
+
+<ParamField path="viewTransition" type="boolean" modes={["data", "framework"]}>
+  Enables a View Transition for this navigation.
+
+  ```tsx
+  <Link to="/profile" viewTransition>
+    View Profile
+  </Link>
+  ```
+
+  To apply specific styles for the transition, see `useViewTransitionState`.
+</ParamField>
+
+<ParamField path="prefetch" type="PrefetchBehavior" modes={["framework"]}>
+  Defines the data and module prefetching behavior for the link.
+
+  ```tsx
+  <Link to="/dashboard" prefetch="intent" />
+  ```
+
+  - **none** (default) - No prefetching
+  - **intent** - Prefetches when the user hovers or focuses the link
+  - **render** - Prefetches when the link renders
+  - **viewport** - Prefetches when the link is in the viewport (useful for mobile)
+</ParamField>
+
+<ParamField path="discover" type="DiscoverBehavior" modes={["framework"]}>
+  Defines the link lazy route discovery behavior.
+
+  ```tsx
+  <Link to="/admin" discover="none" />
+  ```
+
+  - **render** (default) - Discover the route when the link renders
+  - **none** - Don't eagerly discover, only discover if the link is clicked
+</ParamField>
+
+<ParamField path="unstable_mask" type="To" modes={["data", "framework"]}>
+  Masked path for this navigation. Navigates to one location but displays a different URL in the browser.
+
+  ```tsx
+  <Link
+    to="/gallery?image=1"
+    unstable_mask="/images/1"
+  >
+    <img src="image-1.jpg" />
+  </Link>
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Navigation
+
+```tsx
+import { Link } from "react-router";
+
+function Nav() {
+  return (
+    <nav>
+      <Link to="/">Home</Link>
+      <Link to="/about">About</Link>
+      <Link to="/contact">Contact</Link>
+    </nav>
+  );
+}
+```
+
+### With Search Params
+
+```tsx
+<Link to={{ pathname: "/search", search: "?q=react+router" }}>
+  Search for React Router
+</Link>
+
+// or
+<Link to="/search?q=react+router">
+  Search for React Router
+</Link>
+```
+
+### Dynamic Links
+
+```tsx
+function UserList({ users }) {
+  return (
+    <ul>
+      {users.map((user) => (
+        <li key={user.id}>
+          <Link to={`/users/${user.id}`}>{user.name}</Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### With State
+
+```tsx
+<Link
+  to="/edit"
+  state={{ from: location.pathname }}
+>
+  Edit
+</Link>
+
+function EditPage() {
+  const location = useLocation();
+  const from = location.state?.from || "/";
+
+  return (
+    <div>
+      <button onClick={() => navigate(from)}>Cancel</button>
+    </div>
+  );
+}
+```
+
+### Replace History
+
+```tsx
+<Link to="/new-page" replace>
+  Replace Current Page
+</Link>
+```
+
+### Prefetching
+
+```tsx
+<Link to="/dashboard" prefetch="intent">
+  Dashboard (prefetch on hover)
+</Link>
+
+<Link to="/profile" prefetch="render">
+  Profile (prefetch on render)
+</Link>
+```
+
+### All HTML Attributes
+
+Since `Link` renders an `<a>` element, all standard anchor attributes are supported:
+
+```tsx
+<Link
+  to="/docs"
+  className="nav-link"
+  style={{ color: "blue" }}
+  target="_blank"
+  rel="noopener noreferrer"
+>
+  Documentation
+</Link>
+```
+
+## Notes
+
+- Relative links are resolved relative to the route hierarchy by default
+- External URLs are detected automatically and render as standard `<a>` tags
+- Supports all standard `<a>` HTML attributes
+- Progressive enhancement: works with JavaScript disabled if using proper forms

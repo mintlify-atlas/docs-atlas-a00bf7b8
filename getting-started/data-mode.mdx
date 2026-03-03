@@ -1,0 +1,589 @@
+---
+title: Data Mode
+description: Guide to React Router Data Mode with createBrowserRouter, loaders, and actions
+---
+
+# Data Mode
+
+Data Mode adds powerful data loading and mutation features to React Router by moving route configuration outside of React rendering. This enables features like loaders, actions, pending states, and optimistic UI.
+
+## Quick Start
+
+<Steps>
+
+### Install React Router
+
+```bash
+npm install react-router
+```
+
+### Create a router
+
+```tsx filename="src/main.tsx"
+import { createBrowserRouter, RouterProvider } from "react-router";
+import { createRoot } from "react-dom/client";
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <div>Hello World</div>,
+  },
+]);
+
+createRoot(document.getElementById("root")).render(
+  <RouterProvider router={router} />
+);
+```
+
+### Start your dev server
+
+```bash
+npm run dev
+```
+
+</Steps>
+
+## Why Data Mode?
+
+Data Mode is ideal when you:
+
+- Want data loading features but don't want a full framework
+- Need control over your bundler and server setup
+- Are migrating from React Router v6.4+
+- Want to integrate with existing build tools
+
+<Note>
+Data Mode gives you the power of data loading without requiring the Vite plugin.
+</Note>
+
+## Route Configuration
+
+Routes are configured as plain JavaScript objects:
+
+<CodeGroup>
+
+```tsx Basic
+import { createBrowserRouter } from "react-router";
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    Component: Root,
+  },
+  {
+    path: "/about",
+    Component: About,
+  },
+  {
+    path: "/teams/:teamId",
+    Component: Team,
+  },
+]);
+```
+
+```tsx Nested Routes
+const router = createBrowserRouter([
+  {
+    path: "/",
+    Component: Root,
+    children: [
+      {
+        index: true,
+        Component: Home,
+      },
+      {
+        path: "dashboard",
+        Component: Dashboard,
+        children: [
+          { index: true, Component: DashboardHome },
+          { path: "settings", Component: Settings },
+        ],
+      },
+    ],
+  },
+]);
+```
+
+```tsx Layout Routes
+const router = createBrowserRouter([
+  {
+    // No path = layout route
+    Component: MarketingLayout,
+    children: [
+      { index: true, Component: Home },
+      { path: "contact", Component: Contact },
+    ],
+  },
+  {
+    path: "projects",
+    children: [
+      { index: true, Component: ProjectsHome },
+      {
+        // Another layout route
+        Component: ProjectLayout,
+        children: [
+          { path: ":pid", Component: Project },
+          { path: ":pid/edit", Component: EditProject },
+        ],
+      },
+    ],
+  },
+]);
+```
+
+</CodeGroup>
+
+## Data Loading with Loaders
+
+Loaders provide data to route components before they render:
+
+<Tabs>
+  <Tab title="Basic Loader">
+    ```tsx
+    import { createBrowserRouter, useLoaderData } from "react-router";
+
+    const router = createBrowserRouter([
+      {
+        path: "/teams/:teamId",
+        loader: async ({ params }) => {
+          const team = await fetchTeam(params.teamId);
+          return { team };
+        },
+        Component: Team,
+      },
+    ]);
+
+    function Team() {
+      const { team } = useLoaderData();
+      return <h1>{team.name}</h1>;
+    }
+    ```
+  </Tab>
+
+  <Tab title="With Request">
+    ```tsx
+    const router = createBrowserRouter([
+      {
+        path: "/products",
+        loader: async ({ request }) => {
+          const url = new URL(request.url);
+          const searchTerm = url.searchParams.get("q");
+          const products = await searchProducts(searchTerm);
+          return { products, searchTerm };
+        },
+        Component: Products,
+      },
+    ]);
+
+    function Products() {
+      const { products, searchTerm } = useLoaderData();
+      return (
+        <div>
+          <h1>Search Results for "{searchTerm}"</h1>
+          {products.map(p => <ProductCard key={p.id} product={p} />)}
+        </div>
+      );
+    }
+    ```
+  </Tab>
+
+  <Tab title="Error Handling">
+    ```tsx
+    const router = createBrowserRouter([
+      {
+        path: "/user/:userId",
+        loader: async ({ params }) => {
+          const user = await fetchUser(params.userId);
+          if (!user) {
+            throw new Response("Not Found", { status: 404 });
+          }
+          return { user };
+        },
+        Component: User,
+        errorElement: <ErrorBoundary />,
+      },
+    ]);
+
+    function ErrorBoundary() {
+      const error = useRouteError();
+      if (isRouteErrorResponse(error)) {
+        return (
+          <div>
+            <h1>{error.status}</h1>
+            <p>{error.statusText}</p>
+          </div>
+        );
+      }
+      return <div>Something went wrong!</div>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Data Mutations with Actions
+
+Actions handle form submissions and data mutations:
+
+<CodeGroup>
+
+```tsx Basic Action
+import { Form, redirect } from "react-router";
+
+const router = createBrowserRouter([
+  {
+    path: "/projects/new",
+    action: async ({ request }) => {
+      const formData = await request.formData();
+      const project = await createProject({
+        name: formData.get("name"),
+        description: formData.get("description"),
+      });
+      return redirect(`/projects/${project.id}`);
+    },
+    Component: NewProject,
+  },
+]);
+
+function NewProject() {
+  return (
+    <Form method="post">
+      <input name="name" placeholder="Project name" />
+      <textarea name="description" />
+      <button type="submit">Create Project</button>
+    </Form>
+  );
+}
+```
+
+```tsx With Validation
+const router = createBrowserRouter([
+  {
+    path: "/login",
+    action: async ({ request }) => {
+      const formData = await request.formData();
+      const email = formData.get("email");
+      const password = formData.get("password");
+
+      const errors = {};
+      if (!email) errors.email = "Email is required";
+      if (!password) errors.password = "Password is required";
+
+      if (Object.keys(errors).length > 0) {
+        return { errors };
+      }
+
+      const user = await login(email, password);
+      return redirect("/dashboard");
+    },
+    Component: Login,
+  },
+]);
+
+function Login() {
+  const actionData = useActionData();
+  return (
+    <Form method="post">
+      <input name="email" />
+      {actionData?.errors?.email && <span>{actionData.errors.email}</span>}
+
+      <input name="password" type="password" />
+      {actionData?.errors?.password && <span>{actionData.errors.password}</span>}
+
+      <button type="submit">Login</button>
+    </Form>
+  );
+}
+```
+
+```tsx Delete Action
+const router = createBrowserRouter([
+  {
+    path: "/projects/:projectId",
+    loader: async ({ params }) => {
+      return { project: await fetchProject(params.projectId) };
+    },
+    Component: Project,
+  },
+  {
+    path: "/projects/:projectId/delete",
+    action: async ({ params }) => {
+      await deleteProject(params.projectId);
+      return redirect("/projects");
+    },
+  },
+]);
+
+function Project() {
+  const { project } = useLoaderData();
+  return (
+    <div>
+      <h1>{project.name}</h1>
+      <Form method="post" action="delete">
+        <button type="submit">Delete</button>
+      </Form>
+    </div>
+  );
+}
+```
+
+</CodeGroup>
+
+## Pending UI States
+
+Show loading states during navigation and submissions:
+
+<Tabs>
+  <Tab title="Navigation State">
+    ```tsx
+    import { useNavigation } from "react-router";
+
+    function Root() {
+      const navigation = useNavigation();
+      const isLoading = navigation.state === "loading";
+
+      return (
+        <div>
+          {isLoading && <div className="loading-bar" />}
+          <Outlet />
+        </div>
+      );
+    }
+    ```
+  </Tab>
+
+  <Tab title="Form Submission">
+    ```tsx
+    import { useNavigation, Form } from "react-router";
+
+    function EditProject() {
+      const { project } = useLoaderData();
+      const navigation = useNavigation();
+      const isSubmitting = navigation.state === "submitting";
+
+      return (
+        <Form method="post">
+          <input name="name" defaultValue={project.name} />
+          <button disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : "Save"}
+          </button>
+        </Form>
+      );
+    }
+    ```
+  </Tab>
+
+  <Tab title="NavLink Pending">
+    ```tsx
+    import { NavLink } from "react-router";
+
+    function Navigation() {
+      return (
+        <nav>
+          <NavLink
+            to="/dashboard"
+            className={({ isActive, isPending }) =>
+              isPending ? "pending" : isActive ? "active" : ""
+            }
+          >
+            Dashboard
+          </NavLink>
+        </nav>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Fetchers for Parallel Mutations
+
+Use `useFetcher` to load data or submit forms without navigation:
+
+<CodeGroup>
+
+```tsx Newsletter Signup
+import { useFetcher } from "react-router";
+
+function NewsletterSignup() {
+  const fetcher = useFetcher();
+  const isSubscribing = fetcher.state === "submitting";
+
+  return (
+    <fetcher.Form method="post" action="/newsletter/subscribe">
+      <input name="email" type="email" />
+      <button disabled={isSubscribing}>
+        {isSubscribing ? "Subscribing..." : "Subscribe"}
+      </button>
+      {fetcher.data?.success && <p>Thanks for subscribing!</p>}
+    </fetcher.Form>
+  );
+}
+```
+
+```tsx Load on Demand
+import { useFetcher } from "react-router";
+
+function UserDetails({ userId }) {
+  const fetcher = useFetcher();
+
+  return (
+    <div>
+      {fetcher.state === "idle" && !fetcher.data && (
+        <button onClick={() => fetcher.load(`/users/${userId}`)}
+          Load Details
+        </button>
+      )}
+      {fetcher.state === "loading" && <div>Loading...</div>}
+      {fetcher.data && (
+        <div>
+          <h2>{fetcher.data.user.name}</h2>
+          <p>{fetcher.data.user.email}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+```tsx Optimistic UI
+import { useFetcher } from "react-router";
+
+function Task({ task }) {
+  const fetcher = useFetcher();
+  const isComplete = fetcher.formData
+    ? fetcher.formData.get("complete") === "true"
+    : task.complete;
+
+  return (
+    <div>
+      <fetcher.Form method="post">
+        <input
+          type="hidden"
+          name="complete"
+          value={isComplete ? "false" : "true"}
+        />
+        <button type="submit">
+          {isComplete ? "✓" : "○"} {task.title}
+        </button>
+      </fetcher.Form>
+    </div>
+  );
+}
+```
+
+</CodeGroup>
+
+## Advanced Patterns
+
+<Steps>
+
+### Route Context
+
+Share data across route loaders:
+
+```tsx
+const router = createBrowserRouter([
+  {
+    id: "root",
+    path: "/",
+    loader: async () => {
+      return { user: await getCurrentUser() };
+    },
+    Component: Root,
+    children: [
+      {
+        path: "dashboard",
+        loader: () => {
+          // Access parent data
+          const { user } = useRouteLoaderData("root");
+          return loadDashboard(user.id);
+        },
+      },
+    ],
+  },
+]);
+```
+
+### Deferred Data
+
+Stream slow data after initial render:
+
+```tsx
+import { defer, Await } from "react-router";
+import { Suspense } from "react";
+
+const router = createBrowserRouter([
+  {
+    path: "/product/:id",
+    loader: async ({ params }) => {
+      const product = await fetchProduct(params.id);
+      const reviews = fetchReviews(params.id); // Don't await!
+      return defer({ product, reviews });
+    },
+    Component: Product,
+  },
+]);
+
+function Product() {
+  const { product, reviews } = useLoaderData();
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Await resolve={reviews}>
+          {(resolvedReviews) => <Reviews items={resolvedReviews} />}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Scroll Restoration
+
+```tsx
+import { ScrollRestoration } from "react-router";
+
+function Root() {
+  return (
+    <div>
+      <Outlet />
+      <ScrollRestoration />
+    </div>
+  );
+}
+```
+
+</Steps>
+
+## Comparison with Framework Mode
+
+| Feature | Data Mode | Framework Mode |
+|---------|-----------|----------------|
+| Loaders | ✅ Manual types | ✅ Auto-generated types |
+| Actions | ✅ | ✅ |
+| Code Splitting | Manual | Automatic |
+| SSR | Manual setup | Built-in |
+| Bundler | Your choice | Vite required |
+| File-based routing | No | Yes (optional) |
+
+<Note>
+Data Mode gives you full control over your build process while still providing powerful data loading features.
+</Note>
+
+## Next Steps
+
+<Steps>
+
+### Add Error Boundaries
+
+Handle errors gracefully with `errorElement` on routes.
+
+### Implement Authentication
+
+Use loaders to protect routes and redirect unauthenticated users.
+
+### Optimize with Prefetching
+
+Use `<Link prefetch>` to load data before navigation.
+
+</Steps>

@@ -1,0 +1,351 @@
+---
+title: useHref
+---
+
+# useHref
+
+Resolves a URL against the current location.
+
+## Signature
+
+```tsx
+function useHref(
+  to: To,
+  options?: { relative?: RelativeRoutingType }
+): string
+
+type To = string | Partial<Location>
+type RelativeRoutingType = "route" | "path"
+```
+
+## Parameters
+
+<ParamField path="to" type="To" required>
+  The path to resolve. Can be a string or a partial location object.
+</ParamField>
+
+<ParamField path="options.relative" type="'route' | 'path'">
+  Controls relative routing logic. Defaults to `"route"` so routing is relative to the route tree. Set to `"path"` to make relative routing operate against path segments.
+</ParamField>
+
+## Returns
+
+<ResponseField name="href" type="string">
+  The resolved href string that can be used in an anchor tag or for other purposes.
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+```tsx
+import { useHref } from "react-router";
+
+function Component() {
+  const href = useHref("some/where");
+  // href === "/base/path/some/where"
+  
+  return <a href={href}>Click me</a>;
+}
+```
+
+### Resolve relative paths
+
+```tsx
+function Component() {
+  // Current location: /projects/123
+  
+  const href = useHref("../settings");
+  // href === "/projects/settings"
+  
+  return <a href={href}>Settings</a>;
+}
+```
+
+### With location object
+
+```tsx
+function Component() {
+  const href = useHref({
+    pathname: "/search",
+    search: "?q=react",
+    hash: "#results",
+  });
+  // href === "/search?q=react#results"
+  
+  return <a href={href}>Search</a>;
+}
+```
+
+### Share links
+
+```tsx
+function ShareButton({ postId }) {
+  const href = useHref(`/posts/${postId}`);
+  const fullUrl = `${window.location.origin}${href}`;
+  
+  const share = () => {
+    navigator.clipboard.writeText(fullUrl);
+  };
+  
+  return <button onClick={share}>Share</button>;
+}
+```
+
+### Custom link component
+
+```tsx
+function ExternalLink({ to, children, ...props }) {
+  const href = useHref(to);
+  const isExternal = href.startsWith("http");
+  
+  if (isExternal) {
+    return (
+      <a href={href} target="_blank" rel="noopener" {...props}>
+        {children}
+      </a>
+    );
+  }
+  
+  return <Link to={to} {...props}>{children}</Link>;
+}
+```
+
+### Download links
+
+```tsx
+function DownloadButton({ fileId }) {
+  const href = useHref(`/api/files/${fileId}/download`);
+  
+  return (
+    <a href={href} download>
+      Download File
+    </a>
+  );
+}
+```
+
+## Common Patterns
+
+### QR code generation
+
+```tsx
+import QRCode from "qrcode";
+
+function ProductQR({ productId }) {
+  const href = useHref(`/products/${productId}`);
+  const [qrCode, setQrCode] = useState("");
+  
+  useEffect(() => {
+    const url = `${window.location.origin}${href}`;
+    QRCode.toDataURL(url).then(setQrCode);
+  }, [href]);
+  
+  return qrCode ? <img src={qrCode} alt="QR Code" /> : null;
+}
+```
+
+### Social sharing
+
+```tsx
+function SocialShare({ postId }) {
+  const href = useHref(`/posts/${postId}`);
+  const url = `${window.location.origin}${href}`;
+  const encodedUrl = encodeURIComponent(url);
+  
+  return (
+    <div>
+      <a
+        href={`https://twitter.com/intent/tweet?url=${encodedUrl}`}
+        target="_blank"
+      >
+        Share on Twitter
+      </a>
+      <a
+        href={`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`}
+        target="_blank"
+      >
+        Share on Facebook
+      </a>
+    </div>
+  );
+}
+```
+
+### Email links
+
+```tsx
+function InviteButton({ pageId }) {
+  const href = useHref(`/pages/${pageId}`);
+  const url = `${window.location.origin}${href}`;
+  const mailtoLink = `mailto:?subject=Check this out&body=${encodeURIComponent(url)}`;
+  
+  return <a href={mailtoLink}>Share via Email</a>;
+}
+```
+
+### Canonical URLs
+
+```tsx
+function SEO() {
+  const href = useHref(useLocation().pathname);
+  const canonicalUrl = `https://example.com${href}`;
+  
+  return (
+    <head>
+      <link rel="canonical" href={canonicalUrl} />
+    </head>
+  );
+}
+```
+
+### Copy to clipboard
+
+```tsx
+function CopyLinkButton() {
+  const href = useHref(useLocation());
+  const fullUrl = `${window.location.origin}${href}`;
+  const [copied, setCopied] = useState(false);
+  
+  const copyLink = () => {
+    navigator.clipboard.writeText(fullUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  
+  return (
+    <button onClick={copyLink}>
+      {copied ? "Copied!" : "Copy Link"}
+    </button>
+  );
+}
+```
+
+### Relative routing types
+
+```tsx
+function Component() {
+  // Current route: /users/:userId/posts/:postId
+  // Current path: /users/123/posts/456
+  
+  // Route-relative (default)
+  const routeHref = useHref("..", { relative: "route" });
+  // routeHref === "/users/123"
+  
+  // Path-relative
+  const pathHref = useHref("..", { relative: "path" });
+  // pathHref === "/users/123/posts"
+  
+  return (
+    <div>
+      <a href={routeHref}>Back to user (route)</a>
+      <a href={pathHref}>Back to posts (path)</a>
+    </div>
+  );
+}
+```
+
+### With basename
+
+```tsx
+// If your app is deployed to example.com/app
+// and basename is set to "/app"
+
+function Component() {
+  const href = useHref("/dashboard");
+  // href === "/app/dashboard"
+  
+  return <a href={href}>Dashboard</a>;
+}
+```
+
+### Navigation hints
+
+```tsx
+function PrefetchLink({ to, children }) {
+  const href = useHref(to);
+  
+  return (
+    <>
+      <link rel="prefetch" href={href} />
+      <Link to={to}>{children}</Link>
+    </>
+  );
+}
+```
+
+## Type Safety
+
+```tsx
+import { useHref } from "react-router";
+
+function Component() {
+  // String path
+  const href1: string = useHref("/posts");
+  
+  // Location object
+  const href2: string = useHref({
+    pathname: "/posts",
+    search: "?sort=date",
+  });
+  
+  // With options
+  const href3: string = useHref("../settings", {
+    relative: "route",
+  });
+}
+```
+
+## Important Notes
+
+### Must be inside Router
+
+`useHref` must be called within a `<Router>` component context:
+
+```tsx
+// ❌ Will throw error
+function App() {
+  const href = useHref("/");
+  return <div />;
+}
+
+// ✅ Correct
+function App() {
+  return (
+    <BrowserRouter>
+      <Component />
+    </BrowserRouter>
+  );
+}
+
+function Component() {
+  const href = useHref("/");
+  return <div />;
+}
+```
+
+### Use Link for navigation
+
+For in-app navigation, prefer `<Link>` over using `useHref` with `<a>` tags:
+
+```tsx
+// ❌ Don't do this for internal links
+function Component() {
+  const href = useHref("/dashboard");
+  return <a href={href}>Dashboard</a>;
+}
+
+// ✅ Do this instead
+function Component() {
+  return <Link to="/dashboard">Dashboard</Link>;
+}
+```
+
+Use `useHref` when you need the URL string for purposes other than navigation (sharing, QR codes, etc.).
+
+## Related
+
+- [`Link`](/api/components/link) - Declarative navigation component
+- [`useNavigate`](/api/hooks/use-navigate) - Navigate programmatically
+- [`useResolvedPath`](/api/hooks/use-resolved-path) - Get path object without creating href
+- [`useLocation`](/api/hooks/use-location) - Access current location

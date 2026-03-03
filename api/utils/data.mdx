@@ -1,0 +1,267 @@
+---
+title: 'data'
+description: 'Return data with custom headers and status codes from loaders and actions'
+---
+
+## Summary
+
+Create responses that contain `headers` and `status` without forcing serialization into an actual [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response) object.
+
+The `data()` function allows you to attach metadata like HTTP headers and status codes to your loader/action data while keeping type safety and avoiding premature serialization.
+
+## Signature
+
+```typescript
+function data<D>(
+  data: D,
+  init?: number | ResponseInit
+): DataWithResponseInit<D>
+```
+
+## Parameters
+
+<ParamField path="data" type="D" required>
+  The data to be included in the response. Can be any serializable value including objects, arrays, primitives, etc.
+</ParamField>
+
+<ParamField path="init" type="number | ResponseInit">
+  Either a status code number or a `ResponseInit` object containing:
+  
+  - `status` - HTTP status code (e.g., 200, 201, 404)
+  - `statusText` - Status text message
+  - `headers` - Response headers object or Headers instance
+  
+  If a number is provided, it's used as the status code.
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="DataWithResponseInit<D>">
+  A `DataWithResponseInit` instance containing the data and response initialization options.
+</ResponseField>
+
+## Examples
+
+### Basic usage
+
+Return data without any special headers or status:
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  return { user }; // Simple return, no need for data()
+}
+```
+
+### With status code
+
+```tsx
+import { data } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const item = await createItem(formData);
+  
+  // Return 201 Created status
+  return data(item, 201);
+}
+```
+
+### With custom headers
+
+```tsx
+import { data } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  
+  return data(
+    { user },
+    {
+      headers: {
+        "Cache-Control": "max-age=300, s-maxage=3600",
+        "X-Custom-Header": "value",
+      },
+    }
+  );
+}
+```
+
+### With status and headers
+
+```tsx
+import { data } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const item = await createItem(formData);
+  
+  return data(
+    { item },
+    {
+      status: 201,
+      headers: {
+        "X-Custom-Header": "value",
+      },
+    }
+  );
+}
+```
+
+## Common Use Cases
+
+### Setting cache headers
+
+Control how browsers and CDNs cache your responses:
+
+```tsx
+import { data } from "react-router";
+
+export async function loader() {
+  const posts = await getPosts();
+  
+  return data(
+    { posts },
+    {
+      headers: {
+        "Cache-Control": "public, max-age=300, s-maxage=3600",
+      },
+    }
+  );
+}
+```
+
+### Error responses with status codes
+
+```tsx
+import { data } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  
+  if (!user) {
+    throw data(
+      { error: "User not found" },
+      { status: 404, statusText: "Not Found" }
+    );
+  }
+  
+  return { user };
+}
+```
+
+### Setting cookies
+
+```tsx
+import { data } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = await getSession(request);
+  session.set("userId", "123");
+  
+  return data(
+    { success: true },
+    {
+      headers: {
+        "Set-Cookie": await commitSession(session),
+      },
+    }
+  );
+}
+```
+
+### Content negotiation
+
+```tsx
+import { data } from "react-router";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const items = await getItems();
+  
+  return data(
+    { items },
+    {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Vary": "Accept",
+      },
+    }
+  );
+}
+```
+
+### Rate limiting headers
+
+```tsx
+import { data } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const result = await processRequest(request);
+  
+  return data(
+    result,
+    {
+      headers: {
+        "X-RateLimit-Limit": "100",
+        "X-RateLimit-Remaining": "99",
+        "X-RateLimit-Reset": "1640000000",
+      },
+    }
+  );
+}
+```
+
+## Type Safety
+
+The `data()` function preserves TypeScript types:
+
+```tsx
+interface User {
+  id: string;
+  name: string;
+}
+
+export async function loader() {
+  const user: User = await getUser();
+  
+  // Type is preserved: DataWithResponseInit<{ user: User }>
+  return data({ user }, 200);
+}
+```
+
+## Comparison with Response
+
+You can also return a native `Response` object:
+
+```tsx
+// Using data() - keeps type safety
+import { data } from "react-router";
+export async function loader() {
+  return data({ message: "Hello" }, 200);
+}
+
+// Using Response - loses type safety
+export async function loader() {
+  return new Response(
+    JSON.stringify({ message: "Hello" }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+}
+```
+
+Use `data()` when you want type safety and automatic serialization. Use `Response` when you need fine-grained control over the response format.
+
+## Related Functions
+
+- [`redirect`](/api/utils/redirect) - Create redirect responses
+- [`json`](/api/utils/json) - Deprecated v6 equivalent
+
+## Notes
+
+- You don't need to use `data()` if you're just returning plain data without custom headers/status
+- The data is not serialized until it's sent to the client, allowing for efficient server-side processing
+- Headers are merged with any headers set by middleware or the framework
+- Status codes should follow HTTP standards for proper client handling

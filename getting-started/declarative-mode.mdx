@@ -1,0 +1,592 @@
+---
+title: Declarative Mode
+description: Guide to React Router Declarative Mode with BrowserRouter, Routes, and Route components
+---
+
+# Declarative Mode
+
+Declarative Mode is the simplest way to use React Router. It enables basic routing features like matching URLs to components, navigating around your app, and providing active states - all declared with familiar React components.
+
+## Quick Start
+
+<Steps>
+
+### Install React Router
+
+```bash
+npm install react-router
+```
+
+### Add BrowserRouter
+
+```tsx filename="src/main.tsx"
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router";
+import App from "./App";
+
+createRoot(document.getElementById("root")).render(
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>
+);
+```
+
+### Add Routes
+
+```tsx filename="src/App.tsx"
+import { Routes, Route } from "react-router";
+import Home from "./Home";
+import About from "./About";
+
+function App() {
+  return (
+    <Routes>
+      <Route index element={<Home />} />
+      <Route path="about" element={<About />} />
+    </Routes>
+  );
+}
+```
+
+### Start your dev server
+
+```bash
+npm run dev
+```
+
+</Steps>
+
+## Why Declarative Mode?
+
+Declarative Mode is perfect when you:
+
+- Want the simplest possible routing setup
+- Are migrating from React Router v6
+- Have your own data loading solution
+- Are building a simple SPA
+- Don't need data loading features built into the router
+
+<Note>
+Declarative Mode gives you routing without the complexity of loaders, actions, or build tools.
+</Note>
+
+## Basic Routing
+
+<CodeGroup>
+
+```tsx Simple Routes
+import { BrowserRouter, Routes, Route } from "react-router";
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route index element={<Home />} />
+        <Route path="about" element={<About />} />
+        <Route path="contact" element={<Contact />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+```tsx With Navigation
+import { BrowserRouter, Routes, Route, Link } from "react-router";
+
+function App() {
+  return (
+    <BrowserRouter>
+      <nav>
+        <Link to="/">Home</Link>
+        <Link to="/about">About</Link>
+        <Link to="/contact">Contact</Link>
+      </nav>
+      <Routes>
+        <Route index element={<Home />} />
+        <Route path="about" element={<About />} />
+        <Route path="contact" element={<Contact />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+```tsx Active Links
+import { NavLink } from "react-router";
+
+function Navigation() {
+  return (
+    <nav>
+      <NavLink
+        to="/"
+        className={({ isActive }) => (isActive ? "active" : "")}
+      >
+        Home
+      </NavLink>
+      <NavLink
+        to="/about"
+        className={({ isActive }) => (isActive ? "active" : "")}
+      >
+        About
+      </NavLink>
+    </nav>
+  );
+}
+```
+
+</CodeGroup>
+
+## Nested Routes and Layouts
+
+Create layouts with nested routes using `<Outlet>`:
+
+<Tabs>
+  <Tab title="Basic Nesting">
+    ```tsx
+    import { Routes, Route, Outlet } from "react-router";
+
+    function App() {
+      return (
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="about" element={<About />} />
+            <Route path="contact" element={<Contact />} />
+          </Route>
+        </Routes>
+      );
+    }
+
+    function Layout() {
+      return (
+        <div>
+          <header>
+            <nav>{/* navigation */}</nav>
+          </header>
+          <main>
+            <Outlet /> {/* Child routes render here */}
+          </main>
+          <footer>{/* footer */}</footer>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+
+  <Tab title="Multi-level Nesting">
+    ```tsx
+    <Routes>
+      <Route path="/" element={<Root />}>
+        <Route index element={<Home />} />
+
+        <Route path="dashboard" element={<Dashboard />}>
+          <Route index element={<DashboardHome />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="profile" element={<Profile />} />
+        </Route>
+      </Route>
+    </Routes>
+    ```
+  </Tab>
+
+  <Tab title="Layout Routes">
+    ```tsx
+    {/* Routes without a path create layouts */}
+    <Routes>
+      <Route element={<MarketingLayout />}>
+        <Route index element={<Home />} />
+        <Route path="contact" element={<Contact />} />
+      </Route>
+
+      <Route path="projects" element={<ProjectsLayout />}>
+        <Route index element={<ProjectsList />} />
+        <Route path=":id" element={<Project />} />
+      </Route>
+    </Routes>
+    ```
+  </Tab>
+</Tabs>
+
+## Dynamic Routes
+
+Handle dynamic URL segments with URL parameters:
+
+<CodeGroup>
+
+```tsx URL Parameters
+import { Routes, Route, useParams } from "react-router";
+
+function App() {
+  return (
+    <Routes>
+      <Route path="teams/:teamId" element={<Team />} />
+      <Route path="users/:userId" element={<User />} />
+    </Routes>
+  );
+}
+
+function Team() {
+  const { teamId } = useParams();
+  return <h1>Team {teamId}</h1>;
+}
+```
+
+```tsx Multiple Parameters
+import { useParams } from "react-router";
+
+function App() {
+  return (
+    <Routes>
+      <Route
+        path="/c/:categoryId/p/:productId"
+        element={<Product />}
+      />
+    </Routes>
+  );
+}
+
+function Product() {
+  const { categoryId, productId } = useParams();
+  return (
+    <div>
+      <p>Category: {categoryId}</p>
+      <p>Product: {productId}</p>
+    </div>
+  );
+}
+```
+
+```tsx Optional Parameters
+import { useParams } from "react-router";
+
+// Optional language prefix
+<Route path=":lang?/categories" element={<Categories />} />
+
+// Optional edit mode
+<Route path="users/:userId/edit?" element={<User />} />
+
+function User() {
+  const { userId } = useParams();
+  const location = useLocation();
+  const isEditMode = location.pathname.endsWith("/edit");
+
+  return isEditMode ? <EditUser id={userId} /> : <ViewUser id={userId} />;
+}
+```
+
+</CodeGroup>
+
+## Navigation
+
+<Tabs>
+  <Tab title="Link Component">
+    ```tsx
+    import { Link } from "react-router";
+
+    function Navigation() {
+      return (
+        <nav>
+          <Link to="/">Home</Link>
+          <Link to="/about">About</Link>
+          <Link to="/teams/123">Team 123</Link>
+
+          {/* Relative links */}
+          <Link to="../">Up one level</Link>
+          <Link to="settings">Settings (relative)</Link>
+        </nav>
+      );
+    }
+    ```
+  </Tab>
+
+  <Tab title="Programmatic Navigation">
+    ```tsx
+    import { useNavigate } from "react-router";
+
+    function LoginForm() {
+      const navigate = useNavigate();
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        await login(formData);
+        navigate("/dashboard");
+      };
+
+      return (
+        <form onSubmit={handleSubmit}>
+          {/* form fields */}
+          <button type="submit">Login</button>
+          <button onClick={() => navigate(-1)}>Back</button>
+        </form>
+      );
+    }
+    ```
+  </Tab>
+
+  <Tab title="Navigate Component">
+    ```tsx
+    import { Navigate } from "react-router";
+
+    function ProtectedRoute({ user, children }) {
+      if (!user) {
+        return <Navigate to="/login" replace />;
+      }
+      return children;
+    }
+
+    function App() {
+      return (
+        <Routes>
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute user={user}>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Reading URL Data
+
+<CodeGroup>
+
+```tsx Location
+import { useLocation } from "react-router";
+
+function CurrentPath() {
+  const location = useLocation();
+
+  return (
+    <div>
+      <p>Current path: {location.pathname}</p>
+      <p>Search params: {location.search}</p>
+      <p>Hash: {location.hash}</p>
+    </div>
+  );
+}
+```
+
+```tsx Search Params
+import { useSearchParams } from "react-router";
+
+function SearchFilter() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "all";
+
+  return (
+    <div>
+      <input
+        value={query}
+        onChange={(e) => {
+          setSearchParams({ q: e.target.value, category });
+        }}
+      />
+      <select
+        value={category}
+        onChange={(e) => {
+          setSearchParams({ q: query, category: e.target.value });
+        }}
+      >
+        <option value="all">All</option>
+        <option value="docs">Docs</option>
+      </select>
+    </div>
+  );
+}
+```
+
+```tsx Match Routes
+import { useMatch } from "react-router";
+
+function TeamLink({ teamId }) {
+  const match = useMatch("/teams/:teamId");
+  const isActive = match?.params.teamId === teamId;
+
+  return (
+    <Link
+      to={`/teams/${teamId}`}
+      className={isActive ? "active" : ""}
+    >
+      Team {teamId}
+    </Link>
+  );
+}
+```
+
+</CodeGroup>
+
+## Common Patterns
+
+<Steps>
+
+### Not Found (404) Pages
+
+```tsx
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="/about" element={<About />} />
+  {/* Catch all unmatched routes */}
+  <Route path="*" element={<NotFound />} />
+</Routes>
+
+function NotFound() {
+  return (
+    <div>
+      <h1>404 - Page Not Found</h1>
+      <Link to="/">Go Home</Link>
+    </div>
+  );
+}
+```
+
+### Splat Routes
+
+```tsx
+import { useParams } from "react-router";
+
+<Route path="files/*" element={<FileViewer />} />
+
+function FileViewer() {
+  const params = useParams();
+  const filepath = params["*"]; // Everything after /files/
+  return <div>Viewing: {filepath}</div>;
+}
+```
+
+### Multiple Route Groups
+
+```tsx
+function App() {
+  return (
+    <BrowserRouter>
+      <header>{/* Global header */}</header>
+
+      {/* Main app routes */}
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/dashboard/*" element={<Dashboard />} />
+      </Routes>
+
+      <footer>{/* Global footer */}</footer>
+    </BrowserRouter>
+  );
+}
+
+function Dashboard() {
+  return (
+    <div>
+      <aside>{/* Dashboard sidebar */}</aside>
+
+      {/* Nested dashboard routes */}
+      <Routes>
+        <Route index element={<DashboardHome />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="profile" element={<Profile />} />
+      </Routes>
+    </div>
+  );
+}
+```
+
+</Steps>
+
+## Working with Data
+
+In Declarative Mode, you handle data loading yourself:
+
+<CodeGroup>
+
+```tsx useEffect
+import { useEffect, useState } from "react";
+import { useParams } from "react-router";
+
+function Team() {
+  const { teamId } = useParams();
+  const [team, setTeam] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchTeam(teamId)
+      .then(setTeam)
+      .finally(() => setLoading(false));
+  }, [teamId]);
+
+  if (loading) return <div>Loading...</div>;
+  return <h1>{team.name}</h1>;
+}
+```
+
+```tsx React Query
+import { useQuery } from "@tanstack/react-query";
+import { useParams } from "react-router";
+
+function Team() {
+  const { teamId } = useParams();
+  const { data, isLoading } = useQuery({
+    queryKey: ["team", teamId],
+    queryFn: () => fetchTeam(teamId),
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+  return <h1>{data.name}</h1>;
+}
+```
+
+```tsx SWR
+import useSWR from "swr";
+import { useParams } from "react-router";
+
+function Team() {
+  const { teamId } = useParams();
+  const { data, isLoading } = useSWR(
+    `/api/teams/${teamId}`,
+    fetcher
+  );
+
+  if (isLoading) return <div>Loading...</div>;
+  return <h1>{data.name}</h1>;
+}
+```
+
+</CodeGroup>
+
+## When to Upgrade
+
+Consider upgrading to Data Mode or Framework Mode if you need:
+
+- Built-in data loading with loaders
+- Form handling with actions
+- Pending UI states
+- Optimistic UI updates
+- Type safety (Framework Mode)
+- SSR/SSG (Framework Mode)
+
+<Note>
+Declarative Mode is perfect for simple apps, but you can always upgrade to Data or Framework Mode as your needs grow.
+</Note>
+
+## Next Steps
+
+<Steps>
+
+### Add a Data Library
+
+Integrate React Query, SWR, or Apollo for data fetching.
+
+### Handle Authentication
+
+Implement protected routes with conditional rendering or Navigate redirects.
+
+### Optimize Performance
+
+Use React.lazy() and Suspense for code splitting.
+
+</Steps>

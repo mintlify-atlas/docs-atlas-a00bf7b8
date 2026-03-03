@@ -1,0 +1,293 @@
+---
+title: createCookie
+description: Create a cookie container for managing browser cookies
+---
+
+# createCookie
+
+Creates a logical container for managing a browser cookie from the server. A Cookie is a container for cookie metadata (name and options) with methods to parse and serialize cookie values.
+
+## Signature
+
+```tsx
+function createCookie(
+  name: string,
+  options?: CookieOptions
+): Cookie
+```
+
+<ParamField path="name" type="string" required>
+  The name of the cookie as it appears in the `Cookie` and `Set-Cookie` headers.
+</ParamField>
+
+<ParamField path="options" type="CookieOptions">
+  Configuration options for the cookie.
+  
+  <ParamField path="secrets" type="string[]">
+    Array of secrets used to sign/unsign cookie values. The first secret is used for signing new cookies. All secrets are tried when parsing to support secret rotation.
+  </ParamField>
+  
+  <ParamField path="domain" type="string">
+    Specifies the domain for the cookie. Defaults to the current domain.
+  </ParamField>
+  
+  <ParamField path="path" type="string" default="/">
+    Specifies the URL path that must exist in the requested URL for the browser to send the cookie.
+  </ParamField>
+  
+  <ParamField path="maxAge" type="number">
+    Maximum age of the cookie in seconds. Takes precedence over `expires`.
+  </ParamField>
+  
+  <ParamField path="expires" type="Date">
+    Expiration date of the cookie. Use `maxAge` instead for relative expiration.
+  </ParamField>
+  
+  <ParamField path="httpOnly" type="boolean">
+    When `true`, the cookie is inaccessible to JavaScript's `document.cookie` API.
+  </ParamField>
+  
+  <ParamField path="secure" type="boolean">
+    When `true`, the cookie is only sent over HTTPS connections.
+  </ParamField>
+  
+  <ParamField path="sameSite" type="'lax' | 'strict' | 'none'" default="lax">
+    Controls when the cookie is sent with cross-site requests.
+    - `"strict"` - Cookie is only sent for same-site requests
+    - `"lax"` - Cookie is sent for top-level navigations and same-site requests
+    - `"none"` - Cookie is sent for all requests (requires `secure: true`)
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Cookie" type="object">
+  A cookie container object with the following properties and methods:
+  
+  <ResponseField name="name" type="string">
+    The name of the cookie.
+  </ResponseField>
+  
+  <ResponseField name="isSigned" type="boolean">
+    `true` if the cookie uses one or more secrets for signing.
+  </ResponseField>
+  
+  <ResponseField name="expires" type="Date | undefined">
+    The expiration date of the cookie, calculated from `maxAge` or `expires` option.
+  </ResponseField>
+  
+  <ResponseField name="parse" type="function">
+    Parses a raw `Cookie` header and returns the value of this cookie or `null` if not present.
+    
+    ```tsx
+    parse(cookieHeader: string | null, options?: ParseOptions): Promise<any>
+    ```
+  </ResponseField>
+  
+  <ResponseField name="serialize" type="function">
+    Serializes a value and returns the `Set-Cookie` header string.
+    
+    ```tsx
+    serialize(value: any, options?: SerializeOptions): Promise<string>
+    ```
+  </ResponseField>
+</ResponseField>
+
+## Basic Example
+
+```tsx
+import { createCookie } from "react-router";
+
+const cookie = createCookie("theme", {
+  maxAge: 60 * 60 * 24 * 365, // 1 year
+});
+```
+
+## Parse Cookie Values
+
+Extract cookie values from incoming requests:
+
+```tsx filename=app/routes/theme.tsx
+import { createCookie } from "react-router";
+import type { Route } from "./+types/theme";
+
+const themeCookie = createCookie("theme");
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const cookieHeader = request.headers.get("Cookie");
+  const theme = await themeCookie.parse(cookieHeader);
+  
+  return { theme: theme || "light" };
+}
+```
+
+## Serialize Cookie Values
+
+Set cookies in responses:
+
+```tsx filename=app/routes/set-theme.tsx
+import { createCookie } from "react-router";
+import type { Route } from "./+types/set-theme";
+
+const themeCookie = createCookie("theme", {
+  maxAge: 60 * 60 * 24 * 365,
+});
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const theme = formData.get("theme");
+  
+  return new Response(null, {
+    headers: {
+      "Set-Cookie": await themeCookie.serialize(theme),
+    },
+  });
+}
+```
+
+## Signed Cookies
+
+Sign cookies to prevent tampering:
+
+```tsx
+import { createCookie } from "react-router";
+
+const userIdCookie = createCookie("userId", {
+  secrets: ["s3cr3t-n3w", "s3cr3t-old"],
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+});
+
+// Parse will verify signature
+const userId = await userIdCookie.parse(cookieHeader);
+// Returns null if signature is invalid
+
+// Serialize will sign with the first secret
+const setCookie = await userIdCookie.serialize("user-123");
+```
+
+## Secret Rotation
+
+Rotate secrets without invalidating existing cookies:
+
+```tsx
+const cookie = createCookie("session", {
+  secrets: [
+    "new-secret-2024",  // Used for signing new cookies
+    "old-secret-2023",  // Still validates old cookies
+  ],
+});
+```
+
+## Override Options at Runtime
+
+You can override cookie options when serializing:
+
+```tsx
+const cookie = createCookie("prefs", {
+  maxAge: 60 * 60 * 24 * 30, // 30 days default
+});
+
+// Extend expiration for premium users
+const setCookie = await cookie.serialize(preferences, {
+  maxAge: 60 * 60 * 24 * 365, // 1 year
+});
+```
+
+## Delete a Cookie
+
+Set a cookie with past expiration:
+
+```tsx
+const cookie = createCookie("token");
+
+// Delete the cookie
+const setCookie = await cookie.serialize("", {
+  maxAge: 0,
+});
+
+return new Response(null, {
+  headers: { "Set-Cookie": setCookie },
+});
+```
+
+## Complex Data Types
+
+Cookies automatically serialize and deserialize JSON:
+
+```tsx
+const preferenceCookie = createCookie("preferences");
+
+// Serialize object
+await preferenceCookie.serialize({
+  theme: "dark",
+  language: "en",
+  notifications: true,
+});
+
+// Parse returns the object
+const prefs = await preferenceCookie.parse(cookieHeader);
+// { theme: "dark", language: "en", notifications: true }
+```
+
+## Security Considerations
+
+### Always Sign Sensitive Cookies
+
+Prevent tampering by signing cookies that contain important data:
+
+```tsx
+// Bad - unsigned cookie can be modified by the client
+const userCookie = createCookie("userId");
+
+// Good - signed cookie is verified on parse
+const userCookie = createCookie("userId", {
+  secrets: [process.env.COOKIE_SECRET],
+});
+```
+
+### Use HttpOnly for Session Cookies
+
+Prevent XSS attacks from accessing sensitive cookies:
+
+```tsx
+const sessionCookie = createCookie("session", {
+  httpOnly: true,  // JavaScript cannot access this cookie
+  secure: true,    // Only sent over HTTPS
+  sameSite: "lax", // CSRF protection
+  secrets: [process.env.SESSION_SECRET],
+});
+```
+
+### Secure in Production
+
+Always enable `secure` in production to prevent man-in-the-middle attacks:
+
+```tsx
+const cookie = createCookie("data", {
+  secure: process.env.NODE_ENV === "production",
+});
+```
+
+### Cookie Size Limits
+
+Browsers limit cookie size to about 4KB. For larger data, use session storage instead:
+
+```tsx
+// Bad - may exceed browser limits
+const largeCookie = createCookie("data");
+await largeCookie.serialize({ ...largeObject });
+
+// Good - use session storage for large data
+import { createCookieSessionStorage } from "react-router";
+const sessionStorage = createCookieSessionStorage({
+  cookie: { name: "session", secrets: ["secret"] },
+});
+```
+
+## Related
+
+- [createCookieSessionStorage](/api/server/create-cookie-session-storage) - Store session data in cookies
+- [createSessionStorage](/api/server/create-session-storage) - Custom session storage
+- [Sessions and Cookies](/concepts/sessions) - Sessions guide

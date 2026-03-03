@@ -1,0 +1,367 @@
+---
+title: Server Bundles
+---
+
+# Server Bundles
+
+Server bundles allow you to split your server-side code into multiple output files, enabling different routes to be deployed to different servers or serverless functions.
+
+## Overview
+
+By default, React Router builds a single server bundle containing all routes. Server bundles let you:
+
+- Deploy different routes to different servers
+- Split large applications across multiple serverless functions
+- Deploy to different regions or platforms
+- Optimize cold start times for serverless deployments
+- Reduce bundle sizes for individual functions
+
+## Configuration
+
+Define server bundles in `react-router.config.ts`:
+
+```typescript
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  async serverBundles({ branch }) {
+    // Return a bundle ID based on the route branch
+    const isAdminRoute = branch.some((route) => route.id.startsWith("admin"));
+    const isApiRoute = branch.some((route) => route.id.startsWith("api"));
+    
+    if (isAdminRoute) return "admin";
+    if (isApiRoute) return "api";
+    return "main";
+  },
+} satisfies Config;
+```
+
+## Server Bundle Function
+
+The `serverBundles` function is called for each route:
+
+```typescript
+type ServerBundlesFunction = (args: {
+  branch: BranchRoute[];
+}) => string | Promise<string>;
+```
+
+### `branch`
+
+An array of routes from root to the current route:
+
+```typescript
+type BranchRoute = {
+  id: string;      // Route ID
+  path: string;    // Route path
+  file: string;    // Route file path
+  index?: boolean; // Is index route
+};
+```
+
+## Examples
+
+### Split by Route Prefix
+
+```typescript
+export default {
+  serverBundles({ branch }) {
+    // Check route IDs in the branch
+    const routeId = branch[branch.length - 1].id;
+    
+    if (routeId.startsWith("routes/admin")) return "admin";
+    if (routeId.startsWith("routes/api")) return "api";
+    if (routeId.startsWith("routes/blog")) return "blog";
+    
+    return "main";
+  },
+} satisfies Config;
+```
+
+### Split by Path Pattern
+
+```typescript
+export default {
+  serverBundles({ branch }) {
+    // Check if path contains specific segments
+    const hasAdminPath = branch.some((route) => 
+      route.path?.includes("admin")
+    );
+    const hasApiPath = branch.some((route) => 
+      route.path?.includes("api")
+    );
+    
+    if (hasAdminPath) return "admin";
+    if (hasApiPath) return "api";
+    
+    return "app";
+  },
+} satisfies Config;
+```
+
+### Split by File Location
+
+```typescript
+export default {
+  serverBundles({ branch }) {
+    // Check route file paths
+    const route = branch[branch.length - 1];
+    
+    if (route.file.startsWith("routes/admin/")) return "admin";
+    if (route.file.startsWith("routes/marketing/")) return "marketing";
+    if (route.file.startsWith("routes/app/")) return "app";
+    
+    return "default";
+  },
+} satisfies Config;
+```
+
+### Regional Deployment
+
+```typescript
+export default {
+  serverBundles({ branch }) {
+    const route = branch[branch.length - 1];
+    
+    // Deploy different routes to different regions
+    if (route.path?.startsWith("/eu")) return "eu-bundle";
+    if (route.path?.startsWith("/asia")) return "asia-bundle";
+    if (route.path?.startsWith("/us")) return "us-bundle";
+    
+    return "global-bundle";
+  },
+} satisfies Config;
+```
+
+## Build Output
+
+With server bundles enabled, the build output structure changes:
+
+### Without Server Bundles
+
+```
+build/
+├── client/
+│   └── assets/
+└── server/
+    └── index.js        # Single server bundle
+```
+
+### With Server Bundles
+
+```
+build/
+├── client/
+│   └── assets/
+└── server/
+    ├── main/           # Main bundle
+    │   └── index.js
+    ├── admin/          # Admin bundle
+    │   └── index.js
+    └── api/            # API bundle
+        └── index.js
+```
+
+## Build Manifest
+
+The build manifest includes server bundle information:
+
+```typescript
+type ServerBundlesBuildManifest = {
+  routes: RouteManifest;
+  serverBundles: {
+    [serverBundleId: string]: {
+      id: string;
+      file: string; // Relative path to bundle
+    };
+  };
+  routeIdToServerBundleId: Record<string, string>;
+};
+```
+
+Access in `buildEnd` hook:
+
+```typescript
+export default {
+  serverBundles({ branch }) {
+    // ...
+  },
+  
+  async buildEnd({ buildManifest }) {
+    if (buildManifest.serverBundles) {
+      console.log("Server bundles:", buildManifest.serverBundles);
+      
+      for (const [bundleId, bundle] of Object.entries(buildManifest.serverBundles)) {
+        console.log(`Bundle ${bundleId}: ${bundle.file}`);
+        
+        // Deploy each bundle separately
+        await deployBundle(bundleId, bundle.file);
+      }
+    }
+  },
+} satisfies Config;
+```
+
+## Deployment
+
+### Deploy to Different Servers
+
+```typescript
+export default {
+  async buildEnd({ buildManifest, reactRouterConfig }) {
+    if (!buildManifest.serverBundles) return;
+    
+    for (const [bundleId, bundle] of Object.entries(buildManifest.serverBundles)) {
+      const bundlePath = path.join(
+        reactRouterConfig.buildDirectory,
+        bundle.file
+      );
+      
+      if (bundleId === "admin") {
+        // Deploy admin bundle to admin server
+        await deployTo("admin.example.com", bundlePath);
+      } else if (bundleId === "api") {
+        // Deploy API bundle to API server
+        await deployTo("api.example.com", bundlePath);
+      } else {
+        // Deploy main bundle to main server
+        await deployTo("example.com", bundlePath);
+      }
+    }
+  },
+} satisfies Config;
+```
+
+### Serverless Functions
+
+Deploy each bundle as a separate function:
+
+```typescript
+export default {
+  async buildEnd({ buildManifest, reactRouterConfig }) {
+    if (!buildManifest.serverBundles) return;
+    
+    for (const [bundleId, bundle] of Object.entries(buildManifest.serverBundles)) {
+      const functionConfig = {
+        name: `app-${bundleId}`,
+        runtime: "nodejs20.x",
+        handler: bundle.file,
+        memory: bundleId === "admin" ? 512 : 256,
+        timeout: bundleId === "api" ? 30 : 10,
+      };
+      
+      await deployServerlessFunction(functionConfig);
+    }
+  },
+} satisfies Config;
+```
+
+## Running Multiple Bundles Locally
+
+For development or preview, you may need to run multiple bundles:
+
+```typescript
+import { createRequestHandler } from "@react-router/express";
+import express from "express";
+import * as mainBuild from "./build/server/main/index.js";
+import * as adminBuild from "./build/server/admin/index.js";
+import * as apiBuild from "./build/server/api/index.js";
+
+const app = express();
+
+app.use(express.static("build/client"));
+
+// Route requests to appropriate bundles
+app.use("/admin", createRequestHandler({ build: adminBuild }));
+app.use("/api", createRequestHandler({ build: apiBuild }));
+app.use("*", createRequestHandler({ build: mainBuild }));
+
+app.listen(3000);
+```
+
+## Vite Environment API
+
+With the Vite Environment API enabled, server bundles create separate environments:
+
+```typescript
+export default {
+  future: {
+    v8_viteEnvironmentApi: true,
+  },
+  
+  serverBundles({ branch }) {
+    // Each bundle gets its own environment
+    const route = branch[branch.length - 1];
+    if (route.id.startsWith("admin")) return "admin";
+    return "main";
+  },
+} satisfies Config;
+```
+
+Environments are named: `ssrBundle_<bundleId>`
+
+## Shared Code
+
+Code shared between bundles is automatically deduplicated by Vite:
+
+```typescript
+// Shared utility used by multiple routes
+export function formatDate(date: Date) {
+  return date.toLocaleDateString();
+}
+```
+
+If used by routes in different bundles, it's included in each bundle but the code is identical.
+
+## Bundle Size Optimization
+
+### Minimize Shared Dependencies
+
+Keep bundles small by minimizing shared dependencies:
+
+```typescript
+// ❌ Imports large library in every route
+import { someUtil } from "large-library";
+
+// ✅ Only import in routes that need it
+import { someUtil } from "large-library";
+```
+
+### Split Heavy Routes
+
+```typescript
+export default {
+  serverBundles({ branch }) {
+    const route = branch[branch.length - 1];
+    
+    // Heavy data processing routes in separate bundle
+    if (route.id.includes("reports") || route.id.includes("analytics")) {
+      return "heavy";
+    }
+    
+    return "main";
+  },
+} satisfies Config;
+```
+
+## Caveats
+
+1. **Client bundle is shared** - Only server code is split, client code is always in one bundle
+2. **Route discovery still works** - All routes are discoverable regardless of bundle
+3. **Shared code is duplicated** - Dependencies are included in each bundle that uses them
+4. **Cold starts may vary** - Different bundles have different cold start times
+5. **Deployment complexity** - Multiple bundles require coordinated deployment
+
+## Best Practices
+
+1. **Group related routes** - Keep related functionality in the same bundle
+2. **Consider bundle size** - Balance number of bundles vs. size of each
+3. **Test locally** - Ensure all bundles work together correctly
+4. **Monitor performance** - Track bundle sizes and cold start times
+5. **Document bundle strategy** - Make it clear which routes go in which bundles
+
+## See Also
+
+- [Vite Plugin](/framework/vite-plugin)
+- [Server Rendering](/framework/server-rendering)
+- [Presets](/framework/presets)

@@ -1,0 +1,247 @@
+---
+title: useLocation
+---
+
+# useLocation
+
+Returns the current `Location` object, which represents the current URL. This can be useful if you'd like to perform some side effect whenever it changes.
+
+## Signature
+
+```tsx
+function useLocation(): Location
+
+interface Location {
+  pathname: string;
+  search: string;
+  hash: string;
+  state: unknown;
+  key: string;
+}
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="Location" type="object">
+  The current location object with the following properties:
+  
+  <Expandable title="properties">
+    <ResponseField name="pathname" type="string">
+      The path of the URL (e.g., `/projects/123`).
+    </ResponseField>
+    
+    <ResponseField name="search" type="string">
+      The query string of the URL (e.g., `?sort=date&filter=active`).
+    </ResponseField>
+    
+    <ResponseField name="hash" type="string">
+      The hash fragment of the URL (e.g., `#results`).
+    </ResponseField>
+    
+    <ResponseField name="state" type="unknown">
+      Location state created via `<Link state>` or `navigate(to, { state })`.
+    </ResponseField>
+    
+    <ResponseField name="key" type="string">
+      A unique key for this location. Useful for tracking navigations.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Track page views
+
+```tsx
+import { useEffect } from "react";
+import { useLocation } from "react-router";
+
+function Analytics() {
+  const location = useLocation();
+  
+  useEffect(() => {
+    // Send page view to analytics
+    ga("send", "pageview");
+  }, [location]);
+  
+  return null;
+}
+```
+
+### Access pathname
+
+```tsx
+function Navigation() {
+  const location = useLocation();
+  const isActive = location.pathname === "/dashboard";
+  
+  return (
+    <nav>
+      <a
+        href="/dashboard"
+        className={isActive ? "active" : ""}
+      >
+        Dashboard
+      </a>
+    </nav>
+  );
+}
+```
+
+### Access search params
+
+```tsx
+function SearchResults() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const query = searchParams.get("q");
+  
+  return <h1>Results for: {query}</h1>;
+}
+```
+
+<Note>
+  For working with search params, consider using [`useSearchParams`](/api/hooks/use-search-params) instead.
+</Note>
+
+### Access hash
+
+```tsx
+function ScrollToSection() {
+  const location = useLocation();
+  
+  useEffect(() => {
+    if (location.hash) {
+      const element = document.getElementById(
+        location.hash.slice(1)
+      );
+      element?.scrollIntoView();
+    }
+  }, [location.hash]);
+  
+  return <div>...</div>;
+}
+```
+
+### Access location state
+
+Location state is useful for passing data between routes without including it in the URL.
+
+**Sending state:**
+
+```tsx
+function ProductList() {
+  return (
+    <Link
+      to="/products/123"
+      state={{ fromList: true }}
+    >
+      View Product
+    </Link>
+  );
+}
+```
+
+Or with `navigate`:
+
+```tsx
+navigate("/products/123", {
+  state: { fromList: true },
+});
+```
+
+**Receiving state:**
+
+```tsx
+function ProductDetail() {
+  const location = useLocation();
+  const fromList = location.state?.fromList;
+  
+  return (
+    <div>
+      {fromList && (
+        <Link to="/products">Back to List</Link>
+      )}
+      {/* Product details */}
+    </div>
+  );
+}
+```
+
+### Conditional rendering based on URL
+
+```tsx
+function Breadcrumbs() {
+  const location = useLocation();
+  const paths = location.pathname.split("/").filter(Boolean);
+  
+  return (
+    <nav>
+      <Link to="/">Home</Link>
+      {paths.map((path, index) => {
+        const to = `/${paths.slice(0, index + 1).join("/")}`;
+        return (
+          <span key={to}>
+            {" > "}
+            <Link to={to}>{path}</Link>
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+```
+
+### Show background location for modals
+
+```tsx
+function App() {
+  const location = useLocation();
+  const background = location.state?.backgroundLocation;
+  
+  return (
+    <>
+      <Routes location={background || location}>
+        <Route path="/gallery" element={<Gallery />} />
+        <Route path="/img/:id" element={<ImageView />} />
+      </Routes>
+      
+      {background && (
+        <Routes>
+          <Route path="/img/:id" element={<Modal />} />
+        </Routes>
+      )}
+    </>
+  );
+}
+```
+
+## Type Safety
+
+You can type the location state for better type checking:
+
+```tsx
+interface LocationState {
+  from?: string;
+  message?: string;
+}
+
+function Component() {
+  const location = useLocation();
+  const state = location.state as LocationState;
+  
+  console.log(state?.from);
+  console.log(state?.message);
+}
+```
+
+## Related
+
+- [`useNavigate`](/api/hooks/use-navigate) - Navigate programmatically
+- [`useSearchParams`](/api/hooks/use-search-params) - Work with search params
+- [`useParams`](/api/hooks/use-params) - Access URL parameters
+- [`<Link>`](/api/components/link) - Navigation with state

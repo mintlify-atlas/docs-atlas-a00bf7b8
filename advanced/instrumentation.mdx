@@ -1,0 +1,413 @@
+---
+title: Instrumentation API
+description: Observe and measure application performance
+---
+
+# Instrumentation API
+
+The instrumentation API allows you to wrap route handlers and operations for logging, performance tracing, and error reporting.
+
+## Overview
+
+Instrumentation provides:
+
+- **Request-level tracing**: Measure entire request duration
+- **Route-level instrumentation**: Track individual loaders/actions
+- **Non-invasive observation**: Cannot modify runtime behavior
+- **Flexible composition**: Combine multiple instrumentations
+
+## Basic Server Instrumentation
+
+```tsx
+// entry.server.tsx
+export const instrumentations = [
+  {
+    // Instrument the request handler
+    handler({ instrument }) {
+      instrument({
+        async request(handleRequest, { request }) {
+          const start = Date.now();
+          console.log(`Request: ${request.method} ${request.url}`);
+          
+          await handleRequest();
+          
+          const duration = Date.now() - start;
+          console.log(`Completed in ${duration}ms`);
+        },
+      });
+    },
+  },
+];
+```
+
+## Route Instrumentation
+
+Instrument individual route handlers:
+
+```tsx
+export const instrumentations = [
+  {
+    route({ instrument, id }) {
+      // Skip instrumentation for specific routes
+      if (id === "routes/_index") return;
+      
+      instrument({
+        async loader(callLoader, { request }) {
+          const start = performance.now();
+          
+          await callLoader();
+          
+          const duration = performance.now() - start;
+          console.log(`Loader ${id}: ${duration}ms`);
+        },
+        
+        async action(callAction, { request }) {
+          const start = performance.now();
+          
+          await callAction();
+          
+          const duration = performance.now() - start;
+          console.log(`Action ${id}: ${duration}ms`);
+        },
+      });
+    },
+  },
+];
+```
+
+## Client Instrumentation
+
+```tsx
+// entry.client.tsx
+export const instrumentations = [
+  {
+    // Instrument router operations
+    router({ instrument }) {
+      instrument({
+        async initialize(callInitialize) {
+          const start = performance.now();
+          await callInitialize();
+          const duration = performance.now() - start;
+          
+          console.log(`Router initialized in ${duration}ms`);
+        },
+        
+        async navigate(callNavigate, { location }) {
+          const start = performance.now();
+          await callNavigate();
+          const duration = performance.now() - start;
+          
+          console.log(`Navigation to ${location}: ${duration}ms`);
+        },
+      });
+    },
+    
+    // Instrument routes
+    route({ instrument, id }) {
+      instrument({
+        async loader(callLoader) {
+          const start = performance.now();
+          await callLoader();
+          const duration = performance.now() - start;
+          
+          console.log(`Client loader ${id}: ${duration}ms`);
+        },
+      });
+    },
+  },
+];
+```
+
+## Error Handling
+
+Instrumentation handlers never throw - they return error status:
+
+```tsx
+export const instrumentations = [
+  {
+    route({ instrument }) {
+      instrument({
+        async loader(callLoader) {
+          const { status, error } = await callLoader();
+          
+          if (status === "error") {
+            console.error("Loader failed:", error);
+            // Log to error tracking service
+            Sentry.captureException(error);
+          }
+        },
+      });
+    },
+  },
+];
+```
+
+## OpenTelemetry Integration
+
+Integrate with OpenTelemetry for distributed tracing:
+
+```tsx
+import { trace } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("react-router");
+
+export const instrumentations = [
+  {
+    handler({ instrument }) {
+      instrument({
+        async request(handleRequest, { request }) {
+          const span = tracer.startSpan("http.request", {
+            attributes: {
+              "http.method": request.method,
+              "http.url": request.url,
+            },
+          });
+          
+          try {
+            await handleRequest();
+            span.setStatus({ code: 0 }); // OK
+          } catch (error) {
+            span.setStatus({ code: 2 }); // ERROR
+            span.recordException(error);
+          } finally {
+            span.end();
+          }
+        },
+      });
+    },
+    
+    route({ instrument, id }) {
+      instrument({
+        async loader(callLoader) {
+          return tracer.startActiveSpan(`loader.${id}`, async (span) => {
+            try {
+              return await callLoader();
+            } finally {
+              span.end();
+            }
+          });
+        },
+      });
+    },
+  },
+];
+```
+
+## Performance Monitoring
+
+Track performance metrics:
+
+```tsx
+export const instrumentations = [
+  {
+    route({ instrument, id }) {
+      const metrics = {
+        loaderCalls: 0,
+        loaderDuration: 0,
+        actionCalls: 0,
+        actionDuration: 0,
+      };
+      
+      instrument({
+        async loader(callLoader) {
+          const start = performance.now();
+          metrics.loaderCalls++;
+          
+          await callLoader();
+          
+          metrics.loaderDuration += performance.now() - start;
+          
+          // Send to analytics
+          analytics.track("loader", {
+            route: id,
+            duration: performance.now() - start,
+            avgDuration: metrics.loaderDuration / metrics.loaderCalls,
+          });
+        },
+      });
+    },
+  },
+];
+```
+
+## Custom Middleware
+
+Implement middleware-like patterns:
+
+```tsx
+export const instrumentations = [
+  {
+    route({ instrument, id }) {
+      instrument({
+        async loader(callLoader, { request }) {
+          // Before loader
+          const auth = await checkAuth(request);
+          if (!auth) {
+            return { status: "error", error: new Error("Unauthorized") };
+          }
+          
+          // Call loader
+          const result = await callLoader();
+          
+          // After loader
+          await logAccess(id, auth.user);
+          
+          return result;
+        },
+      });
+    },
+  },
+];
+```
+
+## Composition
+
+Combine multiple instrumentations:
+
+```tsx
+const loggingInstrumentation = {
+  route({ instrument }) {
+    instrument({
+      async loader(callLoader, { request }) {
+        console.log("Loading...");
+        return await callLoader();
+      },
+    });
+  },
+};
+
+const tracingInstrumentation = {
+  route({ instrument }) {
+    instrument({
+      async loader(callLoader) {
+        const span = startSpan();
+        const result = await callLoader();
+        span.end();
+        return result;
+      },
+    });
+  },
+};
+
+export const instrumentations = [
+  loggingInstrumentation,
+  tracingInstrumentation,
+];
+```
+
+## Conditional Instrumentation
+
+Enable instrumentation conditionally:
+
+```tsx
+// Client-side
+const enableInstrumentation = 
+  new URLSearchParams(window.location.search).has("debug");
+
+export const instrumentations = enableInstrumentation
+  ? [debugInstrumentation]
+  : [];
+```
+
+```tsx
+// Server-side (requires custom server)
+import { createRequestHandler } from "@react-router/express";
+
+app.all("*", (req, res, next) => {
+  const shouldInstrument = req.query.debug === "true";
+  
+  const build = await import("./build/server");
+  
+  const handler = createRequestHandler({
+    build: shouldInstrument ? build : {
+      ...build,
+      entry: {
+        ...build.entry,
+        module: {
+          ...build.entry.module,
+          instrumentations: undefined,
+        },
+      },
+    },
+  });
+  
+  handler(req, res, next);
+});
+```
+
+## Data Mode
+
+Instrument data mode applications:
+
+```tsx
+import { createBrowserRouter } from "react-router";
+
+const instrumentations = [{
+  route({ instrument, id }) {
+    instrument({
+      async loader(callLoader) {
+        const start = performance.now();
+        const result = await callLoader();
+        console.log(`${id}: ${performance.now() - start}ms`);
+        return result;
+      },
+    });
+  },
+}];
+
+const router = createBrowserRouter(routes, {
+  instrumentations,
+});
+```
+
+## Available Handlers
+
+### Server
+
+**handler.request**: Entire request lifecycle
+
+**route.loader**: Route loader execution
+
+**route.action**: Route action execution
+
+**route.middleware**: Middleware execution
+
+**route.lazy**: Lazy route loading
+
+### Client
+
+**router.initialize**: Router initialization
+
+**router.navigate**: Navigation operations
+
+**router.fetch**: Fetcher operations
+
+**route.loader**: Route loader execution
+
+**route.action**: Route action execution
+
+**route.middleware**: Client middleware execution
+
+**route.lazy**: Lazy route loading
+
+## Best Practices
+
+1. **Don't modify behavior**: Instrumentation is read-only
+2. **Handle errors gracefully**: Instrumentation errors are swallowed
+3. **Keep it lightweight**: Avoid heavy computation
+4. **Use appropriate scope**: Route vs request level
+5. **Compose instrumentations**: Separate concerns
+
+## Limitations
+
+- Cannot modify request/response
+- Cannot access handler arguments
+- Cannot change data returned
+- Errors are caught and logged
+- Handler still runs if instrumentation throws
+
+## Related
+
+- [Middleware](../how-to/middleware)
+- [Error Handling](../start/framework/error-handling)
+- [OpenTelemetry](https://opentelemetry.io/)

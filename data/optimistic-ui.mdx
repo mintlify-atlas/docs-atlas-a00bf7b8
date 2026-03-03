@@ -1,0 +1,465 @@
+---
+title: Optimistic UI
+---
+
+# Optimistic UI
+
+Optimistic UI updates the interface immediately when a user takes an action, before waiting for the server response. This creates a faster, more responsive user experience.
+
+## Basic Concept
+
+Instead of waiting for the server:
+
+```tsx
+// Traditional: Wait for server
+// 1. User clicks "Like"
+// 2. Show loading spinner
+// 3. Wait for server response
+// 4. Update UI
+
+// Optimistic: Update immediately
+// 1. User clicks "Like"
+// 2. Immediately show liked state
+// 3. Send request to server in background
+// 4. Rollback if it fails
+```
+
+## Using `useFetcher`
+
+The most common way to implement optimistic UI:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function LikeButton({ post }) {
+  const fetcher = useFetcher();
+  
+  // Optimistic state
+  const liked = fetcher.formData
+    ? fetcher.formData.get("liked") === "true"
+    : post.liked;
+  
+  return (
+    <fetcher.Form method="post" action="/api/like">
+      <input type="hidden" name="postId" value={post.id} />
+      <input type="hidden" name="liked" value={(!liked).toString()} />
+      <button type="submit" className={liked ? "liked" : ""}>
+        {liked ? "♥" : "♡"} {post.likes}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+## Optimistic Lists
+
+Add items to lists immediately:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function TodoList({ todos }) {
+  const fetcher = useFetcher();
+  
+  // Show new todo immediately
+  const optimisticTodos = fetcher.formData
+    ? [
+        ...todos,
+        {
+          id: crypto.randomUUID(),
+          text: fetcher.formData.get("text"),
+          completed: false,
+          pending: true, // Mark as pending
+        },
+      ]
+    : todos;
+  
+  return (
+    <div>
+      <ul>
+        {optimisticTodos.map((todo) => (
+          <li
+            key={todo.id}
+            className={todo.pending ? "pending" : ""}
+          >
+            {todo.text}
+          </li>
+        ))}
+      </ul>
+      
+      <fetcher.Form method="post">
+        <input type="text" name="text" required />
+        <button type="submit">Add Todo</button>
+      </fetcher.Form>
+    </div>
+  );
+}
+```
+
+## Optimistic Updates
+
+Update items immediately:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function TodoItem({ todo }) {
+  const fetcher = useFetcher();
+  
+  // Optimistic completion state
+  const completed = fetcher.formData
+    ? fetcher.formData.get("completed") === "true"
+    : todo.completed;
+  
+  return (
+    <li className={completed ? "completed" : ""}>
+      <fetcher.Form method="post" action="/todos/update">
+        <input type="hidden" name="id" value={todo.id} />
+        <input
+          type="hidden"
+          name="completed"
+          value={(!completed).toString()}
+        />
+        <button type="submit">
+          {completed ? "✓" : "○"}
+        </button>
+      </fetcher.Form>
+      <span>{todo.text}</span>
+    </li>
+  );
+}
+```
+
+## Optimistic Deletes
+
+Remove items immediately:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function TaskList({ tasks }) {
+  const fetcher = useFetcher();
+  
+  // Filter out deleted items
+  const optimisticTasks = tasks.filter((task) => {
+    const isDeleting =
+      fetcher.formData?.get("id") === task.id &&
+      fetcher.formData?.get("intent") === "delete";
+    return !isDeleting;
+  });
+  
+  return (
+    <ul>
+      {optimisticTasks.map((task) => (
+        <li key={task.id}>
+          {task.name}
+          <fetcher.Form method="post" style={{ display: "inline" }}>
+            <input type="hidden" name="id" value={task.id} />
+            <input type="hidden" name="intent" value="delete" />
+            <button type="submit">Delete</button>
+          </fetcher.Form>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Using `useFetchers`
+
+Track multiple fetchers for complex UIs:
+
+```tsx
+import { useFetchers } from "react-router";
+
+export default function CommentList({ comments }) {
+  const fetchers = useFetchers();
+  
+  // Gather all optimistic comments
+  const optimisticComments = [...comments];
+  
+  for (const fetcher of fetchers) {
+    if (fetcher.formData?.get("intent") === "create") {
+      optimisticComments.push({
+        id: crypto.randomUUID(),
+        text: fetcher.formData.get("text"),
+        author: fetcher.formData.get("author"),
+        pending: true,
+      });
+    }
+  }
+  
+  return (
+    <div>
+      {optimisticComments.map((comment) => (
+        <div key={comment.id} className={comment.pending ? "pending" : ""}>
+          <p>{comment.text}</p>
+          <small>by {comment.author}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Multiple Operations
+
+Handle different intents:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function Product({ product }) {
+  const fetcher = useFetcher();
+  
+  const intent = fetcher.formData?.get("intent");
+  
+  // Optimistic quantity
+  const quantity =
+    intent === "increment"
+      ? product.quantity + 1
+      : intent === "decrement"
+      ? product.quantity - 1
+      : product.quantity;
+  
+  return (
+    <div>
+      <h2>{product.name}</h2>
+      <p>Quantity: {quantity}</p>
+      
+      <fetcher.Form method="post">
+        <input type="hidden" name="id" value={product.id} />
+        <button type="submit" name="intent" value="decrement">
+          -
+        </button>
+        <button type="submit" name="intent" value="increment">
+          +
+        </button>
+      </fetcher.Form>
+    </div>
+  );
+}
+```
+
+## Error Handling
+
+Show errors and restore original state:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function SaveButton({ data }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <fetcher.Form method="post">
+        <input type="text" name="title" defaultValue={data.title} />
+        <button type="submit">
+          {fetcher.state === "submitting" ? "Saving..." : "Save"}
+        </button>
+      </fetcher.Form>
+      
+      {fetcher.data?.error && (
+        <div className="error">
+          {fetcher.data.error}
+          <button onClick={() => fetcher.reset()}>Retry</button>
+        </div>
+      )}
+      
+      {fetcher.data?.success && (
+        <div className="success">Saved!</div>
+      )}
+    </div>
+  );
+}
+```
+
+## Loading States
+
+Provide visual feedback:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function FollowButton({ user }) {
+  const fetcher = useFetcher();
+  
+  const following = fetcher.formData
+    ? fetcher.formData.get("following") === "true"
+    : user.following;
+  
+  const isSubmitting = fetcher.state === "submitting";
+  
+  return (
+    <fetcher.Form method="post" action="/follow">
+      <input type="hidden" name="userId" value={user.id} />
+      <input type="hidden" name="following" value={(!following).toString()} />
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className={following ? "following" : ""}
+      >
+        {isSubmitting
+          ? "..."
+          : following
+          ? "Following"
+          : "Follow"}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+## Revalidation
+
+Combine optimistic updates with revalidation:
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const id = formData.get("id");
+  
+  await db.task.update({
+    where: { id },
+    data: { completed: formData.get("completed") === "true" },
+  });
+  
+  // Return updated data
+  return { success: true };
+}
+
+// Component shows optimistic state immediately
+// After action completes, loader reruns and updates with real data
+```
+
+## Complex Example: Shopping Cart
+
+```tsx
+import { useFetcher, useFetchers } from "react-router";
+
+export default function ShoppingCart({ items }) {
+  const fetchers = useFetchers();
+  
+  // Calculate optimistic cart state
+  let optimisticItems = [...items];
+  
+  for (const fetcher of fetchers) {
+    const intent = fetcher.formData?.get("intent");
+    const productId = fetcher.formData?.get("productId");
+    
+    if (intent === "add") {
+      const existing = optimisticItems.find((i) => i.id === productId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        optimisticItems.push({
+          id: productId,
+          name: fetcher.formData.get("name"),
+          quantity: 1,
+          price: Number(fetcher.formData.get("price")),
+          pending: true,
+        });
+      }
+    }
+    
+    if (intent === "remove") {
+      optimisticItems = optimisticItems.filter((i) => i.id !== productId);
+    }
+    
+    if (intent === "updateQuantity") {
+      const item = optimisticItems.find((i) => i.id === productId);
+      if (item) {
+        item.quantity = Number(fetcher.formData.get("quantity"));
+      }
+    }
+  }
+  
+  const total = optimisticItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+  
+  return (
+    <div>
+      <h2>Cart</h2>
+      {optimisticItems.map((item) => (
+        <CartItem key={item.id} item={item} />
+      ))}
+      <p>Total: ${total.toFixed(2)}</p>
+    </div>
+  );
+}
+
+function CartItem({ item }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <div className={item.pending ? "pending" : ""}>
+      <span>{item.name}</span>
+      <fetcher.Form method="post" style={{ display: "inline" }}>
+        <input type="hidden" name="productId" value={item.id} />
+        <input type="hidden" name="intent" value="updateQuantity" />
+        <input
+          type="number"
+          name="quantity"
+          defaultValue={item.quantity}
+          onChange={(e) => fetcher.submit(e.currentTarget.form)}
+          min="1"
+        />
+      </fetcher.Form>
+      <fetcher.Form method="post" style={{ display: "inline" }}>
+        <input type="hidden" name="productId" value={item.id} />
+        <input type="hidden" name="intent" value="remove" />
+        <button type="submit">Remove</button>
+      </fetcher.Form>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+### Mark Pending Items
+
+```tsx
+// Good: Visual indicator for pending items
+<li className={todo.pending ? "opacity-50" : ""}>
+  {todo.text}
+</li>
+
+// Bad: No indication item is pending
+<li>{todo.text}</li>
+```
+
+### Provide Immediate Feedback
+
+```tsx
+// Good: Button state changes immediately
+<button disabled={fetcher.state === "submitting"}>
+  {fetcher.state === "submitting" ? "Saving..." : "Save"}
+</button>
+
+// Bad: No feedback until server responds
+<button>Save</button>
+```
+
+### Handle Errors Gracefully
+
+```tsx
+// Good: Show error and allow retry
+if (fetcher.data?.error) {
+  return (
+    <div>
+      <p>Error: {fetcher.data.error}</p>
+      <button onClick={() => fetcher.reset()}>Try Again</button>
+    </div>
+  );
+}
+```
+
+## Related
+
+- [Fetchers](/data/fetchers) - Load and submit without navigation
+- [Actions](/data/actions) - Handle mutations
+- [Revalidation](/data/revalidation) - Keep data in sync

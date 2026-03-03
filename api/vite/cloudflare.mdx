@@ -1,0 +1,370 @@
+---
+title: cloudflareDevProxy
+description: Vite plugin for Cloudflare Workers development
+---
+
+# cloudflareDevProxy
+
+Provides [Cloudflare Workers bindings](https://developers.cloudflare.com/workers/wrangler/api/#getplatformproxy) to your loaders and actions during local development.
+
+## Import
+
+```ts
+import { cloudflareDevProxy } from "@react-router/dev/vite/cloudflare";
+```
+
+## Usage
+
+```ts filename="vite.config.ts"
+import { reactRouter } from "@react-router/dev/vite";
+import { cloudflareDevProxy } from "@react-router/dev/vite/cloudflare";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    cloudflareDevProxy(),
+    reactRouter(),
+  ],
+});
+```
+
+<Warning>
+The `cloudflareDevProxy` plugin must be placed **before** the `reactRouter` plugin.
+</Warning>
+
+## Options
+
+<ParamField path="getLoadContext" type="function" optional>
+Custom function to provide load context to your loaders and actions.
+
+```ts
+type GetLoadContext = (args: {
+  request: Request;
+  context: {
+    cloudflare: {
+      env: Env;
+      cf: IncomingRequestCfProperties;
+      ctx: ExecutionContext;
+    };
+  };
+}) => AppLoadContext | Promise<AppLoadContext>;
+```
+
+**Example:**
+
+```ts
+cloudflareDevProxy({
+  getLoadContext({ context }) {
+    return {
+      ...context,
+      db: createDatabase(context.cloudflare.env.DB),
+    };
+  },
+})
+```
+</ParamField>
+
+<ParamField path="persist" type="boolean | { path: string }" optional>
+Enables persistent storage for Cloudflare bindings (KV, DO, R2, D1).
+
+**Default:** `true` (persists to `.wrangler/state/v3`)
+
+```ts
+cloudflareDevProxy({
+  persist: {
+    path: "./.wrangler/state",
+  },
+})
+```
+</ParamField>
+
+<ParamField path="configPath" type="string" optional>
+Path to `wrangler.toml` configuration file.
+
+**Default:** `"./wrangler.toml"`
+
+```ts
+cloudflareDevProxy({
+  configPath: "./cloudflare/wrangler.toml",
+})
+```
+</ParamField>
+
+<ParamField path="experimentalJsonConfig" type="boolean" optional>
+Use `wrangler.json` instead of `wrangler.toml`.
+
+**Default:** `false`
+
+```ts
+cloudflareDevProxy({
+  experimentalJsonConfig: true,
+  configPath: "./wrangler.json",
+})
+```
+</ParamField>
+
+## Configuration
+
+### TypeScript Types
+
+Define your Cloudflare environment types:
+
+<CodeGroup>
+
+```ts load-context.ts
+import type { PlatformProxy } from "wrangler";
+
+export interface Env {
+  DB: D1Database;
+  KV: KVNamespace;
+  BUCKET: R2Bucket;
+  API_KEY: string;
+}
+
+export interface LoadContext {
+  cloudflare: Omit<PlatformProxy<Env>, "dispose">;
+}
+
+declare module "react-router" {
+  interface AppLoadContext extends LoadContext {}
+}
+```
+
+```ts vite.config.ts
+import { reactRouter } from "@react-router/dev/vite";
+import { cloudflareDevProxy } from "@react-router/dev/vite/cloudflare";
+import { defineConfig } from "vite";
+import type { Env } from "./load-context";
+
+export default defineConfig({
+  plugins: [
+    cloudflareDevProxy<Env>(),
+    reactRouter(),
+  ],
+});
+```
+
+</CodeGroup>
+
+### wrangler.toml
+
+Configure your Cloudflare bindings:
+
+```toml filename="wrangler.toml"
+name = "my-app"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "your-kv-namespace-id"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-database"
+database_id = "your-database-id"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "my-bucket"
+
+[vars]
+API_KEY = "dev-api-key"
+```
+
+## Common Patterns
+
+### Accessing Bindings in Loaders
+
+```ts filename="app/routes/products.tsx"
+import type { Route } from "./+types/products";
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const { env } = context.cloudflare;
+  
+  // D1 Database
+  const products = await env.DB
+    .prepare("SELECT * FROM products")
+    .all();
+  
+  // KV Storage
+  const cached = await env.KV.get("products-cache");
+  
+  // R2 Storage
+  const images = await env.BUCKET.list();
+  
+  // Environment variables
+  const apiKey = env.API_KEY;
+  
+  return { products, cached, images };
+}
+```
+
+### Accessing Bindings in Actions
+
+```ts filename="app/routes/products.new.tsx"
+import type { Route } from "./+types/products.new";
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const { env } = context.cloudflare;
+  const formData = await request.formData();
+  
+  const product = {
+    name: formData.get("name"),
+    price: formData.get("price"),
+  };
+  
+  // Insert into D1
+  await env.DB
+    .prepare("INSERT INTO products (name, price) VALUES (?, ?)")
+    .bind(product.name, product.price)
+    .run();
+  
+  // Invalidate cache
+  await env.KV.delete("products-cache");
+  
+  return { success: true };
+}
+```
+
+### Custom Load Context
+
+Extend the context with custom utilities:
+
+```ts filename="vite.config.ts"
+import { cloudflareDevProxy } from "@react-router/dev/vite/cloudflare";
+import { createDb } from "./app/db.server";
+import type { Env } from "./load-context";
+
+export default defineConfig({
+  plugins: [
+    cloudflareDevProxy<Env>({
+      getLoadContext({ context }) {
+        return {
+          ...context,
+          db: createDb(context.cloudflare.env.DB),
+          auth: createAuthService(context.cloudflare.env),
+        };
+      },
+    }),
+    reactRouter(),
+  ],
+});
+```
+
+```ts filename="app/routes/admin.tsx"
+import type { Route } from "./+types/admin";
+
+export async function loader({ context }: Route.LoaderArgs) {
+  // Use custom utilities
+  const user = await context.auth.getCurrentUser();
+  const data = await context.db.query("SELECT * FROM admin");
+  
+  return { user, data };
+}
+```
+
+### Durable Objects
+
+```toml filename="wrangler.toml"
+[[durable_objects.bindings]]
+name = "COUNTER"
+class_name = "Counter"
+script_name = "my-app"
+```
+
+```ts filename="app/routes/counter.tsx"
+import type { Route } from "./+types/counter";
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const { env } = context.cloudflare;
+  const id = env.COUNTER.idFromName("global-counter");
+  const stub = env.COUNTER.get(id);
+  const response = await stub.fetch("/increment");
+  const count = await response.json();
+  
+  return { count };
+}
+```
+
+### Service Bindings
+
+```toml filename="wrangler.toml"
+[[services]]
+binding = "API"
+service = "my-api-worker"
+```
+
+```ts filename="app/routes/api-proxy.tsx"
+import type { Route } from "./+types/api-proxy";
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { env } = context.cloudflare;
+  const response = await env.API.fetch(request);
+  const data = await response.json();
+  
+  return data;
+}
+```
+
+## Production Deployment
+
+In production, Cloudflare provides actual bindings. The dev proxy is only for local development.
+
+### Build Configuration
+
+```ts filename="vite.config.ts"
+import { reactRouter } from "@react-router/dev/vite";
+import { cloudflareDevProxy } from "@react-router/dev/vite/cloudflare";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    cloudflareDevProxy(), // Only active in development
+    reactRouter(),
+  ],
+  ssr: {
+    resolve: {
+      externalConditions: ["workerd", "worker"],
+    },
+  },
+});
+```
+
+### Deploy to Cloudflare Pages
+
+```bash
+npm run build
+npx wrangler pages deploy ./build/client
+```
+
+## Troubleshooting
+
+### Bindings Not Available
+
+Ensure:
+1. Plugin is before `reactRouter()`
+2. `wrangler.toml` is properly configured
+3. Types are properly declared
+
+### D1 Database Issues
+
+Create local D1 database:
+
+```bash
+npx wrangler d1 create my-database
+npx wrangler d1 execute my-database --local --file=./schema.sql
+```
+
+### KV Persistence
+
+Data persists to `.wrangler/state/v3` by default. Clear with:
+
+```bash
+rm -rf .wrangler/state
+```
+
+## Related
+
+- [Cloudflare Workers Bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/)
+- [Wrangler API](https://developers.cloudflare.com/workers/wrangler/api/)
+- [reactRouter Plugin](/api/vite/react-router)

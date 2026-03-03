@@ -1,0 +1,311 @@
+---
+title: Loaders
+---
+
+# Loaders
+
+Loaders provide data to route components before they render. They run on the server during SSR and on the client during client-side navigation.
+
+## Basic Loader
+
+Loaders are async functions that return data for your route:
+
+```tsx filename=app/routes/product.tsx
+import type { Route } from "./+types/product";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const product = await db.product.findUnique({
+    where: { id: params.id },
+  });
+  
+  if (!product) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  
+  return { product };
+}
+
+export default function Product({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>{loaderData.product.name}</h1>
+      <p>{loaderData.product.description}</p>
+    </div>
+  );
+}
+```
+
+## Using `useLoaderData`
+
+Access loader data in your component with the `useLoaderData` hook:
+
+```tsx
+import { useLoaderData } from "react-router";
+
+export async function loader() {
+  return await fakeDb.invoices.findAll();
+}
+
+export default function Invoices() {
+  const invoices = useLoaderData<typeof loader>();
+  return (
+    <ul>
+      {invoices.map((invoice) => (
+        <li key={invoice.id}>{invoice.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Loader Arguments
+
+Loaders receive an object with these properties:
+
+```tsx
+export async function loader({
+  request,  // Fetch Request object
+  params,   // URL parameters from the route path
+  context,  // Router context (set via middleware)
+}: Route.LoaderArgs) {
+  // Access URL search params
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q");
+  
+  // Access route params
+  const userId = params.userId;
+  
+  // Access context values
+  const user = context.get(userContext);
+  
+  return { query, userId, user };
+}
+```
+
+## Returning Responses
+
+Loaders can return various types of data:
+
+### Plain Objects
+
+```tsx
+export async function loader() {
+  return { message: "Hello" };
+}
+```
+
+### Response Objects
+
+```tsx
+export async function loader() {
+  return new Response(JSON.stringify({ data: "value" }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "max-age=300",
+    },
+  });
+}
+```
+
+### Redirects
+
+```tsx
+import { redirect } from "react-router";
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const user = context.get(userContext);
+  
+  if (!user) {
+    return redirect("/login");
+  }
+  
+  return { user };
+}
+```
+
+### Error Responses
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  const post = await db.post.findUnique({
+    where: { slug: params.slug },
+  });
+  
+  if (!post) {
+    throw new Response("Post not found", { status: 404 });
+  }
+  
+  return { post };
+}
+```
+
+## Parallel Data Loading
+
+Loaders for all matching routes run in parallel:
+
+```tsx
+// app/routes/dashboard.tsx
+export async function loader() {
+  return { layout: "data" };
+}
+
+// app/routes/dashboard.stats.tsx
+export async function loader() {
+  return { stats: await getStats() };
+}
+
+// Both loaders run simultaneously when navigating to /dashboard/stats
+```
+
+## TypeScript
+
+Use the generated `Route` types for full type safety:
+
+```tsx
+import type { Route } from "./+types/users";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const users: User[] = await db.user.findMany();
+  return { users };
+}
+
+export default function Users({ loaderData }: Route.ComponentProps) {
+  // loaderData.users is fully typed as User[]
+  return (
+    <ul>
+      {loaderData.users.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Accessing Parent Loader Data
+
+Use `useRouteLoaderData` to access data from parent routes:
+
+```tsx
+import { useRouteLoaderData } from "react-router";
+
+function SomeComponent() {
+  // Access loader data from the root route
+  const { user } = useRouteLoaderData("root");
+  return <p>Hello, {user.name}!</p>;
+}
+```
+
+Route IDs are automatically created from the file path:
+
+| Route Filename               | Route ID               |
+| ---------------------------- | ---------------------- |
+| `app/root.tsx`               | `"root"`               |
+| `app/routes/teams.tsx`       | `"routes/teams"`       |
+| `app/routes/teams.$id.tsx`   | `"routes/teams.$id"`   |
+
+## Error Handling
+
+Handle loader errors with `ErrorBoundary`:
+
+```tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await db.user.findUnique({
+    where: { id: params.id },
+  });
+  
+  if (!user) {
+    throw new Response("User not found", { status: 404 });
+  }
+  
+  return { user };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+  
+  return <div>Something went wrong</div>;
+}
+```
+
+## Client Loaders
+
+Use `clientLoader` to load data only on the client:
+
+```tsx
+export async function loader() {
+  // Runs on server during SSR
+  return { serverData: "from server" };
+}
+
+export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
+  // Runs on client-side navigation
+  const serverData = await serverLoader();
+  const clientData = localStorage.getItem("cachedData");
+  
+  return { ...serverData, clientData };
+}
+```
+
+## Best Practices
+
+### Keep Loaders Fast
+
+```tsx
+// Good: Parallel queries
+export async function loader() {
+  const [user, posts, comments] = await Promise.all([
+    db.user.findUnique({ where: { id } }),
+    db.post.findMany({ where: { userId: id } }),
+    db.comment.findMany({ where: { userId: id } }),
+  ]);
+  return { user, posts, comments };
+}
+
+// Bad: Sequential queries
+export async function loader() {
+  const user = await db.user.findUnique({ where: { id } });
+  const posts = await db.post.findMany({ where: { userId: id } });
+  const comments = await db.comment.findMany({ where: { userId: id } });
+  return { user, posts, comments };
+}
+```
+
+### Return Only What You Need
+
+```tsx
+// Good: Return minimal data
+export async function loader() {
+  const user = await db.user.findUnique({
+    where: { id },
+    select: { id: true, name: true, email: true },
+  });
+  return { user };
+}
+
+// Bad: Return entire objects
+export async function loader() {
+  const user = await db.user.findUnique({ where: { id } });
+  return { user }; // Includes sensitive fields, relations, etc.
+}
+```
+
+## Related
+
+- [Actions](/data/actions) - Handle mutations
+- [Fetchers](/data/fetchers) - Load data without navigation
+- [Revalidation](/data/revalidation) - Keep data fresh

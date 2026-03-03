@@ -1,0 +1,388 @@
+---
+title: useActionData
+---
+
+# useActionData
+
+Returns the `action` data from the most recent form submission, or `undefined` if there hasn't been one.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useActionData<T = any>(): SerializeFrom<T> | undefined
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="data" type="SerializeFrom<T> | undefined">
+  The data returned from the most recent route `action`, or `undefined` if no action has been called.
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+```tsx
+import { Form, useActionData } from "react-router";
+
+export async function action({ request }) {
+  const formData = await request.formData();
+  const name = formData.get("name");
+  
+  return { message: `Hello, ${name}!` };
+}
+
+export default function Contact() {
+  const data = useActionData();
+  
+  return (
+    <Form method="post">
+      <input type="text" name="name" />
+      <button type="submit">Submit</button>
+      
+      {data && <p>{data.message}</p>}
+    </Form>
+  );
+}
+```
+
+### With TypeScript (Framework mode)
+
+```tsx
+import type { Route } from "./+types.contact";
+import { Form, useActionData } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const name = formData.get("name");
+  
+  return { message: `Hello, ${name}!` };
+}
+
+export default function Contact() {
+  // Type is inferred from action return type
+  const data = useActionData<typeof action>();
+  
+  return (
+    <Form method="post">
+      <input type="text" name="name" />
+      <button type="submit">Submit</button>
+      
+      {data && <p>{data.message}</p>}
+    </Form>
+  );
+}
+```
+
+### Form validation
+
+```tsx
+interface ActionData {
+  errors?: {
+    email?: string;
+    password?: string;
+  };
+  success?: boolean;
+}
+
+export async function action({ request }) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  const password = formData.get("password");
+  
+  const errors: ActionData["errors"] = {};
+  
+  if (!email || !email.includes("@")) {
+    errors.email = "Valid email is required";
+  }
+  
+  if (!password || password.length < 8) {
+    errors.password = "Password must be at least 8 characters";
+  }
+  
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+  
+  await createUser(email, password);
+  return { success: true };
+}
+
+export default function Signup() {
+  const data = useActionData<ActionData>();
+  
+  return (
+    <Form method="post">
+      <div>
+        <input type="email" name="email" />
+        {data?.errors?.email && (
+          <p className="error">{data.errors.email}</p>
+        )}
+      </div>
+      
+      <div>
+        <input type="password" name="password" />
+        {data?.errors?.password && (
+          <p className="error">{data.errors.password}</p>
+        )}
+      </div>
+      
+      <button type="submit">Sign Up</button>
+      
+      {data?.success && (
+        <p className="success">Account created!</p>
+      )}
+    </Form>
+  );
+}
+```
+
+### Redirect on success
+
+```tsx
+import { redirect } from "react-router";
+
+export async function action({ request }) {
+  const formData = await request.formData();
+  const data = Object.fromEntries(formData);
+  
+  const errors = validate(data);
+  if (errors) {
+    // Return errors - user stays on page
+    return { errors };
+  }
+  
+  await createInvoice(data);
+  
+  // Redirect on success - action data is not available
+  return redirect("/invoices");
+}
+
+export default function NewInvoice() {
+  const data = useActionData();
+  
+  // data is only available if validation failed
+  // (because successful submissions redirect)
+  
+  return (
+    <Form method="post">
+      {data?.errors && (
+        <ErrorList errors={data.errors} />
+      )}
+      {/* form fields */}
+    </Form>
+  );
+}
+```
+
+### Multiple forms
+
+Use the `name` attribute to distinguish forms:
+
+```tsx
+export async function action({ request }) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  
+  switch (intent) {
+    case "update":
+      await updateUser(formData);
+      return { updated: true };
+    
+    case "delete":
+      await deleteUser(formData);
+      return { deleted: true };
+    
+    default:
+      return { error: "Invalid intent" };
+  }
+}
+
+export default function UserSettings() {
+  const data = useActionData();
+  
+  return (
+    <div>
+      <Form method="post">
+        <input type="hidden" name="intent" value="update" />
+        <input type="text" name="username" />
+        <button type="submit">Update</button>
+        {data?.updated && <p>Profile updated!</p>}
+      </Form>
+      
+      <Form method="post">
+        <input type="hidden" name="intent" value="delete" />
+        <button type="submit">Delete Account</button>
+        {data?.deleted && <p>Account deleted!</p>}
+      </Form>
+    </div>
+  );
+}
+```
+
+### Return Response objects
+
+```tsx
+export async function action({ request }) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  
+  if (!email) {
+    return Response.json(
+      { error: "Email is required" },
+      { status: 400 }
+    );
+  }
+  
+  await subscribe(email);
+  return Response.json({ success: true });
+}
+
+export default function Newsletter() {
+  const data = useActionData();
+  
+  return (
+    <Form method="post">
+      <input type="email" name="email" />
+      <button type="submit">Subscribe</button>
+      
+      {data?.error && <p className="error">{data.error}</p>}
+      {data?.success && <p>Subscribed!</p>}
+    </Form>
+  );
+}
+```
+
+## Common Patterns
+
+### Preserve form data on error
+
+Return the submitted data along with errors:
+
+```tsx
+export async function action({ request }) {
+  const formData = await request.formData();
+  const data = Object.fromEntries(formData);
+  
+  const errors = validate(data);
+  if (errors) {
+    return { errors, data };
+  }
+  
+  await saveData(data);
+  return redirect("/success");
+}
+
+export default function MyForm() {
+  const actionData = useActionData();
+  
+  return (
+    <Form method="post">
+      <input
+        type="text"
+        name="username"
+        defaultValue={actionData?.data?.username}
+      />
+      {actionData?.errors?.username && (
+        <p>{actionData.errors.username}</p>
+      )}
+    </Form>
+  );
+}
+```
+
+### Clear action data
+
+Action data persists until the next navigation. To clear it:
+
+```tsx
+import { useNavigate, useActionData } from "react-router";
+
+export default function MyForm() {
+  const data = useActionData();
+  const navigate = useNavigate();
+  
+  const clearMessage = () => {
+    // Navigate to same URL to clear action data
+    navigate(".", { replace: true });
+  };
+  
+  return (
+    <div>
+      <Form method="post">
+        {/* form fields */}
+      </Form>
+      
+      {data?.success && (
+        <div>
+          <p>Success!</p>
+          <button onClick={clearMessage}>Dismiss</button>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Loading state
+
+Combine with `useNavigation` for loading UI:
+
+```tsx
+import { Form, useActionData, useNavigation } from "react-router";
+
+export default function ContactForm() {
+  const data = useActionData();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+  
+  return (
+    <Form method="post">
+      <input type="text" name="message" />
+      
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? "Sending..." : "Send"}
+      </button>
+      
+      {data?.success && <p>Message sent!</p>}
+      {data?.error && <p>{data.error}</p>}
+    </Form>
+  );
+}
+```
+
+## Type Safety
+
+### With generics
+
+```tsx
+interface ActionData {
+  errors?: Record<string, string>;
+  success?: boolean;
+}
+
+export default function MyForm() {
+  const data = useActionData<ActionData>();
+  
+  // TypeScript knows the shape of data
+  if (data?.errors) {
+    // ...
+  }
+}
+```
+
+## Related
+
+- [`action`](/start/framework/route-module#action) - Define route action
+- [`useLoaderData`](/api/hooks/use-loader-data) - Access loader data
+- [`useNavigation`](/api/hooks/use-navigation) - Track form submission state
+- [`Form`](/api/components/form) - Form component
+- [`useSubmit`](/api/hooks/use-submit) - Programmatic form submission

@@ -1,0 +1,252 @@
+---
+title: Navigate
+---
+
+A component-based version of `useNavigate` to use in a React Component class where hooks cannot be used.
+
+It's recommended to avoid using this component in favor of `useNavigate`.
+
+```tsx
+import { Navigate } from "react-router";
+
+class MyComponent extends React.Component {
+  render() {
+    return this.state.shouldRedirect ? (
+      <Navigate to="/dashboard" />
+    ) : (
+      <div>Content</div>
+    );
+  }
+}
+```
+
+## Type Declaration
+
+```tsx
+export interface NavigateProps {
+  to: To;
+  replace?: boolean;
+  state?: any;
+  relative?: RelativeRoutingType;
+}
+
+export function Navigate({
+  to,
+  replace,
+  state,
+  relative,
+}: NavigateProps): null;
+
+type To = string | Partial<Path>;
+type RelativeRoutingType = "route" | "path";
+```
+
+## Props
+
+<ParamField path="to" type="To" required>
+  The path to navigate to. Can be a string or a Path object.
+
+  ```tsx
+  <Navigate to="/dashboard" />
+
+  <Navigate
+    to={{
+      pathname: "/search",
+      search: "?q=react",
+      hash: "#results",
+    }}
+  />
+  ```
+</ParamField>
+
+<ParamField path="replace" type="boolean">
+  Whether to replace the current entry in the History stack instead of pushing a new one.
+
+  ```tsx
+  <Navigate to="/dashboard" replace />
+  ```
+</ParamField>
+
+<ParamField path="state" type="any">
+  State to pass to the new Location to store in `history.state`.
+
+  ```tsx
+  <Navigate to="/dashboard" state={{ from: "login" }} />
+  ```
+</ParamField>
+
+<ParamField path="relative" type="RelativeRoutingType">
+  How to interpret relative routing in the `to` prop.
+
+  - **route** (default) - Relative to the route hierarchy
+  - **path** - Relative to the URL path
+
+  ```tsx
+  <Navigate to=".." relative="route" />
+  <Navigate to=".." relative="path" />
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Redirect
+
+```tsx
+function ProtectedRoute({ children }) {
+  const user = useUser();
+
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  return children;
+}
+```
+
+### With Replace
+
+```tsx
+function OldPage() {
+  // Don't let users go back to this page
+  return <Navigate to="/new-page" replace />;
+}
+```
+
+### Conditional Navigation
+
+```tsx
+function Checkout() {
+  const cart = useCart();
+
+  if (cart.items.length === 0) {
+    return <Navigate to="/cart" />;
+  }
+
+  return (
+    <div>
+      <h1>Checkout</h1>
+      {/* checkout form */}
+    </div>
+  );
+}
+```
+
+### With State
+
+```tsx
+function LoginRequired({ children }) {
+  const user = useUser();
+  const location = useLocation();
+
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location.pathname }}
+        replace
+      />
+    );
+  }
+
+  return children;
+}
+
+// In Login component
+function Login() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const from = location.state?.from || "/";
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    await login();
+    navigate(from, { replace: true });
+  }
+
+  return <form onSubmit={handleSubmit}>{/* ... */}</form>;
+}
+```
+
+### In Class Components
+
+```tsx
+class OldClassComponent extends React.Component {
+  render() {
+    if (this.state.redirect) {
+      return <Navigate to="/dashboard" />;
+    }
+
+    return (
+      <div>
+        <button onClick={() => this.setState({ redirect: true })}>
+          Go to Dashboard
+        </button>
+      </div>
+    );
+  }
+}
+```
+
+### Index Route Redirect
+
+```tsx
+<Routes>
+  <Route path="/" element={<Layout />}>
+    <Route index element={<Navigate to="dashboard" replace />} />
+    <Route path="dashboard" element={<Dashboard />} />
+    <Route path="settings" element={<Settings />} />
+  </Route>
+</Routes>
+```
+
+## Behavior
+
+- Navigates immediately when rendered
+- The navigation happens in a `useEffect` to avoid render-time side effects
+- Cannot be used on the initial render in a `<StaticRouter>` (server-side rendering)
+- Returns `null` - does not render any DOM elements
+
+## Warnings
+
+<Warning>
+  `<Navigate>` must not be used on the initial render in a `<StaticRouter>`. This is a no-op, but you should modify your code so the `<Navigate>` is only ever rendered in response to some user interaction or state change.
+</Warning>
+
+## Alternative
+
+In most cases, you should use the `useNavigate` hook instead:
+
+```tsx
+function MyComponent() {
+  const navigate = useNavigate();
+  const user = useUser();
+
+  useEffect(() => {
+    if (!user) {
+      navigate("/login");
+    }
+  }, [user, navigate]);
+
+  return <div>Content</div>;
+}
+```
+
+Or use a loader to protect routes:
+
+```tsx
+// Route configuration
+{
+  path: "dashboard",
+  loader: protectedLoader,
+  Component: Dashboard,
+}
+
+// Loader
+async function protectedLoader() {
+  const user = await getUser();
+  if (!user) {
+    throw redirect("/login");
+  }
+  return null;
+}
+```

@@ -1,0 +1,591 @@
+---
+title: react-router.config.ts
+description: Application configuration for React Router Framework Mode
+---
+
+# react-router.config.ts
+
+Configures React Router application settings. Located at `react-router.config.ts` in your project root.
+
+## Import
+
+```ts
+import type { Config } from "@react-router/dev/config";
+```
+
+## ReactRouterConfig Type
+
+```ts
+export interface ReactRouterConfig {
+  appDirectory?: string;
+  basename?: string;
+  buildDirectory?: string;
+  buildEnd?: BuildEndHook;
+  future?: Partial<FutureConfig>;
+  prerender?: PrerenderConfig;
+  presets?: Preset[];
+  routeDiscovery?: RouteDiscoveryConfig;
+  serverBuildFile?: string;
+  serverBundles?: ServerBundlesFunction;
+  serverModuleFormat?: "esm" | "cjs";
+  ssr?: boolean;
+  allowedActionOrigins?: string[];
+}
+```
+
+## Configuration Options
+
+### appDirectory
+
+<ParamField path="appDirectory" type="string" default="app">
+Path to the application directory, relative to project root.
+
+```ts
+export default {
+  appDirectory: "src",
+};
+```
+</ParamField>
+
+### basename
+
+<ParamField path="basename" type="string" default="/">
+Base path for all routes. Useful when your app is served from a subdirectory.
+
+```ts
+export default {
+  basename: "/my-app",
+};
+```
+
+<Note>
+Must match Vite's `base` config:
+
+```ts filename="vite.config.ts"
+export default defineConfig({
+  base: "/my-app",
+  plugins: [reactRouter()],
+});
+```
+</Note>
+</ParamField>
+
+### buildDirectory
+
+<ParamField path="buildDirectory" type="string" default="build">
+Path to the build output directory, relative to project root.
+
+```ts
+export default {
+  buildDirectory: "dist",
+};
+```
+
+Output structure:
+```
+dist/
+├── client/      # Client assets
+└── server/      # Server bundle(s)
+```
+</ParamField>
+
+### buildEnd
+
+<ParamField path="buildEnd" type="function" optional>
+Hook called after build completes. Useful for custom post-build tasks.
+
+```ts
+type BuildEndHook = (args: {
+  buildManifest: BuildManifest | undefined;
+  reactRouterConfig: ResolvedReactRouterConfig;
+  viteConfig: ResolvedConfig;
+}) => void | Promise<void>;
+```
+
+**Example:**
+
+```ts
+export default {
+  async buildEnd({ buildManifest, viteConfig }) {
+    // Generate custom manifest
+    await writeFile(
+      "build/custom-manifest.json",
+      JSON.stringify(buildManifest)
+    );
+    
+    // Copy additional files
+    await cp("public", "build/client/public", { recursive: true });
+  },
+};
+```
+</ParamField>
+
+### future
+
+<ParamField path="future" type="object" optional>
+Enables future features and breaking changes.
+
+```ts
+interface FutureConfig {
+  unstable_optimizeDeps: boolean;
+  unstable_subResourceIntegrity: boolean;
+  unstable_trailingSlashAwareDataRequests: boolean;
+  unstable_previewServerPrerendering: boolean;
+  v8_middleware: boolean;
+  v8_splitRouteModules: boolean | "enforce";
+  v8_viteEnvironmentApi: boolean;
+}
+```
+
+**Example:**
+
+```ts
+export default {
+  future: {
+    v8_middleware: true,
+    v8_splitRouteModules: "enforce",
+  },
+};
+```
+
+**Flags:**
+
+- `unstable_optimizeDeps` - Optimize dependency pre-bundling
+- `unstable_subResourceIntegrity` - Generate SRI hashes for scripts
+- `unstable_trailingSlashAwareDataRequests` - Handle trailing slashes in data requests
+- `unstable_previewServerPrerendering` - Prerender with Vite preview server
+- `v8_middleware` - Enable route middleware
+- `v8_splitRouteModules` - Automatic route code splitting (`true` | `"enforce"`)
+- `v8_viteEnvironmentApi` - Use Vite Environment API
+</ParamField>
+
+### prerender
+
+<ParamField path="prerender" type="boolean | string[] | function | object" optional>
+Defines which routes to prerender at build time as static HTML.
+
+**Types:**
+
+```ts
+type PrerenderConfig = 
+  | boolean  // true = all routes, false = none
+  | string[] // Specific paths
+  | ((args: { getStaticPaths: () => string[] }) => string[] | Promise<string[]>)
+  | {
+      paths: boolean | string[] | Function;
+      unstable_concurrency?: number;
+    };
+```
+
+**Examples:**
+
+<CodeGroup>
+
+```ts All Routes
+export default {
+  prerender: true,
+};
+```
+
+```ts Specific Paths
+export default {
+  prerender: ["/", "/about", "/pricing"],
+};
+```
+
+```ts Dynamic Paths
+export default {
+  async prerender({ getStaticPaths }) {
+    const posts = await fetchBlogPosts();
+    return [
+      "/",
+      "/blog",
+      ...posts.map(post => `/blog/${post.slug}`),
+      ...getStaticPaths(),
+    ];
+  },
+};
+```
+
+```ts With Concurrency
+export default {
+  prerender: {
+    paths: ["/", "/about"],
+    unstable_concurrency: 4, // Parallel renders
+  },
+};
+```
+
+</CodeGroup>
+</ParamField>
+
+### presets
+
+<ParamField path="presets" type="Preset[]" optional>
+Configuration presets for platform integrations.
+
+```ts
+interface Preset {
+  name: string;
+  reactRouterConfig?: (args: {
+    reactRouterUserConfig: ReactRouterConfig;
+  }) => ConfigPreset | Promise<ConfigPreset>;
+  reactRouterConfigResolved?: (args: {
+    reactRouterConfig: ResolvedReactRouterConfig;
+  }) => void | Promise<void>;
+}
+```
+
+**Example:**
+
+```ts
+import { cloudflarePreset } from "@react-router/cloudflare";
+
+export default {
+  presets: [cloudflarePreset()],
+};
+```
+</ParamField>
+
+### routeDiscovery
+
+<ParamField path="routeDiscovery" type="object" optional>
+Controls lazy route discovery behavior.
+
+```ts
+type RouteDiscoveryConfig =
+  | { mode: "lazy"; manifestPath?: string }
+  | { mode: "initial" };
+```
+
+**Default:** `{ mode: "lazy", manifestPath: "/__manifest" }` (when SSR enabled)
+
+**Examples:**
+
+<CodeGroup>
+
+```ts Lazy (Default)
+export default {
+  routeDiscovery: {
+    mode: "lazy",
+    manifestPath: "/__manifest", // Custom path
+  },
+};
+```
+
+```ts Initial
+export default {
+  routeDiscovery: {
+    mode: "initial", // Load all routes upfront
+  },
+};
+```
+
+</CodeGroup>
+
+<Note>
+Lazy mode requires SSR. With `ssr: false`, mode is automatically `"initial"`.
+</Note>
+</ParamField>
+
+### serverBuildFile
+
+<ParamField path="serverBuildFile" type="string" default="index.js">
+Filename for the server build output.
+
+```ts
+export default {
+  serverBuildFile: "server.js",
+};
+```
+
+Output: `build/server/server.js`
+</ParamField>
+
+### serverBundles
+
+<ParamField path="serverBundles" type="function" optional>
+Split server code into multiple bundles based on route.
+
+```ts
+type ServerBundlesFunction = (args: {
+  branch: BranchRoute[];
+}) => string | Promise<string>;
+
+interface BranchRoute {
+  id: string;
+  path?: string;
+  file: string;
+  index?: boolean;
+}
+```
+
+**Example:**
+
+```ts
+export default {
+  serverBundles({ branch }) {
+    // Check if any route in branch starts with "routes/admin"
+    const isAdminRoute = branch.some(
+      (route) => route.id.startsWith("routes/admin")
+    );
+    
+    const isApiRoute = branch.some(
+      (route) => route.id.startsWith("routes/api")
+    );
+    
+    if (isAdminRoute) return "admin";
+    if (isApiRoute) return "api";
+    return "main";
+  },
+};
+```
+
+Outputs:
+```
+build/server/
+├── main/
+│   └── index.js
+├── admin/
+│   └── index.js
+└── api/
+    └── index.js
+```
+</ParamField>
+
+### serverModuleFormat
+
+<ParamField path="serverModuleFormat" type="'esm' | 'cjs'" default="esm">
+Module format for server build output.
+
+```ts
+export default {
+  serverModuleFormat: "cjs",
+};
+```
+
+<Note>
+Most modern runtimes support ESM. Use CJS only if required by your deployment platform.
+</Note>
+</ParamField>
+
+### ssr
+
+<ParamField path="ssr" type="boolean" default="true">
+Enables server-side rendering. Set to `false` for SPA mode.
+
+```ts
+export default {
+  ssr: false, // SPA mode
+};
+```
+
+**SPA Mode:**
+- Pre-renders `/` at build time
+- Saves as `index.html`
+- No server required
+- All routes client-side only
+</ParamField>
+
+### allowedActionOrigins
+
+<ParamField path="allowedActionOrigins" type="string[]" optional>
+Whitelist of allowed origins for form submissions. Supports glob patterns.
+
+```ts
+export default {
+  allowedActionOrigins: [
+    "example.com",
+    "*.example.com",      // sub.example.com
+    "**.example.com",     // sub.domain.example.com
+  ],
+};
+```
+
+<Note>
+Does not apply to resource routes (routes without UI components).
+</Note>
+
+**Runtime Override:**
+
+```ts filename="server.ts"
+import type { ServerBuild } from "react-router";
+
+async function getBuild(): Promise<ServerBuild> {
+  const build = await import("./build/server/index.js");
+  return {
+    ...build,
+    allowedActionOrigins: [
+      process.env.ALLOWED_ORIGIN,
+    ],
+  };
+}
+```
+</ParamField>
+
+## Complete Example
+
+```ts filename="react-router.config.ts"
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  appDirectory: "app",
+  basename: "/",
+  buildDirectory: "build",
+  
+  future: {
+    v8_middleware: true,
+    v8_splitRouteModules: "enforce",
+  },
+  
+  async prerender({ getStaticPaths }) {
+    const posts = await fetchPosts();
+    return [
+      "/",
+      "/about",
+      ...posts.map(p => `/blog/${p.slug}`),
+      ...getStaticPaths(),
+    ];
+  },
+  
+  routeDiscovery: {
+    mode: "lazy",
+  },
+  
+  serverBundles({ branch }) {
+    const isAdminRoute = branch.some(
+      route => route.id.startsWith("routes/admin")
+    );
+    return isAdminRoute ? "admin" : "main";
+  },
+  
+  serverModuleFormat: "esm",
+  ssr: true,
+  
+  allowedActionOrigins: [
+    "example.com",
+    "*.example.com",
+  ],
+  
+  async buildEnd({ buildManifest }) {
+    console.log("Build completed!");
+    // Custom post-build logic
+  },
+} satisfies Config;
+```
+
+## Common Patterns
+
+### Multi-Region Deployment
+
+```ts
+export default {
+  serverBundles({ branch }) {
+    // Split by geographic region based on route prefix
+    const path = branch[branch.length - 1]?.path || "";
+    
+    if (path.startsWith("/eu")) return "eu";
+    if (path.startsWith("/asia")) return "asia";
+    return "us";
+  },
+};
+```
+
+### Development vs Production
+
+```ts
+const isDev = process.env.NODE_ENV === "development";
+
+export default {
+  buildDirectory: isDev ? "dev-build" : "build",
+  
+  future: {
+    v8_middleware: !isDev, // Only in production
+  },
+  
+  prerender: isDev ? false : ["/", "/about"],
+};
+```
+
+### Incremental Static Regeneration Pattern
+
+```ts
+export default {
+  async prerender({ getStaticPaths }) {
+    // Only prerender popular pages at build time
+    const popular = await getPopularPages();
+    return [
+      "/",
+      ...popular,
+      // Other pages rendered on-demand
+    ];
+  },
+};
+```
+
+### Custom Build Artifacts
+
+```ts
+import { writeFile } from "fs/promises";
+
+export default {
+  async buildEnd({ buildManifest, reactRouterConfig }) {
+    // Generate custom route manifest for analytics
+    const routes = Object.keys(buildManifest.routes);
+    await writeFile(
+      "build/routes.json",
+      JSON.stringify(routes, null, 2)
+    );
+    
+    // Copy additional assets
+    await cp(
+      "locales",
+      `${reactRouterConfig.buildDirectory}/client/locales`,
+      { recursive: true }
+    );
+  },
+};
+```
+
+## TypeScript
+
+Ensure proper type checking:
+
+```ts filename="react-router.config.ts"
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  appDirectory: "app",
+  ssr: true,
+  // ...
+} satisfies Config;
+```
+
+## Validation
+
+Config is validated at build time:
+
+```ts
+// ✅ Valid
+export default {
+  appDirectory: "app",
+  ssr: true,
+};
+
+// ❌ Invalid - wrong type
+export default {
+  ssr: "yes", // Error: Expected boolean
+};
+
+// ❌ Invalid - incompatible options
+export default {
+  ssr: false,
+  routeDiscovery: { mode: "lazy" }, // Error: lazy requires SSR
+};
+```
+
+## Related
+
+- [routes.ts](/api/config/routes-config)
+- [reactRouter Plugin](/api/vite/react-router)
+- [Deployment](/guides/deployment)

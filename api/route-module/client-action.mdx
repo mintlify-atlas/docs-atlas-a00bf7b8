@@ -1,0 +1,476 @@
+---
+title: clientAction
+---
+
+# clientAction
+
+A client-side mutation function that runs in the browser, allowing you to handle form submissions entirely on the client or augment server action behavior.
+
+## Signature
+
+```tsx
+export function clientAction(args: ClientActionFunctionArgs): Promise<Data> | Data
+```
+
+<ParamField path="args" type="ClientActionFunctionArgs" required>
+  Arguments passed to the clientAction function
+
+  <Expandable title="properties">
+    <ParamField path="request" type="Request" required>
+      A Fetch Request instance containing the form submission
+    </ParamField>
+
+    <ParamField path="params" type="Params" required>
+      Dynamic route params for the current route
+    </ParamField>
+
+    <ParamField path="serverAction" type="<T>() => Promise<T>" required>
+      Function to call the server action and get its result
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Data | Promise<Data>">
+  Data returned to the UI (accessible via `useActionData()`)
+</ResponseField>
+
+## Basic Example
+
+```tsx
+import { Form, useActionData } from "react-router";
+
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  
+  // Validate on client
+  if (!email?.includes("@")) {
+    return { error: "Invalid email" };
+  }
+  
+  // Save to localStorage
+  localStorage.setItem("newsletter", email);
+  
+  return { success: true };
+}
+
+export default function Newsletter() {
+  const actionData = useActionData<typeof clientAction>();
+  
+  return (
+    <Form method="post">
+      <input name="email" type="email" />
+      {actionData?.error && <span>{actionData.error}</span>}
+      {actionData?.success && <span>Subscribed!</span>}
+      <button type="submit">Subscribe</button>
+    </Form>
+  );
+}
+```
+
+## Calling Server Action
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const comment = await db.comment.create({
+    data: { text: formData.get("text") }
+  });
+  return { comment };
+}
+
+export async function clientAction({ 
+  request, 
+  serverAction 
+}: Route.ClientActionArgs) {
+  // Optimistic update
+  const formData = await request.formData();
+  const optimisticComment = {
+    id: "temp-" + Date.now(),
+    text: formData.get("text"),
+    status: "pending",
+  };
+  
+  // Show immediately in UI
+  updateUIWithOptimisticComment(optimisticComment);
+  
+  // Call server
+  const { comment } = await serverAction<typeof action>();
+  
+  // Replace optimistic with real
+  replaceOptimisticComment(optimisticComment.id, comment);
+  
+  return { comment };
+}
+```
+
+## Client-Only Mutations
+
+```tsx
+// No server action needed
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const theme = formData.get("theme");
+  
+  // Update localStorage
+  localStorage.setItem("theme", theme);
+  
+  // Update document
+  document.documentElement.setAttribute("data-theme", theme);
+  
+  return { theme };
+}
+
+export default function ThemeToggle() {
+  return (
+    <Form method="post">
+      <select name="theme">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+      <button type="submit">Change Theme</button>
+    </Form>
+  );
+}
+```
+
+## Validation Before Server
+
+```tsx
+export async function clientAction({ 
+  request, 
+  serverAction 
+}: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  
+  // Client-side validation
+  const errors: Record<string, string> = {};
+  
+  const email = formData.get("email");
+  if (!email?.includes("@")) {
+    errors.email = "Invalid email";
+  }
+  
+  const password = formData.get("password");
+  if (password.length < 8) {
+    errors.password = "Password must be at least 8 characters";
+  }
+  
+  // Return early if validation fails
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+  
+  // Call server action if valid
+  return await serverAction();
+}
+```
+
+## Optimistic UI Updates
+
+```tsx
+import { useFetcher } from "react-router";
+
+export async function clientAction({ 
+  request, 
+  serverAction 
+}: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const text = formData.get("text");
+  
+  // Create optimistic item
+  const optimisticItem = {
+    id: crypto.randomUUID(),
+    text,
+    createdAt: new Date().toISOString(),
+    optimistic: true,
+  };
+  
+  // Dispatch custom event for optimistic update
+  window.dispatchEvent(
+    new CustomEvent("optimistic-add", { detail: optimisticItem })
+  );
+  
+  try {
+    // Call server
+    const result = await serverAction<typeof action>();
+    
+    // Replace optimistic with real
+    window.dispatchEvent(
+      new CustomEvent("optimistic-replace", {
+        detail: { optimisticId: optimisticItem.id, real: result }
+      })
+    );
+    
+    return result;
+  } catch (error) {
+    // Remove optimistic on error
+    window.dispatchEvent(
+      new CustomEvent("optimistic-remove", { detail: optimisticItem.id })
+    );
+    throw error;
+  }
+}
+```
+
+## Offline Support
+
+```tsx
+export async function clientAction({ 
+  request, 
+  serverAction 
+}: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  
+  // Queue action if offline
+  if (!navigator.onLine) {
+    await queueOfflineAction(formData);
+    return { 
+      queued: true, 
+      message: "Will sync when online" 
+    };
+  }
+  
+  try {
+    return await serverAction();
+  } catch (error) {
+    // Queue if server is unreachable
+    await queueOfflineAction(formData);
+    return { 
+      queued: true, 
+      message: "Queued for retry" 
+    };
+  }
+}
+
+// Process queue when online
+window.addEventListener("online", async () => {
+  const queued = await getQueuedActions();
+  for (const action of queued) {
+    await processQueuedAction(action);
+  }
+});
+```
+
+## Client-Side Caching
+
+```tsx
+const cache = new Map();
+
+export async function clientAction({ 
+  request, 
+  serverAction 
+}: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  
+  if (intent === "delete") {
+    const id = formData.get("id");
+    
+    // Remove from cache immediately
+    cache.delete(id);
+    
+    // Update server
+    await serverAction();
+    
+    return { deleted: id };
+  }
+  
+  // Other intents...
+}
+```
+
+## File Upload with Progress
+
+```tsx
+import { useState } from "react";
+import { useFetcher } from "react-router";
+
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const file = formData.get("file") as File;
+  
+  // Upload with progress tracking
+  const result = await uploadWithProgress(file, (progress) => {
+    // Emit progress events
+    window.dispatchEvent(
+      new CustomEvent("upload-progress", { detail: progress })
+    );
+  });
+  
+  return { url: result.url };
+}
+
+export default function FileUpload() {
+  const [progress, setProgress] = useState(0);
+  const fetcher = useFetcher();
+  
+  useEffect(() => {
+    const handler = (e: CustomEvent) => setProgress(e.detail);
+    window.addEventListener("upload-progress", handler);
+    return () => window.removeEventListener("upload-progress", handler);
+  }, []);
+  
+  return (
+    <fetcher.Form method="post" encType="multipart/form-data">
+      <input type="file" name="file" />
+      <button type="submit">Upload</button>
+      {progress > 0 && <progress value={progress} max={100} />}
+    </fetcher.Form>
+  );
+}
+```
+
+## Analytics and Tracking
+
+```tsx
+export async function clientAction({ 
+  request, 
+  serverAction 
+}: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  
+  // Track event
+  analytics.track("form_submitted", {
+    form: "contact",
+    fields: Array.from(formData.keys()),
+  });
+  
+  try {
+    const result = await serverAction();
+    
+    // Track success
+    analytics.track("form_success", { form: "contact" });
+    
+    return result;
+  } catch (error) {
+    // Track error
+    analytics.track("form_error", {
+      form: "contact",
+      error: error.message,
+    });
+    
+    throw error;
+  }
+}
+```
+
+## Multi-Step Forms
+
+```tsx
+export async function clientAction({ 
+  request, 
+  serverAction 
+}: Route.ClientActionArgs) {
+  const formData = await request.formData();
+  const step = parseInt(formData.get("step") || "1");
+  
+  // Save to sessionStorage
+  const existing = JSON.parse(sessionStorage.getItem("formData") || "{}");
+  const updated = { ...existing, ...Object.fromEntries(formData) };
+  sessionStorage.setItem("formData", JSON.stringify(updated));
+  
+  if (step < 3) {
+    // Not final step - just return progress
+    return { step: step + 1, data: updated };
+  }
+  
+  // Final step - submit to server
+  const result = await serverAction();
+  sessionStorage.removeItem("formData");
+  
+  return result;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use for client-only mutations">
+    Perfect for operations that don't need server involvement:
+
+    ```tsx
+    // ✅ Good - client-only state
+    export async function clientAction({ request }) {
+      const formData = await request.formData();
+      localStorage.setItem("preferences", JSON.stringify(
+        Object.fromEntries(formData)
+      ));
+      return { updated: true };
+    }
+
+    // ❌ Bad - should use server action
+    export async function clientAction({ request }) {
+      const formData = await request.formData();
+      // This needs to be in database, use serverAction
+      return { saved: true };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Validate before calling server">
+    Avoid unnecessary server requests with client-side validation:
+
+    ```tsx
+    export async function clientAction({ request, serverAction }) {
+      const formData = await request.formData();
+      
+      // Quick client validations
+      if (!formData.get("email")?.includes("@")) {
+        return { error: "Invalid email" };
+      }
+      
+      // Only call server if valid
+      return await serverAction();
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle offline gracefully">
+    Provide feedback when server is unreachable:
+
+    ```tsx
+    export async function clientAction({ request, serverAction }) {
+      if (!navigator.onLine) {
+        return { error: "You're offline. Please try again." };
+      }
+      
+      try {
+        return await serverAction();
+      } catch (error) {
+        return { error: "Server unavailable. Try again later." };
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Consider optimistic updates carefully">
+    Only use optimistic UI when failures are rare:
+
+    ```tsx
+    // ✅ Good - liking/bookmarking (low-risk)
+    export async function clientAction({ serverAction }) {
+      showOptimisticUpdate();
+      try {
+        return await serverAction();
+      } catch {
+        revertOptimisticUpdate();
+        throw error;
+      }
+    }
+
+    // ❌ Risky - payments (high-stakes)
+    export async function clientAction({ serverAction }) {
+      // Don't show success before server confirms!
+      return await serverAction();
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [action](/api/route-module/action) - Server-side mutations
+- [clientLoader](/api/route-module/client-loader) - Client-side data loading
+- [useActionData](/api/hooks/use-action-data) - Access action data
+- [useFetcher](/api/hooks/use-fetcher) - Imperative mutations

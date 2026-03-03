@@ -1,0 +1,374 @@
+---
+title: View Transitions
+---
+
+# View Transitions
+
+Learn how to use the View Transitions API with React Router for smooth page transitions.
+
+## Overview
+
+The [View Transitions API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API) allows you to create smooth, animated transitions between different states of your application. React Router integrates with this API to provide seamless page transitions.
+
+## Browser Support
+
+The View Transitions API is supported in:
+- Chrome/Edge 111+
+- Safari 18+
+- Firefox (experimental)
+
+React Router gracefully degrades in browsers without support.
+
+## Enabling View Transitions
+
+Enable view transitions on navigation:
+
+```tsx
+import { Link } from "react-router";
+
+export default function Navigation() {
+  return (
+    <nav>
+      <Link to="/" viewTransition>
+        Home
+      </Link>
+      <Link to="/about" viewTransition>
+        About
+      </Link>
+      <Link to="/products" viewTransition>
+        Products
+      </Link>
+    </nav>
+  );
+}
+```
+
+## Programmatic Navigation
+
+Use view transitions with `navigate`:
+
+```tsx
+import { useNavigate } from "react-router";
+
+export default function ProductCard({ product }) {
+  const navigate = useNavigate();
+
+  function handleClick() {
+    navigate(`/products/${product.id}`, {
+      viewTransition: true,
+    });
+  }
+
+  return (
+    <div onClick={handleClick}>
+      <img src={product.image} alt={product.name} />
+      <h3>{product.name}</h3>
+    </div>
+  );
+}
+```
+
+## Form Submissions
+
+Animate form submission transitions:
+
+```tsx
+import { Form } from "react-router";
+
+export default function ContactForm() {
+  return (
+    <Form method="post" viewTransition>
+      <input type="email" name="email" />
+      <textarea name="message" />
+      <button type="submit">Send</button>
+    </Form>
+  );
+}
+```
+
+## Custom Animations
+
+Define custom transition animations with CSS:
+
+```css
+/* Default fade transition */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+}
+
+/* Slide transition */
+@keyframes slide-from-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slide-to-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+::view-transition-old(root) {
+  animation: 0.3s ease-out both slide-to-left;
+}
+
+::view-transition-new(root) {
+  animation: 0.3s ease-out both slide-from-right;
+}
+```
+
+## Named Transitions
+
+Animate specific elements independently:
+
+```tsx
+// Product list page
+export default function Products({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      {loaderData.products.map((product) => (
+        <article
+          key={product.id}
+          style={{ viewTransitionName: `product-${product.id}` }}
+        >
+          <img src={product.image} alt={product.name} />
+          <h3>{product.name}</h3>
+          <Link to={`/products/${product.id}`} viewTransition>
+            View Details
+          </Link>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+// Product detail page
+export default function ProductDetail({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <article
+        style={{ viewTransitionName: `product-${loaderData.product.id}` }}
+      >
+        <img src={loaderData.product.image} alt={loaderData.product.name} />
+        <h1>{loaderData.product.name}</h1>
+        <p>{loaderData.product.description}</p>
+      </article>
+    </div>
+  );
+}
+```
+
+Style named transitions:
+
+```css
+::view-transition-old(product-*),
+::view-transition-new(product-*) {
+  /* Animate position and size */
+  animation-duration: 0.4s;
+  animation-timing-function: ease-in-out;
+}
+```
+
+## Conditional Transitions
+
+Apply transitions based on conditions:
+
+```tsx
+import { useNavigate, useLocation } from "react-router";
+
+export default function Gallery({ loaderData }: Route.ComponentProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  function openImage(imageId: string) {
+    // Only use view transition when navigating forward
+    const useTransition = !location.state?.fromDetail;
+
+    navigate(`/gallery/${imageId}`, {
+      viewTransition: useTransition,
+      state: { fromGallery: true },
+    });
+  }
+
+  return (
+    <div className="gallery">
+      {loaderData.images.map((image) => (
+        <img
+          key={image.id}
+          src={image.thumbnail}
+          onClick={() => openImage(image.id)}
+          style={{ viewTransitionName: `image-${image.id}` }}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+## Skip Link Transitions
+
+Prevent transitions for skip links:
+
+```tsx
+export default function Layout() {
+  return (
+    <div>
+      <a href="#main" onClick={(e) => e.stopPropagation()}>
+        Skip to content
+      </a>
+      <nav>
+        <Link to="/" viewTransition>Home</Link>
+        <Link to="/about" viewTransition>About</Link>
+      </nav>
+      <main id="main">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+```
+
+## Animation Direction
+
+Change animation based on navigation direction:
+
+```tsx
+import { useNavigate, useLocation } from "react-router";
+import { useEffect } from "react";
+
+export default function Pages() {
+  const location = useLocation();
+
+  useEffect(() => {
+    // Add data attribute for CSS to use
+    const direction = location.state?.direction || "forward";
+    document.documentElement.dataset.direction = direction;
+  }, [location]);
+
+  return <Outlet />;
+}
+
+function useDirectionalNavigate() {
+  const navigate = useNavigate();
+
+  return (to: string, direction: "forward" | "back" = "forward") => {
+    navigate(to, {
+      viewTransition: true,
+      state: { direction },
+    });
+  };
+}
+```
+
+CSS for directional animations:
+
+```css
+/* Forward navigation */
+[data-direction="forward"] ::view-transition-old(root) {
+  animation: slide-to-left 0.3s ease-out;
+}
+
+[data-direction="forward"] ::view-transition-new(root) {
+  animation: slide-from-right 0.3s ease-out;
+}
+
+/* Back navigation */
+[data-direction="back"] ::view-transition-old(root) {
+  animation: slide-to-right 0.3s ease-out;
+}
+
+[data-direction="back"] ::view-transition-new(root) {
+  animation: slide-from-left 0.3s ease-out;
+}
+```
+
+## Loading States
+
+Animate loading states during transitions:
+
+```tsx
+import { useNavigation } from "react-router";
+import { useEffect } from "react";
+
+export default function Root() {
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    document.documentElement.dataset.loading = 
+      navigation.state === "loading" ? "true" : "false";
+  }, [navigation.state]);
+
+  return <Outlet />;
+}
+```
+
+```css
+[data-loading="true"] ::view-transition-new(root) {
+  /* Add a loading indicator during transition */
+  position: relative;
+}
+
+[data-loading="true"] ::view-transition-new(root)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border: 3px solid #ccc;
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+```
+
+## Reduced Motion
+
+Respect user's motion preferences:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+```
+
+## JavaScript Control
+
+Access the transition object for advanced control:
+
+```tsx
+import { useViewTransitionState } from "react-router";
+
+export default function Component() {
+  const isTransitioning = useViewTransitionState("/about");
+
+  return (
+    <div>
+      {isTransitioning && <p>Transitioning to About...</p>}
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Keep animations short** - 200-400ms for most transitions
+2. **Use meaningful animations** - Match the user's mental model
+3. **Respect reduced motion** - Honor `prefers-reduced-motion`
+4. **Test performance** - Ensure smooth 60fps animations
+5. **Provide fallbacks** - Work in browsers without View Transitions support
+6. **Use named transitions sparingly** - Only for key elements
+7. **Consider mobile** - Simpler animations work better on slower devices
+8. **Test across browsers** - Support varies across browsers

@@ -1,0 +1,418 @@
+---
+title: Navigation Blocking
+---
+
+# Navigation Blocking
+
+Learn how to block navigation and prompt users before they leave a page with unsaved changes.
+
+## Overview
+
+React Router provides the `useBlocker` hook to prevent navigation and prompt users when they attempt to leave a page. This is useful for forms with unsaved changes, preventing accidental data loss.
+
+## Basic Navigation Blocking
+
+Block navigation when there are unsaved changes:
+
+```tsx
+import { useBlocker, Form } from "react-router";
+import { useState } from "react";
+import type { Route } from "./+types/edit";
+
+export default function EditPost({ loaderData }: Route.ComponentProps) {
+  const [formData, setFormData] = useState(loaderData.post);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      hasChanges && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  return (
+    <div>
+      <Form method="post">
+        <input
+          name="title"
+          value={formData.title}
+          onChange={(e) => {
+            setFormData({ ...formData, title: e.target.value });
+            setHasChanges(true);
+          }}
+        />
+        <button type="submit">Save</button>
+      </Form>
+
+      {blocker.state === "blocked" && (
+        <div className="modal">
+          <p>You have unsaved changes. Are you sure you want to leave?</p>
+          <button onClick={() => blocker.proceed?.()}>Leave</button>
+          <button onClick={() => blocker.reset?.()}>Stay</button>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Blocker States
+
+The blocker has three possible states:
+
+```tsx
+import { useBlocker } from "react-router";
+
+export default function Component() {
+  const blocker = useBlocker(shouldBlock);
+
+  // blocker.state can be:
+  // - "unblocked": Navigation is not blocked
+  // - "blocked": Navigation is blocked, waiting for user decision
+  // - "proceeding": User chose to proceed, navigation is happening
+
+  if (blocker.state === "blocked") {
+    return (
+      <ConfirmDialog
+        onConfirm={() => blocker.proceed?.()}
+        onCancel={() => blocker.reset?.()}
+      />
+    );
+  }
+
+  if (blocker.state === "proceeding") {
+    return <div>Navigating...</div>;
+  }
+
+  // Normal UI when unblocked
+  return <div>{/* Your component */}</div>;
+}
+```
+
+## Conditional Blocking
+
+Block navigation only under specific conditions:
+
+```tsx
+import { useBlocker } from "react-router";
+import { useState, useCallback } from "react";
+import type { Route } from "./+types/form";
+
+export default function ImportantForm({ actionData }: Route.ComponentProps) {
+  const [value, setValue] = useState("");
+
+  const shouldBlock = useCallback(
+    ({ currentLocation, nextLocation }) => {
+      // Don't block if form is empty
+      if (value === "") return false;
+
+      // Don't block if navigating to the same route (form submission)
+      if (currentLocation.pathname === nextLocation.pathname) return false;
+
+      // Block all other navigation
+      return true;
+    },
+    [value]
+  );
+
+  const blocker = useBlocker(shouldBlock);
+
+  return (
+    <Form method="post">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button type="submit">Submit</button>
+
+      {blocker.state === "blocked" && (
+        <ConfirmDialog blocker={blocker} />
+      )}
+    </Form>
+  );
+}
+```
+
+## Blocker with Form State
+
+Reset blocker after successful form submission:
+
+```tsx
+import { useBlocker, useNavigation } from "react-router";
+import { useState, useEffect } from "react";
+
+export default function EditForm({ actionData }: Route.ComponentProps) {
+  const navigation = useNavigation();
+  const [isDirty, setIsDirty] = useState(false);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  // Reset dirty state after successful submission
+  useEffect(() => {
+    if (navigation.state === "idle" && actionData?.success) {
+      setIsDirty(false);
+    }
+  }, [navigation.state, actionData]);
+
+  // Reset blocker if form is clean
+  useEffect(() => {
+    if (blocker.state === "blocked" && !isDirty) {
+      blocker.reset?.();
+    }
+  }, [blocker, isDirty]);
+
+  return (
+    <Form
+      method="post"
+      onChange={() => setIsDirty(true)}
+    >
+      {/* Form fields */}
+    </Form>
+  );
+}
+```
+
+## Custom Confirmation Dialog
+
+Create a reusable confirmation dialog:
+
+```tsx
+import type { Blocker } from "react-router";
+
+interface ConfirmDialogProps {
+  blocker: Blocker;
+  title?: string;
+  message?: string;
+}
+
+export function ConfirmDialog({
+  blocker,
+  title = "Unsaved Changes",
+  message = "You have unsaved changes. Are you sure you want to leave?",
+}: ConfirmDialogProps) {
+  if (blocker.state !== "blocked") return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <h2>{title}</h2>
+        <p>{message}</p>
+        <p className="warning">
+          Navigating to: {blocker.location.pathname}
+        </p>
+        <div className="modal-actions">
+          <button
+            className="btn-danger"
+            onClick={() => blocker.proceed?.()}
+          >
+            Leave Without Saving
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => blocker.reset?.()}
+          >
+            Stay on Page
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+## Multiple Blockers
+
+Handle multiple blocking conditions:
+
+```tsx
+import { useBlocker } from "react-router";
+import { useState } from "react";
+
+export default function ComplexForm() {
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => {
+      if (currentLocation.pathname === nextLocation.pathname) {
+        return false;
+      }
+      return hasUnsavedChanges || isUploading;
+    }
+  );
+
+  return (
+    <div>
+      {/* Form content */}
+
+      {blocker.state === "blocked" && (
+        <ConfirmDialog
+          blocker={blocker}
+          message={
+            isUploading
+              ? "Upload in progress. Leaving will cancel the upload."
+              : "You have unsaved changes. Are you sure?"
+          }
+        />
+      )}
+    </div>
+  );
+}
+```
+
+## Browser Confirmation
+
+Combine with browser's native confirmation for external navigation:
+
+```tsx
+import { useBlocker } from "react-router";
+import { useEffect, useState } from "react";
+
+export default function FormWithBrowserWarning() {
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      hasChanges && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  useEffect(() => {
+    // Warn on browser navigation (back/forward/close)
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasChanges]);
+
+  return <div>{/* Form */}</div>;
+}
+```
+
+## Blocking with Route Parameters
+
+Block navigation based on route changes:
+
+```tsx
+import { useBlocker, useParams } from "react-router";
+import { useState } from "react";
+
+export default function MultiStepForm() {
+  const params = useParams();
+  const [formData, setFormData] = useState({});
+  const [isComplete, setIsComplete] = useState(false);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => {
+      // Allow moving between steps of the same form
+      if (nextLocation.pathname.startsWith("/form/")) {
+        return false;
+      }
+
+      // Block if form is incomplete
+      return !isComplete && Object.keys(formData).length > 0;
+    }
+  );
+
+  return <div>{/* Multi-step form */}</div>;
+}
+```
+
+## Keyboard Shortcuts
+
+Handle keyboard shortcuts while navigation is blocked:
+
+```tsx
+import { useBlocker } from "react-router";
+import { useEffect } from "react";
+
+export default function FormWithShortcuts() {
+  const blocker = useBlocker(shouldBlock);
+
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        // Enter to proceed
+        if (e.key === "Enter") {
+          blocker.proceed?.();
+        }
+        // Escape to cancel
+        if (e.key === "Escape") {
+          blocker.reset?.();
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [blocker]);
+
+  return <div>{/* Form */}</div>;
+}
+```
+
+## Auto-save Integration
+
+Combine blocking with auto-save:
+
+```tsx
+import { useBlocker, useFetcher } from "react-router";
+import { useState, useEffect } from "react";
+
+export default function AutoSaveForm() {
+  const fetcher = useFetcher();
+  const [formData, setFormData] = useState("");
+  const [lastSaved, setLastSaved] = useState(formData);
+
+  const hasUnsavedChanges = formData !== lastSaved;
+
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    if (hasUnsavedChanges) {
+      const timer = setTimeout(() => {
+        fetcher.submit({ data: formData }, { method: "post" });
+      }, 30000);
+      return () => clearTimeout(timer);
+    }
+  }, [formData, hasUnsavedChanges]);
+
+  // Update lastSaved when auto-save completes
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.success) {
+      setLastSaved(formData);
+    }
+  }, [fetcher.state, fetcher.data, formData]);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      hasUnsavedChanges && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  return (
+    <div>
+      <textarea
+        value={formData}
+        onChange={(e) => setFormData(e.target.value)}
+      />
+      {hasUnsavedChanges && <p>Unsaved changes</p>}
+      {fetcher.state === "submitting" && <p>Saving...</p>}
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Only block when necessary** - Don't block if form is empty or unchanged
+2. **Allow same-route navigation** - Don't block form submissions to the same route
+3. **Clear state on success** - Reset blocking after successful submission
+4. **Provide clear messaging** - Tell users why they're being blocked
+5. **Handle browser navigation** - Use `beforeunload` for external navigation
+6. **Make dialogs accessible** - Use proper ARIA labels and keyboard navigation
+7. **Consider auto-save** - Reduce the need for blocking entirely
+8. **Test thoroughly** - Ensure blocking works across all navigation methods

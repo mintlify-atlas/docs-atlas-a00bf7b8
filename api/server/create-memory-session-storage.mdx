@@ -1,0 +1,397 @@
+---
+title: createMemorySessionStorage
+description: In-memory session storage for testing and development
+---
+
+# createMemorySessionStorage
+
+Creates a simple in-memory SessionStorage object. This is primarily useful for testing and as a reference implementation. Not suitable for production use beyond a single process.
+
+## Signature
+
+```tsx
+function createMemorySessionStorage<Data = SessionData, FlashData = Data>(
+  options?: MemorySessionStorageOptions
+): SessionStorage<Data, FlashData>
+```
+
+<ParamField path="options" type="MemorySessionStorageOptions">
+  Configuration options for memory session storage.
+  
+  <ParamField path="cookie" type="Cookie | CookieOptions">
+    The cookie used to store the session ID on the client, or options to create one automatically.
+    
+    <ParamField path="name" type="string" default="__session">
+      The name of the session ID cookie.
+    </ParamField>
+    
+    <ParamField path="secrets" type="string[]">
+      Array of secrets for signing the session ID cookie.
+    </ParamField>
+    
+    <ParamField path="maxAge" type="number">
+      Maximum age of the session in seconds.
+    </ParamField>
+    
+    <ParamField path="httpOnly" type="boolean" default="true">
+      Makes cookie inaccessible to JavaScript.
+    </ParamField>
+    
+    <ParamField path="secure" type="boolean">
+      Only send cookie over HTTPS.
+    </ParamField>
+    
+    <ParamField path="sameSite" type="'lax' | 'strict' | 'none'" default="lax">
+      Controls cross-site request behavior.
+    </ParamField>
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="SessionStorage" type="object">
+  A session storage object with methods to manage sessions.
+  
+  <ResponseField name="getSession" type="function">
+    Parses the session ID from the Cookie header and returns the session.
+    
+    ```tsx
+    getSession(
+      cookieHeader?: string | null,
+      options?: ParseOptions
+    ): Promise<Session>
+    ```
+  </ResponseField>
+  
+  <ResponseField name="commitSession" type="function">
+    Stores session data in memory and returns the Set-Cookie header with the session ID.
+    
+    ```tsx
+    commitSession(
+      session: Session,
+      options?: SerializeOptions
+    ): Promise<string>
+    ```
+  </ResponseField>
+  
+  <ResponseField name="destroySession" type="function">
+    Deletes session data from memory and returns a Set-Cookie header that clears the cookie.
+    
+    ```tsx
+    destroySession(
+      session: Session,
+      options?: SerializeOptions
+    ): Promise<string>
+    ```
+  </ResponseField>
+</ResponseField>
+
+## Basic Example
+
+```tsx filename=app/sessions.server.ts
+import { createMemorySessionStorage } from "react-router";
+
+export const sessionStorage = createMemorySessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: ["test-secret"],
+    sameSite: "lax",
+  },
+});
+```
+
+## Testing Example
+
+Use in tests to avoid external dependencies:
+
+```tsx filename=app/routes/__tests__/auth.test.ts
+import { createMemorySessionStorage } from "react-router";
+import { loader } from "../dashboard";
+
+const sessionStorage = createMemorySessionStorage();
+
+test("redirects to login when not authenticated", async () => {
+  const session = await sessionStorage.getSession();
+  const cookieHeader = await sessionStorage.commitSession(session);
+  
+  const request = new Request("http://localhost/dashboard", {
+    headers: { Cookie: cookieHeader },
+  });
+  
+  const response = await loader({ request });
+  expect(response.status).toBe(302);
+  expect(response.headers.get("Location")).toBe("/login");
+});
+
+test("loads user data when authenticated", async () => {
+  const session = await sessionStorage.getSession();
+  session.set("userId", "user-123");
+  const cookieHeader = await sessionStorage.commitSession(session);
+  
+  const request = new Request("http://localhost/dashboard", {
+    headers: { Cookie: cookieHeader },
+  });
+  
+  const response = await loader({ request });
+  expect(response.userId).toBe("user-123");
+});
+```
+
+## Development Example
+
+Simplify local development without setting up a database:
+
+```tsx filename=app/sessions.server.ts
+import {
+  createMemorySessionStorage,
+  createCookieSessionStorage,
+} from "react-router";
+
+export const sessionStorage =
+  process.env.NODE_ENV === "development"
+    ? createMemorySessionStorage({
+        cookie: { name: "__session" },
+      })
+    : createCookieSessionStorage({
+        cookie: {
+          name: "__session",
+          secrets: [process.env.SESSION_SECRET],
+        },
+      });
+```
+
+## Integration Testing
+
+```tsx filename=tests/integration/auth.test.ts
+import { createMemorySessionStorage } from "react-router";
+
+describe("Authentication Flow", () => {
+  let sessionStorage: SessionStorage;
+  
+  beforeEach(() => {
+    sessionStorage = createMemorySessionStorage();
+  });
+  
+  it("creates session on login", async () => {
+    const formData = new FormData();
+    formData.set("email", "user@example.com");
+    formData.set("password", "password123");
+    
+    const request = new Request("http://localhost/login", {
+      method: "POST",
+      body: formData,
+    });
+    
+    const response = await loginAction({ request });
+    const setCookie = response.headers.get("Set-Cookie");
+    
+    const session = await sessionStorage.getSession(setCookie);
+    expect(session.get("userId")).toBeDefined();
+  });
+  
+  it("destroys session on logout", async () => {
+    const session = await sessionStorage.getSession();
+    session.set("userId", "user-123");
+    const cookieHeader = await sessionStorage.commitSession(session);
+    
+    const request = new Request("http://localhost/logout", {
+      method: "POST",
+      headers: { Cookie: cookieHeader },
+    });
+    
+    const response = await logoutAction({ request });
+    const setCookie = response.headers.get("Set-Cookie");
+    
+    const newSession = await sessionStorage.getSession(setCookie);
+    expect(newSession.get("userId")).toBeUndefined();
+  });
+});
+```
+
+## Session Expiration
+
+Memory sessions support expiration:
+
+```tsx
+const sessionStorage = createMemorySessionStorage({
+  cookie: {
+    maxAge: 60 * 60 * 24, // 24 hours
+  },
+});
+
+const session = await sessionStorage.getSession();
+session.set("userId", "user-123");
+
+// Session expires after 24 hours
+const setCookie = await sessionStorage.commitSession(session);
+```
+
+## TypeScript Support
+
+```tsx
+type SessionData = {
+  userId: string;
+  theme: "light" | "dark";
+};
+
+type FlashData = {
+  error: string;
+  success: string;
+};
+
+const sessionStorage = createMemorySessionStorage<SessionData, FlashData>({
+  cookie: { name: "__session" },
+});
+
+// Fully typed session
+const session = await sessionStorage.getSession();
+const userId = session.get("userId"); // string
+const theme = session.get("theme");   // "light" | "dark"
+session.flash("error", "Invalid input");
+```
+
+## Advantages
+
+- **Zero dependencies** - No database or external services required
+- **Fast** - In-memory operations are extremely fast
+- **Simple setup** - No configuration needed
+- **Perfect for testing** - Isolated sessions per test
+- **Development friendly** - Quick iteration without infrastructure
+
+## Limitations
+
+### Not Suitable for Production
+
+Memory storage has several critical limitations for production use:
+
+**Single Process Only**
+```tsx
+// Bad - sessions lost when process restarts
+const sessionStorage = createMemorySessionStorage();
+
+// Good - persistent storage for production
+const sessionStorage = createSessionStorage({
+  cookie: { name: "__session" },
+  async createData(data) {
+    return await db.session.create({ data });
+  },
+  // ... other methods
+});
+```
+
+**No Load Balancing Support**
+
+Sessions are stored in a single process's memory and won't work across multiple servers:
+
+```tsx
+// Sessions won't be shared between server instances
+const app1 = createServer(); // Has its own memory
+const app2 = createServer(); // Has separate memory
+```
+
+**Lost on Restart**
+
+All sessions are lost when the process restarts:
+
+```tsx
+// All user sessions are destroyed on deployment
+process.on("SIGTERM", () => {
+  // All memory sessions are gone
+  server.close();
+});
+```
+
+### Memory Leaks
+
+Expired sessions remain in memory until explicitly cleaned:
+
+```tsx
+// Implementation detail: expired sessions are only removed on read
+const session = await sessionStorage.getSession("expired-id");
+// Expired session is now deleted, but orphaned sessions accumulate
+```
+
+## When to Use
+
+### Testing
+
+Perfect for unit and integration tests:
+
+```tsx
+import { createMemorySessionStorage } from "react-router";
+
+test("protected route", async () => {
+  const sessionStorage = createMemorySessionStorage();
+  // Fast, isolated test
+});
+```
+
+### Local Development
+
+Simplify development environment:
+
+```tsx
+const sessionStorage =
+  process.env.NODE_ENV === "development"
+    ? createMemorySessionStorage()
+    : createSessionStorage(dbStrategy);
+```
+
+### Prototyping
+
+Quickly prototype features without infrastructure:
+
+```tsx
+// Get started immediately
+const sessionStorage = createMemorySessionStorage();
+// Migrate to persistent storage later
+```
+
+### Single-User Applications
+
+Acceptable for truly single-user scenarios:
+
+```tsx
+// Personal desktop application running locally
+const sessionStorage = createMemorySessionStorage();
+```
+
+## Migration to Production Storage
+
+When ready for production, migrate to persistent storage:
+
+```tsx filename=app/sessions.server.ts
+import {
+  createMemorySessionStorage,
+  createCookieSessionStorage,
+} from "react-router";
+
+// Development
+if (process.env.NODE_ENV === "development") {
+  export const sessionStorage = createMemorySessionStorage();
+}
+// Production with small session data
+else if (process.env.USE_COOKIE_SESSIONS) {
+  export const sessionStorage = createCookieSessionStorage({
+    cookie: {
+      secrets: [process.env.SESSION_SECRET],
+    },
+  });
+}
+// Production with database
+else {
+  export const sessionStorage = createSessionStorage({
+    cookie: { secrets: [process.env.SESSION_SECRET] },
+    async createData(data) {
+      return await db.session.create({ data });
+    },
+    // ... other methods
+  });
+}
+```
+
+## Related
+
+- [createSessionStorage](/api/server/create-session-storage) - Custom session storage backends
+- [createCookieSessionStorage](/api/server/create-cookie-session-storage) - Cookie-based sessions
+- [Sessions and Cookies](/concepts/sessions) - Sessions guide

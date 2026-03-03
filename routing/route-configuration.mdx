@@ -1,0 +1,206 @@
+---
+title: Route Configuration
+description: Learn how to configure routes in React Router using routes.ts
+---
+
+# Route Configuration
+
+React Router v7 uses a configuration-based approach to defining routes through the `routes.ts` file located in your `app` directory. This provides type safety, flexibility, and better maintainability compared to convention-based routing.
+
+## Basic Configuration
+
+Every React Router application requires a `routes.ts` file that exports an array of route configuration objects:
+
+```ts
+// app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { index, route, layout } from "@react-router/dev/routes";
+
+export default [
+  index("routes/home.tsx"),
+  route("about", "routes/about.tsx"),
+  route("contact", "routes/contact.tsx"),
+] satisfies RouteConfig;
+```
+
+## Route Config Helpers
+
+React Router provides helper functions to define routes in a type-safe, declarative way:
+
+### `route()`
+
+Defines a standard route with a path and component file:
+
+```ts
+import { route } from "@react-router/dev/routes";
+
+// Basic route
+route("about", "routes/about.tsx")
+
+// Route with children
+route("dashboard", "routes/dashboard.tsx", [
+  route("settings", "routes/dashboard/settings.tsx"),
+  route("profile", "routes/dashboard/profile.tsx"),
+])
+
+// Route with options
+route("admin", "routes/admin.tsx", { caseSensitive: true })
+
+// Route with custom ID
+route("users/:id", "routes/user.tsx", { id: "user-detail" })
+```
+
+### `index()`
+
+Defines an index route that renders at the parent's path:
+
+```ts
+import { index } from "@react-router/dev/routes";
+
+index("routes/home.tsx")
+
+// With custom ID
+index("routes/home.tsx", { id: "homepage" })
+```
+
+### `layout()`
+
+Defines a layout route (no path segment) that wraps child routes:
+
+```ts
+import { layout } from "@react-router/dev/routes";
+
+layout("routes/auth-layout.tsx", [
+  route("login", "routes/login.tsx"),
+  route("signup", "routes/signup.tsx"),
+])
+
+// With custom ID
+layout("routes/app-layout.tsx", { id: "app" }, [
+  route("dashboard", "routes/dashboard.tsx"),
+])
+```
+
+### `prefix()`
+
+Adds a path prefix to a group of routes without requiring a parent component:
+
+```ts
+import { prefix, route } from "@react-router/dev/routes";
+
+export default [
+  ...prefix("api", [
+    route("users", "routes/api/users.tsx"),
+    route("posts", "routes/api/posts.tsx"),
+  ]),
+];
+// Creates routes: /api/users, /api/posts
+```
+
+## Route Configuration Options
+
+Each route config entry supports the following options:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `file` | `string` | Path to the route module (relative to app directory or absolute) |
+| `path` | `string` | URL path pattern to match |
+| `id` | `string` | Unique identifier for the route (auto-generated from file path if not provided) |
+| `index` | `boolean` | Whether this is an index route |
+| `caseSensitive` | `boolean` | Whether path matching is case-sensitive (default: `false`) |
+| `children` | `RouteConfigEntry[]` | Nested child routes |
+
+## File-Based Routing
+
+While manual configuration is recommended, you can use file-based routing conventions via the `@react-router/fs-routes` package:
+
+```ts
+// app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes() satisfies RouteConfig;
+```
+
+This automatically discovers routes based on files in the `app/routes/` directory. See [File Conventions](/routing/file-conventions) for details.
+
+## Absolute File Paths
+
+You can use absolute paths for route modules:
+
+```ts
+import path from "node:path";
+import { type RouteConfig, index } from "@react-router/dev/routes";
+import { getAppDirectory } from "@react-router/dev/routes";
+
+export default [
+  index(path.resolve(import.meta.dirname, "routes/home.tsx")),
+] satisfies RouteConfig;
+```
+
+## Relative Scoping
+
+For splitting route configuration across multiple files, use the `relative()` helper:
+
+```ts
+// app/routes.ts
+import { route } from "@react-router/dev/routes";
+import { adminRoutes } from "./routes/admin/config";
+
+export default [
+  route("admin", "routes/admin/layout.tsx", adminRoutes),
+];
+```
+
+```ts
+// app/routes/admin/config.ts
+import { relative } from "@react-router/dev/routes";
+
+const { route, index } = relative(import.meta.dirname);
+
+export const adminRoutes = [
+  index("index.tsx"),
+  route("users", "users.tsx"),
+  route("settings", "settings.tsx"),
+];
+```
+
+## Route Modules
+
+Each route file exports React components and data functions:
+
+```tsx
+// app/routes/about.tsx
+import type { Route } from "./+types/about";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  return { message: "Welcome to About" };
+}
+
+export default function About({ loaderData }: Route.ComponentProps) {
+  return <h1>{loaderData.message}</h1>;
+}
+```
+
+## Best Practices
+
+1. **Use helpers**: Always use `route`, `index`, and `layout` helpers instead of raw objects
+2. **Type safety**: Use `satisfies RouteConfig` to ensure type checking
+3. **Relative paths**: Prefer relative file paths (`"routes/about.tsx"`) over absolute paths
+4. **Logical grouping**: Organize routes by feature or domain, not just URL structure
+5. **Avoid deep nesting**: Keep route hierarchies shallow when possible
+
+## Migration from Remix
+
+If migrating from Remix with the `routes` option, use the adapter:
+
+```ts
+import { remixRoutesOptionAdapter } from "@react-router/remix-routes-option-adapter";
+
+export default remixRoutesOptionAdapter((defineRoutes) => {
+  return defineRoutes((route) => {
+    route("/", "routes/home.tsx", { index: true });
+    route("about", "routes/about.tsx");
+  });
+});
+```

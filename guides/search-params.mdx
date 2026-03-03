@@ -1,0 +1,447 @@
+---
+title: Search Parameters
+---
+
+# Search Parameters
+
+Learn how to work with URL search parameters (query strings) in React Router applications.
+
+## Overview
+
+React Router provides the `useSearchParams` hook for reading and updating URL search parameters. Search params are the key-value pairs in the URL after the `?` character (e.g., `?sort=date&filter=active`).
+
+## Reading Search Params
+
+Use the `useSearchParams` hook:
+
+```tsx
+import { useSearchParams } from "react-router";
+
+export default function SearchPage() {
+  const [searchParams] = useSearchParams();
+
+  const query = searchParams.get("q");
+  const category = searchParams.get("category");
+  const page = searchParams.get("page") || "1";
+
+  return (
+    <div>
+      <h1>Search Results</h1>
+      <p>Query: {query}</p>
+      <p>Category: {category}</p>
+      <p>Page: {page}</p>
+    </div>
+  );
+}
+```
+
+## Setting Search Params
+
+Update search params programmatically:
+
+```tsx
+import { useSearchParams } from "react-router";
+
+export default function FilterPanel() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  function handleFilterChange(category: string) {
+    setSearchParams({ category });
+  }
+
+  function handleSortChange(sort: string) {
+    setSearchParams((prev) => {
+      prev.set("sort", sort);
+      return prev;
+    });
+  }
+
+  return (
+    <div>
+      <button onClick={() => handleFilterChange("electronics")}
+        Electronics
+      </button>
+      <button onClick={() => handleFilterChange("books")}
+        Books
+      </button>
+      <button onClick={() => handleSortChange("price")}
+        Sort by Price
+      </button>
+    </div>
+  );
+}
+```
+
+## Merging Search Params
+
+Preserve existing params while updating:
+
+```tsx
+import { useSearchParams } from "react-router";
+
+export default function ProductList() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  function updateParam(key: string, value: string) {
+    setSearchParams((prev) => {
+      if (value) {
+        prev.set(key, value);
+      } else {
+        prev.delete(key);
+      }
+      return prev;
+    });
+  }
+
+  return (
+    <div>
+      <input
+        type="text"
+        value={searchParams.get("q") || ""}
+        onChange={(e) => updateParam("q", e.target.value)}
+        placeholder="Search..."
+      />
+
+      <select
+        value={searchParams.get("sort") || ""}
+        onChange={(e) => updateParam("sort", e.target.value)}
+      >
+        <option value="">Default Sort</option>
+        <option value="price">Price</option>
+        <option value="date">Date</option>
+      </select>
+    </div>
+  );
+}
+```
+
+## Search Params in Loaders
+
+Access search params server-side:
+
+```tsx
+import type { Route } from "./+types/products";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  const searchParams = url.searchParams;
+
+  const query = searchParams.get("q") || "";
+  const category = searchParams.get("category");
+  const page = parseInt(searchParams.get("page") || "1");
+  const sort = searchParams.get("sort") || "relevance";
+
+  const products = await searchProducts({
+    query,
+    category,
+    page,
+    sort,
+  });
+
+  return { products, query, category, page, sort };
+}
+
+export default function Products({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Products</h1>
+      {loaderData.products.map((product) => (
+        <ProductCard key={product.id} product={product} />
+      ))}
+    </div>
+  );
+}
+```
+
+## Pagination with Search Params
+
+Implement pagination using URL parameters:
+
+```tsx
+import { useSearchParams, Link } from "react-router";
+import type { Route } from "./+types/blog";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  const page = parseInt(url.searchParams.get("page") || "1");
+  const perPage = 10;
+
+  const posts = await getPosts({ page, perPage });
+  const total = await getPostCount();
+
+  return {
+    posts,
+    page,
+    totalPages: Math.ceil(total / perPage),
+  };
+}
+
+export default function Blog({ loaderData }: Route.ComponentProps) {
+  const [searchParams] = useSearchParams();
+  const currentPage = loaderData.page;
+
+  return (
+    <div>
+      {loaderData.posts.map((post) => (
+        <article key={post.id}>{post.title}</article>
+      ))}
+
+      <nav>
+        {currentPage > 1 && (
+          <Link to={`?page=${currentPage - 1}`}>Previous</Link>
+        )}
+
+        {Array.from({ length: loaderData.totalPages }, (_, i) => i + 1).map(
+          (page) => (
+            <Link
+              key={page}
+              to={`?page=${page}`}
+              className={page === currentPage ? "active" : ""}
+            >
+              {page}
+            </Link>
+          )
+        )}
+
+        {currentPage < loaderData.totalPages && (
+          <Link to={`?page=${currentPage + 1}`}>Next</Link>
+        )}
+      </nav>
+    </div>
+  );
+}
+```
+
+## Form-Based Search
+
+Use forms to update search params:
+
+```tsx
+import { Form, useSearchParams } from "react-router";
+import type { Route } from "./+types/search";
+
+export default function Search({ loaderData }: Route.ComponentProps) {
+  const [searchParams] = useSearchParams();
+
+  return (
+    <div>
+      <Form method="get">
+        <input
+          type="search"
+          name="q"
+          defaultValue={searchParams.get("q") || ""}
+          placeholder="Search..."
+        />
+
+        <select name="category" defaultValue={searchParams.get("category") || ""}>
+          <option value="">All Categories</option>
+          <option value="electronics">Electronics</option>
+          <option value="books">Books</option>
+          <option value="clothing">Clothing</option>
+        </select>
+
+        <button type="submit">Search</button>
+      </Form>
+
+      <div className="results">
+        {loaderData.results.map((result) => (
+          <div key={result.id}>{result.title}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+## Filters and Facets
+
+Implement multi-select filters:
+
+```tsx
+import { useSearchParams } from "react-router";
+
+export default function ProductFilters() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const colors = searchParams.getAll("color");
+  const sizes = searchParams.getAll("size");
+
+  function toggleFilter(key: string, value: string) {
+    setSearchParams((prev) => {
+      const values = prev.getAll(key);
+
+      if (values.includes(value)) {
+        // Remove the value
+        prev.delete(key);
+        values
+          .filter((v) => v !== value)
+          .forEach((v) => prev.append(key, v));
+      } else {
+        // Add the value
+        prev.append(key, value);
+      }
+
+      return prev;
+    });
+  }
+
+  return (
+    <div>
+      <fieldset>
+        <legend>Colors</legend>
+        {["red", "blue", "green"].map((color) => (
+          <label key={color}>
+            <input
+              type="checkbox"
+              checked={colors.includes(color)}
+              onChange={() => toggleFilter("color", color)}
+            />
+            {color}
+          </label>
+        ))}
+      </fieldset>
+
+      <fieldset>
+        <legend>Sizes</legend>
+        {["S", "M", "L", "XL"].map((size) => (
+          <label key={size}>
+            <input
+              type="checkbox"
+              checked={sizes.includes(size)}
+              onChange={() => toggleFilter("size", size)}
+            />
+            {size}
+          </label>
+        ))}
+      </fieldset>
+    </div>
+  );
+}
+```
+
+## Debounced Search
+
+Delay search param updates for performance:
+
+```tsx
+import { useSearchParams } from "react-router";
+import { useState, useEffect } from "react";
+
+export default function LiveSearch() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") || "");
+
+  // Debounce search param updates
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchParams((prev) => {
+        if (query) {
+          prev.set("q", query);
+        } else {
+          prev.delete("q");
+        }
+        return prev;
+      });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query, setSearchParams]);
+
+  return (
+    <input
+      type="search"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      placeholder="Search..."
+    />
+  );
+}
+```
+
+## Preserving Search Params
+
+Keep search params across navigation:
+
+```tsx
+import { useSearchParams, Link } from "react-router";
+
+export default function ProductCard({ product }) {
+  const [searchParams] = useSearchParams();
+
+  // Preserve current search params when navigating to product detail
+  const detailUrl = `/products/${product.id}?${searchParams.toString()}`;
+
+  return (
+    <div>
+      <h3>{product.name}</h3>
+      <Link to={detailUrl}>View Details</Link>
+    </div>
+  );
+}
+```
+
+## Type-Safe Search Params
+
+Create typed helpers for search params:
+
+```tsx
+import { useSearchParams } from "react-router";
+
+interface ProductSearchParams {
+  q?: string;
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  page?: number;
+}
+
+function useProductSearch() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const params: ProductSearchParams = {
+    q: searchParams.get("q") || undefined,
+    category: searchParams.get("category") || undefined,
+    minPrice: parseFloat(searchParams.get("minPrice") || "") || undefined,
+    maxPrice: parseFloat(searchParams.get("maxPrice") || "") || undefined,
+    page: parseInt(searchParams.get("page") || "1"),
+  };
+
+  function updateParams(updates: Partial<ProductSearchParams>) {
+    setSearchParams((prev) => {
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value != null) {
+          prev.set(key, String(value));
+        } else {
+          prev.delete(key);
+        }
+      });
+      return prev;
+    });
+  }
+
+  return [params, updateParams] as const;
+}
+
+export default function Products() {
+  const [params, updateParams] = useProductSearch();
+
+  return (
+    <div>
+      <button onClick={() => updateParams({ category: "electronics" })}>
+        Electronics
+      </button>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Use descriptive param names** - `?category=electronics` is better than `?c=1`
+2. **Provide defaults** - Handle missing params gracefully
+3. **Preserve params when needed** - Keep filters when navigating to detail pages
+4. **Debounce updates** - Avoid excessive URL updates on rapid changes
+5. **Use forms for complex searches** - Better for accessibility and functionality
+6. **Keep URLs shareable** - Search params make URLs bookmarkable
+7. **Handle invalid values** - Validate and sanitize param values
+8. **Consider SEO** - Search engines can index different param combinations

@@ -1,0 +1,463 @@
+---
+title: useFetcher
+---
+
+# useFetcher
+
+Useful for creating complex, dynamic user interfaces that require multiple, concurrent data interactions without causing a navigation.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+Fetchers track their own, independent state and can be used to load data, submit forms, and generally interact with `action` and `loader` functions without navigating.
+
+## Signature
+
+```tsx
+function useFetcher<T = any>({
+  key,
+}?: {
+  key?: string;
+}): FetcherWithComponents<SerializeFrom<T>>
+```
+
+## Parameters
+
+<ParamField path="options.key" type="string">
+  A unique key to identify the fetcher. If you want to access the same fetcher from elsewhere in your app, provide a key. By default, `useFetcher` generates a unique fetcher scoped to that component.
+</ParamField>
+
+## Returns
+
+<ResponseField name="fetcher" type="FetcherWithComponents<T>">
+  An object with the following properties:
+  
+  <Expandable title="properties">
+    <ResponseField name="state" type="'idle' | 'loading' | 'submitting'">
+      The current state of the fetcher.
+    </ResponseField>
+    
+    <ResponseField name="data" type="T">
+      The data returned from the loader or action.
+    </ResponseField>
+    
+    <ResponseField name="formData" type="FormData">
+      The `FormData` being submitted, available during `submitting` state.
+    </ResponseField>
+    
+    <ResponseField name="formAction" type="string">
+      The URL being submitted to.
+    </ResponseField>
+    
+    <ResponseField name="formMethod" type="'get' | 'post' | 'put' | 'patch' | 'delete'">
+      The HTTP method being used.
+    </ResponseField>
+    
+    <ResponseField name="Form" type="React.Component">
+      A form component that doesn't cause navigation when submitted.
+    </ResponseField>
+    
+    <ResponseField name="load" type="(href: string, opts?) => Promise<void>">
+      Loads data from a route loader.
+    </ResponseField>
+    
+    <ResponseField name="submit" type="FetcherSubmitFunction">
+      Submits data to a route action.
+    </ResponseField>
+    
+    <ResponseField name="reset" type="(opts?) => void">
+      Resets the fetcher to idle state.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+```tsx
+import { useFetcher } from "react-router";
+
+function NewsletterSignup() {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form method="post" action="/newsletter/subscribe">
+      <input type="email" name="email" />
+      <button type="submit">
+        {fetcher.state === "submitting" ? "Subscribing..." : "Subscribe"}
+      </button>
+      
+      {fetcher.data?.success && <p>Thanks for subscribing!</p>}
+    </fetcher.Form>
+  );
+}
+```
+
+### Load data
+
+```tsx
+function SearchCombobox() {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <input
+        type="search"
+        onChange={(e) => {
+          fetcher.load(`/search?q=${e.target.value}`);
+        }}
+      />
+      
+      {fetcher.state === "loading" && <Spinner />}
+      
+      {fetcher.data && (
+        <ul>
+          {fetcher.data.results.map((result) => (
+            <li key={result.id}>{result.name}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+### Submit data imperatively
+
+```tsx
+function TodoItem({ todo }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <span>{todo.title}</span>
+      <button
+        onClick={() => {
+          fetcher.submit(
+            { intent: "delete", id: todo.id },
+            { method: "post", action: "/todos" }
+          );
+        }}
+      >
+        {fetcher.state === "submitting" ? "Deleting..." : "Delete"}
+      </button>
+    </div>
+  );
+}
+```
+
+### Submit FormData
+
+```tsx
+function ImageUploader() {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <input
+        type="file"
+        onChange={(e) => {
+          const formData = new FormData();
+          formData.append("image", e.target.files[0]);
+          
+          fetcher.submit(formData, {
+            method: "post",
+            action: "/upload",
+            encType: "multipart/form-data",
+          });
+        }}
+      />
+      
+      {fetcher.state === "submitting" && <p>Uploading...</p>}
+      {fetcher.data?.url && <img src={fetcher.data.url} />}
+    </div>
+  );
+}
+```
+
+### Submit JSON
+
+```tsx
+function SaveButton({ data }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <button
+      onClick={() => {
+        fetcher.submit(
+          { userId: 1, data },
+          {
+            method: "post",
+            action: "/api/save",
+            encType: "application/json",
+          }
+        );
+      }}
+    >
+      Save
+    </button>
+  );
+}
+```
+
+### Reset fetcher
+
+```tsx
+function Component() {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <fetcher.Form method="post">
+        <input type="text" name="message" />
+        <button type="submit">Send</button>
+      </fetcher.Form>
+      
+      {fetcher.data?.success && (
+        <div>
+          <p>Message sent!</p>
+          <button onClick={() => fetcher.reset()}>
+            Dismiss
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Shared fetcher with key
+
+```tsx
+// Component A
+function ComponentA() {
+  const fetcher = useFetcher({ key: "my-key" });
+  
+  return (
+    <button onClick={() => fetcher.load("/data")}>
+      Load Data
+    </button>
+  );
+}
+
+// Component B - access same fetcher
+function ComponentB() {
+  const fetcher = useFetcher({ key: "my-key" });
+  
+  return (
+    <div>
+      {fetcher.state === "loading" && <Spinner />}
+      {fetcher.data && <Data data={fetcher.data} />}
+    </div>
+  );
+}
+```
+
+## Common Patterns
+
+### Optimistic UI
+
+```tsx
+function TodoList({ todos }) {
+  const fetcher = useFetcher();
+  
+  // Optimistically show as complete
+  const optimisticTodos = todos.map((todo) => {
+    if (fetcher.formData?.get("id") === todo.id) {
+      return { ...todo, complete: true };
+    }
+    return todo;
+  });
+  
+  return (
+    <ul>
+      {optimisticTodos.map((todo) => (
+        <li key={todo.id}>
+          <span
+            style={{
+              textDecoration: todo.complete ? "line-through" : "none",
+            }}
+          >
+            {todo.title}
+          </span>
+          
+          {!todo.complete && (
+            <fetcher.Form method="post" action="/todos/complete">
+              <input type="hidden" name="id" value={todo.id} />
+              <button type="submit">Complete</button>
+            </fetcher.Form>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### Inline editing
+
+```tsx
+function EditableField({ value, name, action }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const fetcher = useFetcher();
+  
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      setIsEditing(false);
+    }
+  }, [fetcher.state, fetcher.data]);
+  
+  if (!isEditing) {
+    return (
+      <div onClick={() => setIsEditing(true)}>
+        {value}
+      </div>
+    );
+  }
+  
+  return (
+    <fetcher.Form method="post" action={action}>
+      <input
+        type="text"
+        name={name}
+        defaultValue={value}
+        autoFocus
+      />
+      <button type="submit">Save</button>
+      <button onClick={() => setIsEditing(false)}>Cancel</button>
+    </fetcher.Form>
+  );
+}
+```
+
+### Mark as read
+
+```tsx
+function Notification({ notification }) {
+  const fetcher = useFetcher();
+  
+  // Show as read optimistically
+  const isRead = notification.read ||
+    fetcher.formData?.get("id") === notification.id;
+  
+  return (
+    <div style={{ fontWeight: isRead ? "normal" : "bold" }}>
+      <p>{notification.message}</p>
+      
+      {!isRead && (
+        <fetcher.Form
+          method="post"
+          action="/notifications/mark-read"
+        >
+          <input type="hidden" name="id" value={notification.id} />
+          <button type="submit">Mark as Read</button>
+        </fetcher.Form>
+      )}
+    </div>
+  );
+}
+```
+
+### Autocomplete
+
+```tsx
+function Autocomplete() {
+  const fetcher = useFetcher();
+  const [query, setQuery] = useState("");
+  
+  useEffect(() => {
+    if (query) {
+      fetcher.load(`/search?q=${query}`);
+    }
+  }, [query]);
+  
+  return (
+    <div>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      
+      {fetcher.data && (
+        <ul>
+          {fetcher.data.results.map((result) => (
+            <li key={result.id}>
+              <a href={result.url}>{result.name}</a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+### Add to cart
+
+```tsx
+function ProductCard({ product }) {
+  const fetcher = useFetcher();
+  const isAdding = fetcher.state === "submitting";
+  const added = fetcher.state === "idle" && fetcher.data != null;
+  
+  return (
+    <div>
+      <h3>{product.name}</h3>
+      <p>${product.price}</p>
+      
+      <fetcher.Form method="post" action="/cart/add">
+        <input type="hidden" name="productId" value={product.id} />
+        <button type="submit" disabled={isAdding}>
+          {isAdding ? "Adding..." : added ? "Added!" : "Add to Cart"}
+        </button>
+      </fetcher.Form>
+    </div>
+  );
+}
+```
+
+## Type Safety
+
+### With TypeScript
+
+```tsx
+interface NewsletterData {
+  success?: boolean;
+  error?: string;
+}
+
+function Newsletter() {
+  const fetcher = useFetcher<NewsletterData>();
+  
+  // fetcher.data is typed
+  if (fetcher.data?.success) {
+    return <p>Thanks for subscribing!</p>;
+  }
+  
+  return <fetcher.Form method="post">...</fetcher.Form>;
+}
+```
+
+### With loader/action types
+
+```tsx
+import type { action } from "./route";
+
+function Component() {
+  const fetcher = useFetcher<typeof action>();
+  
+  // fetcher.data is inferred from action return type
+  return <div>{fetcher.data?.message}</div>;
+}
+```
+
+## Related
+
+- [`useFetchers`](/api/hooks/use-fetchers) - Access all in-flight fetchers
+- [`useSubmit`](/api/hooks/use-submit) - Submit forms imperatively with navigation
+- [`Form`](/api/components/form) - Form component with navigation
+- [`action`](/start/framework/route-module#action) - Define route action
+- [`loader`](/start/framework/route-module#loader) - Define route loader

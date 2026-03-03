@@ -1,0 +1,156 @@
+---
+title: 'json'
+description: 'Return JSON responses from loaders and actions (deprecated in v7)'
+---
+
+<Warning>
+  In React Router v7, the `json()` helper has been replaced by the [`data()`](/api/utils/data) function. This page is maintained for users migrating from v6.
+</Warning>
+
+## Migration to v7
+
+In React Router v6, you used `json()` to return JSON responses:
+
+```tsx
+// v6
+import { json } from "@remix-run/react";
+
+export async function loader() {
+  return json({ message: "Hello" }, { status: 200 });
+}
+```
+
+In React Router v7, simply return the data directly or use `data()` for custom headers/status:
+
+```tsx
+// v7 - Simple return
+export async function loader() {
+  return { message: "Hello" };
+}
+
+// v7 - With custom status/headers
+import { data } from "react-router";
+
+export async function loader() {
+  return data({ message: "Hello" }, { status: 200 });
+}
+```
+
+## Why the change?
+
+React Router v7 automatically handles JSON serialization for you. You no longer need to wrap your data in a `json()` helper. This simplifies your code and reduces boilerplate.
+
+### Before (v6)
+
+```tsx
+import { json } from "@remix-run/react";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  
+  if (!user) {
+    throw json({ error: "Not found" }, { status: 404 });
+  }
+  
+  return json(
+    { user },
+    {
+      headers: {
+        "Cache-Control": "max-age=300",
+      },
+    }
+  );
+}
+```
+
+### After (v7)
+
+```tsx
+import { data } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  
+  if (!user) {
+    throw data({ error: "Not found" }, { status: 404 });
+  }
+  
+  return data(
+    { user },
+    {
+      headers: {
+        "Cache-Control": "max-age=300",
+      },
+    }
+  );
+}
+```
+
+## Common Migration Patterns
+
+### Simple data returns
+
+```tsx
+// Before (v6)
+export async function loader() {
+  return json({ items: await getItems() });
+}
+
+// After (v7)
+export async function loader() {
+  return { items: await getItems() };
+}
+```
+
+### With status codes
+
+```tsx
+// Before (v6)
+import { json } from "@remix-run/react";
+export async function action() {
+  await createItem();
+  return json({ success: true }, { status: 201 });
+}
+
+// After (v7)
+import { data } from "react-router";
+export async function action() {
+  await createItem();
+  return data({ success: true }, 201);
+}
+```
+
+### With headers
+
+```tsx
+// Before (v6)
+import { json } from "@remix-run/react";
+export async function loader() {
+  return json(
+    { data: "value" },
+    {
+      headers: {
+        "X-Custom": "header",
+      },
+    }
+  );
+}
+
+// After (v7)
+import { data } from "react-router";
+export async function loader() {
+  return data(
+    { data: "value" },
+    {
+      headers: {
+        "X-Custom": "header",
+      },
+    }
+  );
+}
+```
+
+## See Also
+
+- [`data()`](/api/utils/data) - The v7 replacement for `json()`
+- [Migrating from v6 to v7](/upgrading/v7) - Complete migration guide

@@ -1,0 +1,229 @@
+---
+title: ScrollRestoration
+---
+
+<Modes modes={["data", "framework"]} />
+
+Emulates the browser's scroll restoration on location changes. Apps should only render one of these, right before the `<Scripts>` component.
+
+```tsx
+import { ScrollRestoration } from "react-router";
+
+export default function Root() {
+  return (
+    <html>
+      <body>
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+## Type Declaration
+
+```tsx
+export interface ScrollRestorationProps {
+  getKey?: GetScrollRestorationKeyFunction;
+  storageKey?: string;
+  nonce?: string;
+}
+
+export function ScrollRestoration({
+  getKey,
+  storageKey,
+  nonce,
+}: ScrollRestorationProps): React.ReactElement | null;
+
+type GetScrollRestorationKeyFunction = (
+  location: Location,
+  matches: UIMatch[]
+) => string;
+```
+
+## Props
+
+<ParamField path="getKey" type="GetScrollRestorationKeyFunction">
+  A function that returns a key to use for scroll restoration. This is useful for custom scroll restoration logic, such as using only the pathname so that later navigations to prior paths will restore the scroll.
+
+  Defaults to `location.key`.
+
+  ```tsx
+  <ScrollRestoration
+    getKey={(location, matches) => {
+      // Restore based on a unique location key (default behavior)
+      return location.key;
+
+      // Restore based on pathname
+      return location.pathname;
+
+      // Restore based on some paths, but not others
+      const paths = ["/", "/chat"];
+      return paths.includes(location.pathname)
+        ? location.pathname
+        : location.key;
+    }}
+  />
+  ```
+</ParamField>
+
+<ParamField path="storageKey" type="string">
+  The key to use for storing scroll positions in `sessionStorage`. Defaults to `"react-router-scroll-positions"`.
+
+  ```tsx
+  <ScrollRestoration storageKey="my-app-scroll" />
+  ```
+</ParamField>
+
+<ParamField path="nonce" type="string">
+  The nonce to use for the inline script tag. This is useful for Content Security Policy (CSP) compliance.
+
+  ```tsx
+  <ScrollRestoration nonce={cspNonce} />
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Usage
+
+```tsx
+import { ScrollRestoration, Scripts } from "react-router";
+
+export default function Root() {
+  return (
+    <html>
+      <head>
+        <title>My App</title>
+      </head>
+      <body>
+        <Outlet />
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+### Pathname-based Restoration
+
+```tsx
+<ScrollRestoration
+  getKey={(location) => {
+    // Always restore scroll to the same position for a given pathname
+    return location.pathname;
+  }}
+/>
+```
+
+### Conditional Restoration
+
+```tsx
+<ScrollRestoration
+  getKey={(location, matches) => {
+    // Don't restore scroll on the home page
+    if (location.pathname === "/") {
+      return location.key;
+    }
+
+    // Restore scroll for list pages but not detail pages
+    const isListPage = matches.some(
+      (match) => match.handle?.scrollMode === "list"
+    );
+
+    return isListPage ? location.pathname : location.key;
+  }}
+/>
+
+// In route configuration
+{
+  path: "products",
+  Component: ProductsList,
+  handle: { scrollMode: "list" },
+}
+```
+
+### With CSP Nonce
+
+```tsx
+export default function Root() {
+  const nonce = useNonce(); // Get nonce from your app
+
+  return (
+    <html>
+      <body>
+        <Outlet />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
+      </body>
+    </html>
+  );
+}
+```
+
+### Preventing Scroll Reset
+
+You can prevent scroll reset on individual navigations using the `preventScrollReset` prop on `<Link>` or `<Form>`:
+
+```tsx
+import { Link, ScrollRestoration } from "react-router";
+
+function App() {
+  return (
+    <>
+      <nav>
+        {/* Changing tabs shouldn't reset scroll */}
+        <Link to="?tab=one" preventScrollReset>
+          Tab One
+        </Link>
+        <Link to="?tab=two" preventScrollReset>
+          Tab Two
+        </Link>
+      </nav>
+
+      <ScrollRestoration />
+    </>
+  );
+}
+```
+
+## Behavior
+
+- Saves scroll positions to `sessionStorage` on navigation
+- Restores scroll positions on back/forward navigation
+- Resets scroll to top on new navigations (push)
+- Renders an inline `<script>` to prevent scroll flashing
+- Script runs before React hydrates to restore scroll immediately
+
+## How It Works
+
+1. On mount and navigation, saves the current scroll position to `sessionStorage`
+2. On back/forward navigation, restores the scroll position from `sessionStorage`
+3. The inline script prevents scroll flashing by restoring scroll before React hydrates
+4. Uses `location.key` by default to uniquely identify each location in the history stack
+
+## Notes
+
+- Only render one `<ScrollRestoration>` per app
+- Should be rendered before `<Scripts>` in the document
+- Works automatically with browser back/forward buttons
+- Respects `preventScrollReset` on `<Link>` and `<Form>` components
+- In SPA mode (no server rendering), returns `null` as there's nothing to restore initially
+
+## Styling Considerations
+
+If you're using CSS selectors like `nav :last-child`, be aware that `<ScrollRestoration>` may render `<link rel="prefetch">` tags after your navigation links. Use `nav :last-of-type` instead:
+
+```css
+/* Don't use this */
+nav :last-child {
+  margin-right: 0;
+}
+
+/* Use this instead */
+nav :last-of-type {
+  margin-right: 0;
+}
+```

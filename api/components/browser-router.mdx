@@ -1,0 +1,110 @@
+---
+title: BrowserRouter
+---
+
+<Modes modes={["declarative"]} />
+
+A declarative router using the browser History API for client-side routing.
+
+```tsx
+import { BrowserRouter, Routes, Route } from "react-router";
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="about" element={<About />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+## Type Declaration
+
+```tsx
+export interface BrowserRouterProps {
+  basename?: string;
+  children?: React.ReactNode;
+  unstable_useTransitions?: boolean;
+  window?: Window;
+}
+
+export function BrowserRouter({
+  basename,
+  children,
+  unstable_useTransitions,
+  window,
+}: BrowserRouterProps): React.ReactElement;
+```
+
+## Props
+
+<ParamField path="basename" type="string">
+  Application basename for when you can't deploy to the root of the domain, but a subdirectory.
+
+  ```tsx
+  <BrowserRouter basename="/app">
+    <Routes>
+      <Route path="/" /> {/* Matches /app/ */}
+      <Route path="dashboard" /> {/* Matches /app/dashboard */}
+    </Routes>
+  </BrowserRouter>
+  ```
+</ParamField>
+
+<ParamField path="children" type="React.ReactNode">
+  Route components describing your route configuration. Typically contains a `<Routes>` component with nested `<Route>` elements.
+
+  ```tsx
+  <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="about" element={<About />} />
+    </Routes>
+  </BrowserRouter>
+  ```
+</ParamField>
+
+<ParamField path="unstable_useTransitions" type="boolean">
+  Control whether router state updates are internally wrapped in [`React.startTransition`](https://react.dev/reference/react/startTransition).
+
+  - When left `undefined`, all router state updates are wrapped in `React.startTransition`
+  - When set to `true`, Link and Form navigations will be wrapped in `React.startTransition` and all router state updates are wrapped in `React.startTransition`
+  - When set to `false`, the router will not leverage `React.startTransition` on any navigations or state changes.
+
+  For more information, please see the [docs](https://reactrouter.com/explanation/react-transitions).
+</ParamField>
+
+<ParamField path="window" type="Window">
+  Window object override. Defaults to the global `window` instance. Useful for testing or non-browser environments.
+</ParamField>
+
+## Example
+
+```tsx
+import { BrowserRouter, Routes, Route, Link } from "react-router";
+
+function App() {
+  return (
+    <BrowserRouter basename="/app">
+      <nav>
+        <Link to="/">Home</Link>
+        <Link to="about">About</Link>
+        <Link to="contact">Contact</Link>
+      </nav>
+
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="about" element={<About />} />
+        <Route path="contact" element={<Contact />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+## Notes
+
+You usually won't render a `<BrowserRouter>` directly in modern apps. Instead, you'll use a data router created with `createBrowserRouter` and render it with `<RouterProvider>`. See the [picking a router guide](https://reactrouter.com/start/library/picking-a-router) for more information.

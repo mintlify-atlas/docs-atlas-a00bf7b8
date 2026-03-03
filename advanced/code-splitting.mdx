@@ -1,0 +1,379 @@
+---
+title: Code Splitting
+description: Optimize your bundle size with automatic and manual code splitting
+---
+
+# Code Splitting
+
+Code splitting breaks your application into smaller chunks that load on demand, improving initial load time and overall performance.
+
+## Automatic Code Splitting
+
+React Router automatically code-splits when you use `lazy()`:
+
+```tsx
+const router = createBrowserRouter([
+  {
+    path: "/",
+    Component: Home,
+  },
+  {
+    path: "/dashboard",
+    lazy: () => import("./routes/dashboard"),
+  },
+]);
+```
+
+The dashboard route only loads when the user navigates to `/dashboard`.
+
+## Framework Mode
+
+In framework mode, routes are automatically code-split by default:
+
+```tsx
+// app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes();
+```
+
+Each route file becomes its own chunk:
+
+```
+app/routes/
+  _index.tsx          → index-[hash].js
+  dashboard.tsx       → dashboard-[hash].js
+  settings.profile.tsx → settings.profile-[hash].js
+```
+
+## Manual Code Splitting
+
+### Route Components
+
+Split components with `React.lazy()` and `Suspense`:
+
+```tsx
+import { lazy, Suspense } from "react";
+
+const DashboardChart = lazy(() => import("./DashboardChart"));
+
+export function Dashboard() {
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      <Suspense fallback={<div>Loading chart...</div>}>
+        <DashboardChart />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Utility Functions
+
+Split heavy utilities:
+
+```tsx
+export async function loader() {
+  const { processData } = await import("./heavy-utils");
+  const data = await fetch("/api/data").then(r => r.json());
+  return processData(data);
+}
+```
+
+### Third-Party Libraries
+
+Lazy load large dependencies:
+
+```tsx
+export function Component() {
+  const [showEditor, setShowEditor] = useState(false);
+  const [Editor, setEditor] = useState(null);
+
+  useEffect(() => {
+    if (showEditor && !Editor) {
+      import("monaco-editor").then(({ default: Monaco }) => {
+        setEditor(() => Monaco);
+      });
+    }
+  }, [showEditor]);
+
+  return (
+    <div>
+      <button onClick={() => setShowEditor(true)}>
+        Open Editor
+      </button>
+      {Editor && <Editor />}
+    </div>
+  );
+}
+```
+
+## Preloading
+
+Improve perceived performance by preloading routes:
+
+```tsx
+import { Link } from "react-router";
+
+function Navigation() {
+  return (
+    <Link
+      to="/dashboard"
+      onMouseEnter={() => {
+        // Preload the route module
+        import("./routes/dashboard");
+      }}
+    >
+      Dashboard
+    </Link>
+  );
+}
+```
+
+### Preload Links Component
+
+```tsx
+function PreloadLink({ to, children, ...props }) {
+  const preload = () => {
+    // Match the route and preload its module
+    const route = routes.find(r => r.path === to);
+    if (route?.lazy) {
+      route.lazy();
+    }
+  };
+
+  return (
+    <Link
+      to={to}
+      onMouseEnter={preload}
+      onTouchStart={preload}
+      {...props}
+    >
+      {children}
+    </Link>
+  );
+}
+```
+
+## Chunk Optimization
+
+### Shared Chunks
+
+Extract common dependencies:
+
+```tsx
+// vite.config.ts
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          charts: ['recharts', 'd3'],
+        },
+      },
+    },
+  },
+});
+```
+
+### Dynamic Import Names
+
+Name your chunks for better debugging:
+
+```tsx
+const Dashboard = lazy(
+  () => import(
+    /* webpackChunkName: "dashboard" */
+    "./routes/dashboard"
+  )
+);
+```
+
+## Bundle Analysis
+
+### Visualize Bundle Size
+
+```bash
+# Install analyzer
+npm install --save-dev rollup-plugin-visualizer
+```
+
+```tsx
+// vite.config.ts
+import { visualizer } from 'rollup-plugin-visualizer';
+
+export default defineConfig({
+  plugins: [
+    reactRouter(),
+    visualizer({ open: true }),
+  ],
+});
+```
+
+### Check Chunk Sizes
+
+```bash
+npm run build
+
+# Output:
+# dist/assets/index-a1b2c3.js        150 kB
+# dist/assets/dashboard-d4e5f6.js   80 kB
+# dist/assets/vendor-g7h8i9.js      200 kB
+```
+
+## Loading States
+
+### Route Level
+
+Show loading UI during route transitions:
+
+```tsx
+import { useNavigation } from "react-router";
+
+export function Layout() {
+  const navigation = useNavigation();
+
+  return (
+    <div>
+      <nav>...</nav>
+      {navigation.state === "loading" && (
+        <div className="loading-bar" />
+      )}
+      <Outlet />
+    </div>
+  );
+}
+```
+
+### Component Level
+
+Handle component-level loading:
+
+```tsx
+import { Suspense } from "react";
+
+const Chart = lazy(() => import("./Chart"));
+
+export function Dashboard() {
+  return (
+    <Suspense fallback={<ChartSkeleton />}>
+      <Chart />
+    </Suspense>
+  );
+}
+```
+
+## Error Boundaries
+
+Handle chunk loading failures:
+
+```tsx
+import { Component } from "react";
+
+class ChunkErrorBoundary extends Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(error) {
+    if (error.name === "ChunkLoadError") {
+      return { hasError: true };
+    }
+    throw error;
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div>
+          <p>Failed to load. Please refresh.</p>
+          <button onClick={() => window.location.reload()}>
+            Refresh
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+```
+
+## Performance Tips
+
+1. **Split by route**: Most effective code splitting strategy
+2. **Split heavy components**: Charts, editors, maps
+3. **Don't over-split**: Too many chunks increases overhead
+4. **Preload critical routes**: On app startup or hover
+5. **Monitor bundle size**: Use visualization tools
+6. **Cache aggressively**: Set long cache headers for chunks
+
+## Framework Mode Optimizations
+
+### Route Groups
+
+Group related routes:
+
+```tsx
+// app/routes.ts
+import { route, layout } from "@react-router/dev/routes";
+
+export default [
+  layout("layouts/dashboard.tsx", [
+    route("analytics", "./dashboard/analytics.tsx"),
+    route("reports", "./dashboard/reports.tsx"),
+  ]),
+];
+```
+
+### Shared Layouts
+
+Layouts are shared across child routes (not duplicated):
+
+```
+routes/
+  _dashboard.tsx          → shared layout chunk
+  _dashboard.analytics.tsx → analytics chunk
+  _dashboard.reports.tsx   → reports chunk  
+```
+
+## Best Practices
+
+1. **Start with routes**: Automatic splitting per route
+2. **Add component splitting**: For heavy UI components
+3. **Profile before optimizing**: Use React DevTools Profiler
+4. **Test on slow networks**: Ensure good UX during loading
+5. **Monitor real-world metrics**: Track bundle sizes in CI
+
+## Common Pitfalls
+
+❌ **Splitting too aggressively**
+```tsx
+// Don't split every single component
+const Button = lazy(() => import("./Button"));
+```
+
+✅ **Split heavy features**
+```tsx
+// Split large feature components
+const Dashboard = lazy(() => import("./Dashboard"));
+```
+
+❌ **Forgetting Suspense**
+```tsx
+const Chart = lazy(() => import("./Chart"));
+<Chart /> // Error: Missing Suspense boundary
+```
+
+✅ **Wrap with Suspense**
+```tsx
+<Suspense fallback={<Spinner />}>
+  <Chart />
+</Suspense>
+```
+
+## Related
+
+- [Lazy Route Discovery](./lazy-route-discovery)
+- [Performance](../start/framework/performance)
+- [Bundling](../start/framework/bundling)

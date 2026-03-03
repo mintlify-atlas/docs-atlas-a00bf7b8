@@ -1,0 +1,290 @@
+---
+title: Form Validation
+---
+
+# Form Validation
+
+Learn how to implement client-side and server-side form validation in React Router applications.
+
+## Overview
+
+React Router provides a robust form handling system through the `<Form>` component and action functions. You can implement validation at multiple levels:
+
+- Client-side validation for immediate feedback
+- Server-side validation in action functions
+- Progressive enhancement for JavaScript-disabled environments
+
+## Server-Side Validation
+
+Validation in action functions ensures data integrity regardless of client-side state:
+
+```tsx
+// app/routes/signup.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/signup";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  const password = formData.get("password");
+
+  const errors: Record<string, string> = {};
+
+  // Validate email
+  if (!email || typeof email !== "string") {
+    errors.email = "Email is required";
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = "Invalid email address";
+  }
+
+  // Validate password
+  if (!password || typeof password !== "string") {
+    errors.password = "Password is required";
+  } else if (password.length < 8) {
+    errors.password = "Password must be at least 8 characters";
+  }
+
+  // Return errors if validation fails
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+
+  // Proceed with signup
+  await signup(email, password);
+  return redirect("/dashboard");
+}
+
+export default function Signup({ actionData }: Route.ComponentProps) {
+  return (
+    <Form method="post">
+      <div>
+        <label htmlFor="email">Email</label>
+        <input type="email" id="email" name="email" />
+        {actionData?.errors?.email && (
+          <p className="error">{actionData.errors.email}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="password">Password</label>
+        <input type="password" id="password" name="password" />
+        {actionData?.errors?.password && (
+          <p className="error">{actionData.errors.password}</p>
+        )}
+      </div>
+
+      <button type="submit">Sign Up</button>
+    </Form>
+  );
+}
+```
+
+## Client-Side Validation
+
+Add immediate feedback using HTML5 validation or custom logic:
+
+```tsx
+import { Form, useNavigation } from "react-router";
+import { useState } from "react";
+import type { Route } from "./+types/signup";
+
+export default function Signup({ actionData }: Route.ComponentProps) {
+  const navigation = useNavigation();
+  const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+  const isSubmitting = navigation.state === "submitting";
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const formData = new FormData(event.currentTarget);
+    const email = formData.get("email");
+    const password = formData.get("password");
+
+    const errors: Record<string, string> = {};
+
+    // Client-side validation
+    if (!email) {
+      errors.email = "Email is required";
+    }
+    if (!password || (password as string).length < 8) {
+      errors.password = "Password must be at least 8 characters";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      event.preventDefault();
+      setClientErrors(errors);
+    }
+  }
+
+  // Server errors take precedence over client errors
+  const errors = actionData?.errors || clientErrors;
+
+  return (
+    <Form method="post" onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="email">Email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          required
+          aria-invalid={errors.email ? "true" : undefined}
+          aria-describedby={errors.email ? "email-error" : undefined}
+        />
+        {errors.email && (
+          <p id="email-error" className="error">
+            {errors.email}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="password">Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          required
+          minLength={8}
+          aria-invalid={errors.password ? "true" : undefined}
+          aria-describedby={errors.password ? "email-password" : undefined}
+        />
+        {errors.password && (
+          <p id="password-error" className="error">
+            {errors.password}
+          </p>
+        )}
+      </div>
+
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? "Signing up..." : "Sign Up"}
+      </button>
+    </Form>
+  );
+}
+```
+
+## Using Validation Libraries
+
+Integrate popular validation libraries like Zod:
+
+```tsx
+import { z } from "zod";
+import type { Route } from "./+types/signup";
+
+const signupSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const data = Object.fromEntries(formData);
+
+  const result = signupSchema.safeParse(data);
+
+  if (!result.success) {
+    const errors = result.error.flatten().fieldErrors;
+    return {
+      errors: Object.fromEntries(
+        Object.entries(errors).map(([key, value]) => [key, value?.[0]])
+      ),
+    };
+  }
+
+  // Proceed with validated data
+  await signup(result.data.email, result.data.password);
+  return redirect("/dashboard");
+}
+```
+
+## Field-Level Validation
+
+Validate individual fields as users type:
+
+```tsx
+import { useFetcher } from "react-router";
+import { useEffect, useState } from "react";
+
+export function EmailInput() {
+  const fetcher = useFetcher();
+  const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    if (email) {
+      // Debounce validation
+      const timer = setTimeout(() => {
+        fetcher.submit(
+          { email, _action: "validateEmail" },
+          { method: "post", action: "/api/validate" }
+        );
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [email]);
+
+  return (
+    <div>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        aria-invalid={fetcher.data?.error ? "true" : undefined}
+      />
+      {fetcher.data?.error && (
+        <p className="error">{fetcher.data.error}</p>
+      )}
+      {fetcher.data?.available && (
+        <p className="success">Email is available</p>
+      )}
+    </div>
+  );
+}
+```
+
+## Preserving Form State
+
+Keep user input after validation errors:
+
+```tsx
+export default function Signup({ actionData }: Route.ComponentProps) {
+  return (
+    <Form method="post">
+      <input
+        type="email"
+        name="email"
+        defaultValue={actionData?.values?.email}
+      />
+      <input
+        type="text"
+        name="username"
+        defaultValue={actionData?.values?.username}
+      />
+      <button type="submit">Sign Up</button>
+    </Form>
+  );
+}
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const values = Object.fromEntries(formData);
+  const errors = validate(values);
+
+  if (errors) {
+    return { errors, values }; // Return values for defaultValue
+  }
+
+  return redirect("/dashboard");
+}
+```
+
+## Best Practices
+
+1. **Always validate on the server** - Client-side validation can be bypassed
+2. **Provide clear error messages** - Tell users exactly what's wrong and how to fix it
+3. **Use semantic HTML** - `required`, `minLength`, `pattern` attributes provide free validation
+4. **Consider accessibility** - Use `aria-invalid` and `aria-describedby` for screen readers
+5. **Show validation state** - Indicate loading, success, and error states clearly
+6. **Preserve user input** - Don't make users retype everything after an error

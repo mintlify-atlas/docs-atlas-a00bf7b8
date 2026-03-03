@@ -1,0 +1,205 @@
+---
+title: 'defer'
+description: 'Stream deferred data to the client (deprecated in v7)'
+---
+
+<Warning>
+  The `defer()` utility has been removed in React Router v7. Use streaming responses with the native Web Streams API or React Server Components instead.
+</Warning>
+
+## Migration from v6
+
+In React Router v6, `defer()` allowed you to stream parts of your loader data:
+
+```tsx
+// v6
+import { defer } from "@remix-run/react";
+import { Await } from "@remix-run/react";
+
+export async function loader() {
+  return defer({
+    critical: await getCriticalData(),
+    lazy: getLazyData(), // Promise
+  });
+}
+
+export default function Component() {
+  const data = useLoaderData();
+  return (
+    <div>
+      <h1>{data.critical}</h1>
+      <Suspense fallback={<Spinner />}>
+        <Await resolve={data.lazy}>
+          {(lazy) => <div>{lazy}</div>}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## v7 Alternatives
+
+React Router v7 recommends different approaches for streaming data:
+
+### 1. Using React Server Components (RSC)
+
+With RSC, you can stream components naturally:
+
+```tsx
+import { Suspense } from "react";
+
+export default async function Page() {
+  const critical = await getCriticalData();
+  
+  return (
+    <div>
+      <h1>{critical}</h1>
+      <Suspense fallback={<Spinner />}>
+        <LazyComponent />
+      </Suspense>
+    </div>
+  );
+}
+
+async function LazyComponent() {
+  const lazy = await getLazyData();
+  return <div>{lazy}</div>;
+}
+```
+
+### 2. Using Client-Side Data Fetching
+
+Load critical data in the loader, fetch additional data on the client:
+
+```tsx
+export async function loader() {
+  return { critical: await getCriticalData() };
+}
+
+export default function Component() {
+  const { critical } = useLoaderData();
+  const [lazy, setLazy] = useState(null);
+  
+  useEffect(() => {
+    getLazyData().then(setLazy);
+  }, []);
+  
+  return (
+    <div>
+      <h1>{critical}</h1>
+      {lazy ? <div>{lazy}</div> : <Spinner />}
+    </div>
+  );
+}
+```
+
+### 3. Using Multiple Loaders
+
+Split data loading across parent/child routes:
+
+```tsx
+// routes/parent.tsx
+export async function loader() {
+  return { critical: await getCriticalData() };
+}
+
+export default function Parent() {
+  const { critical } = useLoaderData();
+  return (
+    <div>
+      <h1>{critical}</h1>
+      <Suspense fallback={<Spinner />}>
+        <Outlet />
+      </Suspense>
+    </div>
+  );
+}
+
+// routes/parent.child.tsx
+export async function loader() {
+  return { lazy: await getLazyData() };
+}
+
+export default function Child() {
+  const { lazy } = useLoaderData();
+  return <div>{lazy}</div>;
+}
+```
+
+### 4. Using Web Streams API
+
+For advanced streaming, use native Web Streams:
+
+```tsx
+export async function loader() {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      // Send critical data immediately
+      const critical = await getCriticalData();
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify({ critical })}\n\n`)
+      );
+      
+      // Stream lazy data when ready
+      const lazy = await getLazyData();
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify({ lazy })}\n\n`)
+      );
+      
+      controller.close();
+    },
+  });
+  
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+    },
+  });
+}
+```
+
+## Why was defer() removed?
+
+React Router v7 focuses on modern patterns:
+
+1. **React Server Components** provide better streaming primitives
+2. **Simpler mental model** - less framework-specific APIs to learn
+3. **Better performance** - native streaming is more efficient
+4. **Standard APIs** - uses Web platform features instead of custom implementations
+
+## Migration Checklist
+
+<Steps>
+  <Step title="Identify defer() usage">
+    Find all instances of `defer()` in your loaders
+  </Step>
+  
+  <Step title="Analyze data requirements">
+    Determine which data is critical vs. can be loaded later
+  </Step>
+  
+  <Step title="Choose migration strategy">
+    Pick the best alternative based on your use case:
+    - RSC for server-side streaming
+    - Client fetching for progressive enhancement
+    - Multiple loaders for route-based splitting
+    - Web Streams for advanced streaming
+  </Step>
+  
+  <Step title="Update components">
+    Remove `<Await>` components and replace with chosen strategy
+  </Step>
+  
+  <Step title="Test thoroughly">
+    Verify data loading behavior and user experience
+  </Step>
+</Steps>
+
+## See Also
+
+- [React Server Components Guide](/guides/rsc)
+- [Data Loading Patterns](/guides/data-loading)
+- [Migration Guide](/upgrading/v7)

@@ -1,80 +1,399 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Build your first React Router app in minutes"
 ---
 
-## Get started in three steps
+# Quick Start Guide
 
-Get your documentation site running locally and make your first customization.
+Get started with React Router by building a simple application in your preferred mode.
 
-### Step 1: Set up your local environment
+<Tabs>
+  <Tab title="Framework Mode">
+    ## Framework Mode Quick Start
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Build a type-safe, full-stack app with automatic code splitting and SSR.
 
-### Step 2: Deploy your changes
+    <Steps>
+      <Step title="Create project structure">
+        Create the following files:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+        ```
+        my-app/
+        ├── app/
+        │   ├── root.tsx
+        │   ├── routes.ts
+        │   └── routes/
+        │       └── _index.tsx
+        ├── vite.config.ts
+        └── package.json
+        ```
+      </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+      <Step title="Configure routes">
+        Define your routes in `app/routes.ts`:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+        ```typescript app/routes.ts
+        import { type RouteConfig } from "@react-router/dev/routes";
+        import { flatRoutes } from "@react-router/fs-routes";
 
-### Step 3: Go live
+        export default flatRoutes() satisfies RouteConfig;
+        ```
+      </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+      <Step title="Create root layout">
+        Set up your app shell in `app/root.tsx`:
 
-## Next steps
+        ```typescript app/root.tsx
+        import {
+          Links,
+          Meta,
+          Outlet,
+          Scripts,
+          ScrollRestoration,
+        } from "react-router";
 
-Now that you have your docs running, explore these key features:
+        export function Layout({ children }: { children: React.ReactNode }) {
+          return (
+            <html lang="en">
+              <head>
+                <meta charSet="utf-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1" />
+                <Meta />
+                <Links />
+              </head>
+              <body>
+                {children}
+                <ScrollRestoration />
+                <Scripts />
+              </body>
+            </html>
+          );
+        }
+
+        export default function App() {
+          return <Outlet />;
+        }
+        ```
+      </Step>
+
+      <Step title="Create index route">
+        Add your first route with a loader in `app/routes/_index.tsx`:
+
+        ```typescript app/routes/_index.tsx
+        import type { Route } from "./+types/_index";
+
+        export function loader({ params }: Route.LoaderArgs) {
+          return { message: "Hello, React Router!" };
+        }
+
+        export default function Index({ loaderData }: Route.ComponentProps) {
+          return (
+            <div>
+              <h1>{loaderData.message}</h1>
+              <p>Welcome to Framework Mode</p>
+            </div>
+          );
+        }
+        ```
+      </Step>
+
+      <Step title="Run your app">
+        Start the development server:
+
+        ```bash
+        npm run dev
+        ```
+
+        Open http://localhost:5173 to see your app!
+      </Step>
+    </Steps>
+
+    <Info>
+      Framework Mode automatically generates TypeScript types in `.react-router/types/` for full type safety across your routes.
+    </Info>
+
+    ### Add More Routes
+
+    Create additional routes using file-based routing conventions:
+
+    ```typescript app/routes/about.tsx
+    import type { Route } from "./+types/about";
+
+    export default function About() {
+      return <h1>About Page</h1>;
+    }
+    ```
+
+    ```typescript app/routes/blog.$slug.tsx
+    import type { Route } from "./+types/blog.$slug";
+
+    export function loader({ params }: Route.LoaderArgs) {
+      return { slug: params.slug };
+    }
+
+    export default function BlogPost({ loaderData }: Route.ComponentProps) {
+      return <h1>Blog Post: {loaderData.slug}</h1>;
+    }
+    ```
+
+  </Tab>
+
+  <Tab title="Data Mode">
+    ## Data Mode Quick Start
+
+    Use `createBrowserRouter` for powerful data loading without the framework overhead.
+
+    <Steps>
+      <Step title="Create your router">
+        Set up your router with loaders and actions:
+
+        ```typescript src/main.tsx
+        import { createRoot } from "react-dom/client";
+        import { createBrowserRouter, useLoaderData } from "react-router";
+        import { RouterProvider } from "react-router/dom";
+
+        const router = createBrowserRouter([
+          {
+            path: "/",
+            loader() {
+              return { message: "Hello React Router!" };
+            },
+            Component() {
+              let data = useLoaderData();
+              return <h1>{data.message}</h1>;
+            },
+          },
+        ]);
+
+        createRoot(document.getElementById("root")!).render(
+          <RouterProvider router={router} />
+        );
+        ```
+      </Step>
+
+      <Step title="Add nested routes">
+        Build complex UIs with nested routes:
+
+        ```typescript src/main.tsx
+        import { Outlet, Link } from "react-router";
+
+        const router = createBrowserRouter([
+          {
+            path: "/",
+            Component: Layout,
+            children: [
+              {
+                index: true,
+                Component: Home,
+              },
+              {
+                path: "about",
+                Component: About,
+              },
+            ],
+          },
+        ]);
+
+        function Layout() {
+          return (
+            <div>
+              <nav>
+                <Link to="/">Home</Link>
+                <Link to="/about">About</Link>
+              </nav>
+              <Outlet />
+            </div>
+          );
+        }
+
+        function Home() {
+          return <h1>Home</h1>;
+        }
+
+        function About() {
+          return <h1>About</h1>;
+        }
+        ```
+      </Step>
+
+      <Step title="Add data loading">
+        Load data before rendering with loaders:
+
+        ```typescript src/main.tsx
+        import type { LoaderFunctionArgs } from "react-router";
+
+        const router = createBrowserRouter([
+          {
+            path: "/products/:id",
+            async loader({ params }: LoaderFunctionArgs) {
+              const response = await fetch(`/api/products/${params.id}`);
+              return response.json();
+            },
+            Component() {
+              const product = useLoaderData();
+              return (
+                <div>
+                  <h1>{product.name}</h1>
+                  <p>{product.description}</p>
+                </div>
+              );
+            },
+          },
+        ]);
+        ```
+      </Step>
+
+      <Step title="Run your app">
+        Start your dev server (Vite, Webpack, etc.):
+
+        ```bash
+        npm run dev
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+      Data Mode works great with any build tool and gives you full control over your application architecture.
+    </Note>
+
+  </Tab>
+
+  <Tab title="Declarative Mode">
+    ## Declarative Mode Quick Start
+
+    Use familiar JSX components for simple, client-side routing.
+
+    <Steps>
+      <Step title="Set up your app">
+        Create a simple routing structure with `Routes` and `Route`:
+
+        ```typescript src/App.tsx
+        import { BrowserRouter, Routes, Route, Link, Outlet } from "react-router";
+
+        export default function App() {
+          return (
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Layout />}>
+                  <Route index element={<Home />} />
+                  <Route path="about" element={<About />} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          );
+        }
+        ```
+      </Step>
+
+      <Step title="Create layout component">
+        Build a shared layout with navigation:
+
+        ```typescript src/App.tsx
+        function Layout() {
+          return (
+            <div>
+              <nav>
+                <Link to="/">Home</Link>
+                <Link to="/about">About</Link>
+              </nav>
+              <hr />
+              <Outlet />
+            </div>
+          );
+        }
+        ```
+      </Step>
+
+      <Step title="Add route components">
+        Create your page components:
+
+        ```typescript src/App.tsx
+        function Home() {
+          return (
+            <div>
+              <h1>Home</h1>
+              <p>Welcome to React Router!</p>
+            </div>
+          );
+        }
+
+        function About() {
+          return (
+            <div>
+              <h1>About</h1>
+              <p>This is the about page.</p>
+            </div>
+          );
+        }
+
+        function NotFound() {
+          return (
+            <div>
+              <h1>404 - Page Not Found</h1>
+              <Link to="/">Go home</Link>
+            </div>
+          );
+        }
+        ```
+      </Step>
+
+      <Step title="Run your app">
+        Start your development server:
+
+        ```bash
+        npm run dev
+        ```
+      </Step>
+    </Steps>
+
+    <Warning>
+      Declarative Mode doesn't support data loaders or actions. For data loading, use Data Mode or Framework Mode.
+    </Warning>
+
+    ### Using URL Parameters
+
+    Access dynamic route parameters with `useParams`:
+
+    ```typescript src/App.tsx
+    import { useParams } from "react-router";
+
+    function BlogPost() {
+      const { slug } = useParams();
+      return <h1>Blog Post: {slug}</h1>;
+    }
+
+    // In your routes:
+    <Route path="blog/:slug" element={<BlogPost />} />
+    ```
+
+  </Tab>
+</Tabs>
+
+## Comparison at a Glance
+
+| Feature | Framework Mode | Data Mode | Declarative Mode |
+|---------|---------------|-----------|------------------|
+| Setup Complexity | High | Medium | Low |
+| Type Safety | ✅ Auto-generated | ⚠️ Manual | ⚠️ Manual |
+| Data Loading | ✅ Loaders & Actions | ✅ Loaders & Actions | ❌ Client-side only |
+| Code Splitting | ✅ Automatic | ⚠️ Manual | ⚠️ Manual |
+| SSR Support | ✅ Built-in | ⚠️ Manual setup | ⚠️ Manual setup |
+| Best For | Full-stack apps | SPAs with data | Simple client apps |
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Routing Concepts" icon="map" href="/concepts/routing">
+    Learn about nested routes, layouts, and navigation
+  </Card>
+  <Card title="Data Loading" icon="database" href="/data/loaders">
+    Master loaders, actions, and data mutations
+  </Card>
+  <Card title="Type Safety" icon="shield-check" href="/guides/type-safety">
+    Set up end-to-end type safety in Framework Mode
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/overview">
+    Deploy your React Router app to production
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

@@ -1,0 +1,495 @@
+---
+title: React Server Components (Experimental)
+description: Use React Server Components with React Router
+unstable: true
+---
+
+# React Server Components
+
+React Router provides experimental support for React Server Components (RSC), enabling you to render components on the server and stream them to the client.
+
+<Warning>
+RSC support in React Router is **experimental** and APIs may change. Not recommended for production use.
+</Warning>
+
+## Overview
+
+React Server Components allow you to:
+
+- Render components on the server
+- Stream components to the client
+- Access server-only resources (databases, file system)
+- Reduce client bundle size
+- Improve initial page load
+
+## Setup
+
+### RSC Framework Mode
+
+Use the `unstable_reactRouterRSC` plugin:
+
+```tsx
+// vite.config.ts
+import { defineConfig } from "vite";
+import { unstable_reactRouterRSC } from "@react-router/dev/vite";
+
+export default defineConfig({
+  plugins: [
+    unstable_reactRouterRSC(),
+  ],
+});
+```
+
+### RSC Data Mode
+
+Manual setup with runtime APIs:
+
+```tsx
+// routes.ts
+import type { unstable_RSCRouteConfigEntry } from "react-router";
+
+export default [
+  {
+    id: "root",
+    path: "/",
+    Component: () => import("./routes/home"),
+  },
+] satisfies unstable_RSCRouteConfigEntry[];
+```
+
+## Server Components
+
+Components that render on the server:
+
+```tsx
+// routes/dashboard.tsx
+import { db } from "~/db.server"; // Server-only import
+
+export default async function Dashboard() {
+  // Direct database access - runs on server only
+  const stats = await db.query("SELECT * FROM stats");
+  
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      <Stats data={stats} />
+    </div>
+  );
+}
+```
+
+## Client Components
+
+Mark components for client rendering:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+
+export function Counter() {
+  const [count, setCount] = useState(0);
+  
+  return (
+    <button onClick={() => setCount(c => c + 1)}>
+      Count: {count}
+    </button>
+  );
+}
+```
+
+## Mixing Server and Client
+
+Compose server and client components:
+
+```tsx
+// Server Component
+import { ClientCounter } from "./Counter";
+import { db } from "~/db.server";
+
+export default async function Page() {
+  const data = await db.getInitialCount();
+  
+  return (
+    <div>
+      <h1>Server-rendered content</h1>
+      {/* Client component */}
+      <ClientCounter initialCount={data.count} />
+    </div>
+  );
+}
+```
+
+## Server Actions
+
+Call server functions from client:
+
+```tsx
+"use server";
+
+import { db } from "~/db.server";
+
+export async function incrementCounter(id: string) {
+  await db.query("UPDATE counters SET count = count + 1 WHERE id = ?", [id]);
+  return { success: true };
+}
+```
+
+Use in client components:
+
+```tsx
+"use client";
+
+import { incrementCounter } from "./actions";
+
+export function Counter({ id }) {
+  return (
+    <form action={incrementCounter}>
+      <input type="hidden" name="id" value={id} />
+      <button type="submit">Increment</button>
+    </form>
+  );
+}
+```
+
+## Streaming
+
+Stream components as they render:
+
+```tsx
+import { Suspense } from "react";
+
+export default function Page() {
+  return (
+    <div>
+      <h1>Page Title</h1>
+      
+      {/* Streams when data is ready */}
+      <Suspense fallback={<Skeleton />}>
+        <AsyncData />
+      </Suspense>
+    </div>
+  );
+}
+
+async function AsyncData() {
+  const data = await fetchSlowData();
+  return <div>{data}</div>;
+}
+```
+
+## Route Configuration
+
+Define routes with RSC:
+
+```tsx
+import type { unstable_RSCRouteConfigEntry } from "react-router";
+
+export default [
+  {
+    id: "root",
+    path: "/",
+    async Component() {
+      return <Layout />;
+    },
+    children: [
+      {
+        index: true,
+        async Component() {
+          const data = await getData();
+          return <Home data={data} />;
+        },
+      },
+    ],
+  },
+] satisfies unstable_RSCRouteConfigEntry[];
+```
+
+## Loaders with RSC
+
+Loaders still work alongside RSC:
+
+```tsx
+export async function loader() {
+  return { serverData: await getServerData() };
+}
+
+export default function Component() {
+  const data = useLoaderData();
+  return <div>{data.serverData}</div>;
+}
+```
+
+## Client Loaders
+
+Augment server data on client:
+
+```tsx
+export async function loader() {
+  return { userId: await getUserId() };
+}
+
+export async function clientLoader({ serverLoader }) {
+  const { userId } = await serverLoader();
+  const preferences = localStorage.getItem("prefs");
+  
+  return {
+    userId,
+    preferences: JSON.parse(preferences),
+  };
+}
+
+export default function Component() {
+  const data = useLoaderData();
+  return <div>User {data.userId}</div>;
+}
+```
+
+## Browser Entry
+
+Set up RSC in the browser:
+
+```tsx
+// entry.client.tsx
+import { startTransition, StrictMode } from "react";
+import { hydrateRoot } from "react-dom/client";
+import {
+  createFromReadableStream,
+  createTemporaryReferenceSet,
+} from "@vitejs/plugin-rsc/browser";
+import {
+  unstable_getRSCStream as getRSCStream,
+  unstable_RSCHydratedRouter as RSCHydratedRouter,
+} from "react-router";
+
+createFromReadableStream(
+  getRSCStream(),
+  { temporaryReferences: createTemporaryReferenceSet() }
+).then((payload) =>
+  startTransition(() => {
+    hydrateRoot(
+      document,
+      <StrictMode>
+        <RSCHydratedRouter
+          createFromReadableStream={createFromReadableStream}
+          payload={payload}
+        />
+      </StrictMode>
+    );
+  })
+);
+```
+
+## Server Entry
+
+Handle RSC requests on the server:
+
+```tsx
+// entry.server.tsx
+import {
+  createTemporaryReferenceSet,
+  decodeAction,
+  decodeFormState,
+  decodeReply,
+  loadServerAction,
+  renderToReadableStream,
+} from "@vitejs/plugin-rsc/rsc";
+import { unstable_matchRSCServerRequest as matchRSCServerRequest } from "react-router";
+
+export default async function handleRequest(request: Request) {
+  return matchRSCServerRequest({
+    createTemporaryReferenceSet,
+    decodeAction,
+    decodeFormState,
+    decodeReply,
+    loadServerAction,
+    request,
+    routes: routes(),
+    generateResponse(match, { temporaryReferences, onError }) {
+      return new Response(
+        renderToReadableStream(match.payload, {
+          temporaryReferences,
+          onError,
+        }),
+        {
+          status: match.statusCode,
+          headers: match.headers,
+        }
+      );
+    },
+  });
+}
+```
+
+## Route Discovery
+
+Routes are discovered lazily or eagerly:
+
+```tsx
+<RSCHydratedRouter
+  payload={payload}
+  routeDiscovery="eager" // or "lazy"
+  createFromReadableStream={createFromReadableStream}
+/>
+```
+
+**Eager**: Discovers routes as links appear in DOM  
+**Lazy**: Discovers routes when clicked
+
+## Data Strategy
+
+RSC uses a special data strategy for single-fetch:
+
+```tsx
+import { getRSCSingleFetchDataStrategy } from "react-router/lib/rsc/browser";
+
+const router = createRouter({
+  routes,
+  dataStrategy: getRSCSingleFetchDataStrategy(
+    () => router,
+    ssr,
+    basename,
+    createFromReadableStream,
+    fetch
+  ),
+});
+```
+
+## Error Boundaries
+
+Handle errors in RSC:
+
+```tsx
+export function ErrorBoundary({ error }) {
+  return (
+    <div>
+      <h1>Error</h1>
+      <p>{error.message}</p>
+    </div>
+  );
+}
+
+export default async function Component() {
+  const data = await fetchData();
+  if (!data) {
+    throw new Error("No data found");
+  }
+  return <div>{data}</div>;
+}
+```
+
+## Hydration Fallback
+
+Show loading state during hydration:
+
+```tsx
+export function HydrateFallback() {
+  return <div>Loading...</div>;
+}
+
+export async function clientLoader() {
+  // Runs during hydration
+  return await fetchClientData();
+}
+
+clientLoader.hydrate = true;
+
+export default function Component() {
+  const data = useLoaderData();
+  return <div>{data}</div>;
+}
+```
+
+## Server-Only Code
+
+Ensure code only runs on server:
+
+```tsx
+// db.server.ts
+import { db as database } from "better-sqlite3";
+
+export const db = database("app.db");
+
+if (typeof window !== "undefined") {
+  throw new Error("Cannot import db on client");
+}
+```
+
+## Client-Only Code
+
+Ensure code only runs on client:
+
+```tsx
+// analytics.client.ts
+export function trackEvent(event: string) {
+  if (typeof window === "undefined") {
+    throw new Error("Cannot call trackEvent on server");
+  }
+  
+  window.gtag?.("event", event);
+}
+```
+
+## HMR with RSC
+
+Hot Module Replacement works with RSC:
+
+```tsx
+// Changes to server components update immediately
+export default async function Page() {
+  const data = await getData();
+  return <div>{data}</div>;
+}
+
+// Edit component:
+// <div>Updated: {data}</div>
+// → Updates without full reload
+```
+
+## Best Practices
+
+1. **Use server components by default**: Opt into client components
+2. **Keep client components small**: Minimize client bundle
+3. **Use "use server" for actions**: Clear server function boundary
+4. **Don't import server code in client**: Use separate files
+5. **Stream when possible**: Use Suspense boundaries
+
+## Limitations
+
+- Experimental API, subject to change
+- Requires React 19+
+- Not all React features supported in server components
+- Cannot use hooks in server components
+- Client components cannot be async
+
+## Example App Structure
+
+```
+app/
+  routes/
+    _index.tsx           # Server component (default)
+    dashboard.tsx        # Server component
+    components/
+      Counter.tsx        # "use client" - client component
+      Chart.client.tsx   # Client-only (.client.tsx)
+  actions/
+    increment.server.ts  # "use server" - server action
+  db.server.ts           # Server-only code
+  entry.client.tsx       # Browser entry
+  entry.server.tsx       # Server entry
+```
+
+## Migration from Traditional SSR
+
+1. Mark interactive components with "use client"
+2. Move server logic to server components
+3. Convert form actions to server actions
+4. Update routing to RSC config
+5. Test both client and server rendering
+
+## Related
+
+- [React Server Components](https://react.dev/reference/rsc/server-components)
+- [Streaming](../start/framework/streaming)
+- [Data Loading](../start/data/data-loading)
+- [Actions](../start/data/route-object#action)

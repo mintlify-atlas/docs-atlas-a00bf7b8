@@ -1,0 +1,213 @@
+---
+title: createRequestHandler
+description: Create a request handler for server-side rendering
+---
+
+# createRequestHandler
+
+Creates a request handler function that processes incoming HTTP requests and returns responses for your React Router application.
+
+## Signature
+
+```tsx
+function createRequestHandler(
+  build: ServerBuild | (() => ServerBuild | Promise<ServerBuild>),
+  mode?: string
+): RequestHandler
+```
+
+<ParamField path="build" type="ServerBuild | (() => ServerBuild | Promise<ServerBuild>)" required>
+  The server build object containing your application's compiled routes, assets, and entry point. Can be a build object directly or a function that returns one (useful for development to get fresh builds on each request).
+</ParamField>
+
+<ParamField path="mode" type="string">
+  The server mode for the application. Defaults to `"production"`. Valid values:
+  - `"production"` - Optimized for production with minimal error details
+  - `"development"` - Includes detailed error information and stack traces
+  - `"test"` - Used during testing, suppresses console output
+</ParamField>
+
+## Returns
+
+<ResponseField name="RequestHandler" type="function">
+  A request handler function that processes incoming requests.
+  
+  ### Handler Signature
+  ```tsx
+  (request: Request, loadContext?: AppLoadContext) => Promise<Response>
+  ```
+  
+  <ParamField path="request" type="Request" required>
+    Standard Fetch API Request object representing the incoming HTTP request
+  </ParamField>
+  
+  <ParamField path="loadContext" type="AppLoadContext">
+    Optional context object passed to loaders and actions, useful for passing database connections, authentication state, etc.
+  </ParamField>
+</ResponseField>
+
+## Basic Example
+
+```tsx filename=server.ts
+import { createRequestHandler } from "react-router";
+import * as build from "./build/server";
+
+const handler = createRequestHandler(build);
+
+export default {
+  async fetch(request: Request) {
+    return handler(request);
+  },
+};
+```
+
+## With Load Context
+
+Pass database connections or other server-side resources to your loaders and actions:
+
+```tsx filename=server.ts
+import { createRequestHandler } from "react-router";
+import * as build from "./build/server";
+import { db } from "./db";
+
+const handler = createRequestHandler(build, "production");
+
+export default {
+  async fetch(request: Request, env: Env) {
+    return handler(request, {
+      db,
+      env,
+    });
+  },
+};
+```
+
+Access the context in your routes:
+
+```tsx filename=app/routes/products.tsx
+import type { Route } from "./+types/products";
+
+export async function loader({ context }: Route.LoaderArgs) {
+  // Access db from context
+  const products = await context.db.product.findMany();
+  return { products };
+}
+```
+
+## Development Mode with Fresh Builds
+
+In development, pass a function to get fresh builds on each request:
+
+```tsx filename=server.dev.ts
+import { createRequestHandler } from "react-router";
+
+const handler = createRequestHandler(
+  async () => {
+    // Dynamically import the build to get fresh updates
+    return import("./build/server");
+  },
+  "development"
+);
+
+export default {
+  async fetch(request: Request) {
+    return handler(request);
+  },
+};
+```
+
+## Express Adapter
+
+```tsx filename=server.ts
+import express from "express";
+import { createRequestHandler } from "@react-router/express";
+import * as build from "./build/server";
+
+const app = express();
+
+app.all(
+  "*",
+  createRequestHandler({
+    build,
+    mode: process.env.NODE_ENV,
+  })
+);
+
+app.listen(3000);
+```
+
+## Node Adapter
+
+```tsx filename=server.ts
+import { createRequestHandler } from "@react-router/node";
+import * as build from "./build/server";
+
+const handler = createRequestHandler(build, process.env.NODE_ENV);
+
+export default handler;
+```
+
+## Cloudflare Workers
+
+```tsx filename=worker.ts
+import { createRequestHandler } from "react-router";
+import * as build from "./build/server";
+
+const handler = createRequestHandler(build);
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    return handler(request, { env, ctx });
+  },
+};
+```
+
+## Security Considerations
+
+### Production Mode
+
+Always use `"production"` mode in production environments to:
+- Sanitize error messages sent to clients
+- Prevent exposure of stack traces
+- Optimize performance
+
+```tsx
+const handler = createRequestHandler(
+  build,
+  process.env.NODE_ENV === "production" ? "production" : "development"
+);
+```
+
+### Validate Load Context
+
+Never pass sensitive credentials directly in the load context:
+
+```tsx
+// Bad - exposes secrets to client
+const handler = createRequestHandler(build);
+handler(request, {
+  apiKey: process.env.SECRET_API_KEY, // Don't do this!
+});
+
+// Good - use context to access secrets server-side only
+const handler = createRequestHandler(build);
+handler(request, {
+  getApiKey: () => process.env.SECRET_API_KEY,
+});
+```
+
+### CSRF Protection
+
+React Router includes built-in CSRF protection for non-GET requests. Configure allowed origins for cross-origin actions:
+
+```tsx filename=app/root.tsx
+export const config = {
+  allowedActionOrigins: ["https://example.com"],
+};
+```
+
+## Related
+
+- [Server Build](/advanced/server-build) - Understanding the build object
+- [Load Context](/concepts/load-context) - Passing server-side context
+- [Deployment](/deployment/overview) - Deploy to various platforms

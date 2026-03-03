@@ -1,0 +1,432 @@
+---
+title: Revalidation
+---
+
+# Data Revalidation
+
+Revalidation automatically keeps your UI in sync with server data by re-running loaders after mutations and other events.
+
+## Automatic Revalidation
+
+React Router automatically revalidates data after:
+
+- Action submissions via `<Form>`, `fetcher.Form`, or `useSubmit`
+- Returning from an action
+- URL search params change
+- Clicking a link to the same URL
+
+```tsx
+// app/routes/todos.tsx
+export async function loader() {
+  return { todos: await db.todos.findMany() };
+}
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  await db.todos.create({
+    data: { text: formData.get("text") },
+  });
+  // Loader automatically reruns after this
+  return { success: true };
+}
+
+export default function Todos({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <ul>
+        {loaderData.todos.map((todo) => (
+          <li key={todo.id}>{todo.text}</li>
+        ))}
+      </ul>
+      
+      <Form method="post">
+        <input type="text" name="text" />
+        <button type="submit">Add</button>
+      </Form>
+    </div>
+  );
+}
+```
+
+## Manual Revalidation
+
+Trigger revalidation manually with `useRevalidator`:
+
+```tsx
+import { useRevalidator } from "react-router";
+
+export default function Dashboard() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    // Revalidate every 5 seconds
+    const interval = setInterval(() => {
+      revalidator.revalidate();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [revalidator]);
+  
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      <button onClick={() => revalidator.revalidate()}>
+        Refresh Data
+      </button>
+      
+      {revalidator.state === "loading" && <p>Refreshing...</p>}
+    </div>
+  );
+}
+```
+
+## Revalidation State
+
+Track revalidation status:
+
+```tsx
+import { useRevalidator } from "react-router";
+
+export default function RefreshButton() {
+  const revalidator = useRevalidator();
+  
+  return (
+    <button
+      onClick={() => revalidator.revalidate()}
+      disabled={revalidator.state === "loading"}
+    >
+      {revalidator.state === "loading" ? "Refreshing..." : "Refresh"}
+    </button>
+  );
+}
+```
+
+## Window Focus Revalidation
+
+```tsx
+import { useRevalidator } from "react-router";
+import { useEffect } from "react";
+
+export function WindowFocusRevalidator() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const onFocus = () => {
+      revalidator.revalidate();
+    };
+    
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [revalidator]);
+  
+  return (
+    <div hidden={revalidator.state === "idle"}>
+      Revalidating...
+    </div>
+  );
+}
+```
+
+## Polling
+
+```tsx
+import { useRevalidator } from "react-router";
+import { useEffect } from "react";
+
+export function usePolling(interval: number) {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      revalidator.revalidate();
+    }, interval);
+    
+    return () => clearInterval(timer);
+  }, [revalidator, interval]);
+}
+
+export default function LiveData() {
+  // Poll every 10 seconds
+  usePolling(10000);
+  
+  return <div>Data updates automatically</div>;
+}
+```
+
+## Conditional Revalidation
+
+Control which routes revalidate with `shouldRevalidate`:
+
+```tsx
+import type { ShouldRevalidateFunction } from "react-router";
+
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}) => {
+  // Don't revalidate on same-page search param changes
+  if (
+    currentUrl.pathname === nextUrl.pathname &&
+    currentUrl.search !== nextUrl.search
+  ) {
+    return false;
+  }
+  
+  // Always revalidate after POST/PUT/PATCH/DELETE
+  if (formMethod && formMethod !== "GET") {
+    return true;
+  }
+  
+  return defaultShouldRevalidate;
+};
+
+export async function loader() {
+  return { data: await fetchExpensiveData() };
+}
+```
+
+## Revalidation Options
+
+### Skip Revalidation on Same URL
+
+```tsx
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+}) => {
+  return currentUrl.href !== nextUrl.href;
+};
+```
+
+### Only Revalidate on Mutations
+
+```tsx
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  formMethod,
+}) => {
+  return formMethod != null && formMethod !== "GET";
+};
+```
+
+### Time-Based Revalidation
+
+```tsx
+let lastFetch = 0;
+const CACHE_DURATION = 60000; // 1 minute
+
+export const shouldRevalidate: ShouldRevalidateFunction = () => {
+  const now = Date.now();
+  if (now - lastFetch > CACHE_DURATION) {
+    lastFetch = now;
+    return true;
+  }
+  return false;
+};
+```
+
+## Parent Route Revalidation
+
+Child route actions trigger parent loader revalidation:
+
+```tsx
+// app/routes/projects.$id.tsx
+export async function loader({ params }: Route.LoaderArgs) {
+  return { project: await db.project.findUnique({ where: { id: params.id } }) };
+}
+
+// app/routes/projects.$id.tasks.new.tsx
+export async function action({ params, request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  await db.task.create({
+    data: {
+      projectId: params.id,
+      name: formData.get("name"),
+    },
+  });
+  
+  // Parent project loader automatically reruns
+  return redirect(`/projects/${params.id}`);
+}
+```
+
+## Fetcher Revalidation
+
+Fetcher submissions also trigger revalidation:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function TodoList({ todos }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            <fetcher.Form method="post" action="/todos/toggle">
+              <input type="hidden" name="id" value={todo.id} />
+              <button type="submit">
+                {todo.completed ? "Undo" : "Complete"}
+              </button>
+            </fetcher.Form>
+            {todo.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// All active loaders revalidate when any fetcher completes
+```
+
+## Navigation State
+
+Track overall revalidation state:
+
+```tsx
+import { useNavigation } from "react-router";
+
+export function GlobalLoadingBar() {
+  const navigation = useNavigation();
+  const isRevalidating = navigation.state === "loading";
+  
+  return isRevalidating ? (
+    <div className="loading-bar" />
+  ) : null;
+}
+```
+
+## Optimizing Revalidation
+
+### Parallel Loading
+
+React Router runs all loaders in parallel during revalidation:
+
+```tsx
+// app/routes/dashboard.tsx
+export async function loader() {
+  return { layout: await getLayout() };
+}
+
+// app/routes/dashboard.stats.tsx  
+export async function loader() {
+  return { stats: await getStats() };
+}
+
+// app/routes/dashboard.activity.tsx
+export async function loader() {
+  return { activity: await getActivity() };
+}
+
+// All three loaders run in parallel on revalidation
+```
+
+### Cache Data
+
+```tsx
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 60000; // 1 minute
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const cacheKey = `user:${params.id}`;
+  const cached = cache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  
+  const data = await db.user.findUnique({ where: { id: params.id } });
+  cache.set(cacheKey, { data, timestamp: Date.now() });
+  
+  return data;
+}
+```
+
+### Selective Revalidation
+
+```tsx
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  currentParams,
+  nextParams,
+  formAction,
+}) => {
+  // Only revalidate if params changed or it's our form
+  return (
+    currentParams.id !== nextParams.id ||
+    formAction === "/users/update"
+  );
+};
+```
+
+## Best Practices
+
+### Don't Over-Revalidate
+
+```tsx
+// Good: Revalidate only when necessary
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  formMethod,
+  defaultShouldRevalidate,
+}) => {
+  if (formMethod && formMethod !== "GET") {
+    return true;
+  }
+  return defaultShouldRevalidate;
+};
+
+// Bad: Always revalidate
+export const shouldRevalidate: ShouldRevalidateFunction = () => true;
+```
+
+### Use Optimistic UI
+
+Update the UI immediately, then revalidate:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function LikeButton({ post }) {
+  const fetcher = useFetcher();
+  
+  // Optimistic count
+  const likes = fetcher.formData
+    ? post.likes + 1
+    : post.likes;
+  
+  return (
+    <fetcher.Form method="post" action="/like">
+      <input type="hidden" name="postId" value={post.id} />
+      <button type="submit">{likes} likes</button>
+    </fetcher.Form>
+  );
+}
+```
+
+### Show Loading States
+
+```tsx
+import { useNavigation } from "react-router";
+
+export default function Layout({ children }) {
+  const navigation = useNavigation();
+  
+  return (
+    <div>
+      {navigation.state === "loading" && (
+        <div className="loading">Loading...</div>
+      )}
+      {children}
+    </div>
+  );
+}
+```
+
+## Related
+
+- [Loaders](/data/loaders) - Loading data
+- [Actions](/data/actions) - Data mutations
+- [Optimistic UI](/data/optimistic-ui) - Update UI before revalidation

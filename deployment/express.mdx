@@ -1,0 +1,273 @@
+---
+title: "Express Integration"
+description: "Integrate React Router with Express.js applications"
+---
+
+## Overview
+
+The `@react-router/express` package provides an Express.js request handler for React Router, allowing you to integrate React Router into existing Express applications.
+
+## Installation
+
+```bash
+npm install @react-router/express express
+```
+
+## Basic Setup
+
+Integrate React Router into your Express application:
+
+```js
+import { createRequestHandler } from "@react-router/express";
+import express from "express";
+
+const app = express();
+
+// React Router request handler
+const reactRouterHandler = createRequestHandler({
+  build: await import("./build/server/index.js"),
+});
+
+// Serve static assets
+app.use("/assets", express.static("build/client/assets"));
+app.use(express.static("build/client"));
+
+// Handle all routes with React Router
+app.all("*", reactRouterHandler);
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server listening at http://localhost:${port}`);
+});
+```
+
+## Development Mode
+
+Use Vite's middleware mode for development with hot module replacement:
+
+```js
+import { createRequestHandler } from "@react-router/express";
+import compression from "compression";
+import express from "express";
+import morgan from "morgan";
+
+const viteDevServer =
+  process.env.NODE_ENV === "production"
+    ? undefined
+    : await import("vite").then((vite) =>
+        vite.createServer({
+          server: { middlewareMode: true },
+        })
+      );
+
+const reactRouterHandler = createRequestHandler({
+  build: viteDevServer
+    ? () => viteDevServer.ssrLoadModule("virtual:react-router/server-build")
+    : await import("./build/server/index.js"),
+});
+
+const app = express();
+
+app.use(compression());
+app.disable("x-powered-by");
+
+if (viteDevServer) {
+  app.use(viteDevServer.middlewares);
+} else {
+  app.use(
+    "/assets",
+    express.static("build/client/assets", { immutable: true, maxAge: "1y" })
+  );
+}
+
+app.use(express.static("build/client", { maxAge: "1h" }));
+app.use(morgan("tiny"));
+
+app.all("*", reactRouterHandler);
+
+const port = process.env.PORT || 3000;
+app.listen(port, () =>
+  console.log(`Express server listening at http://localhost:${port}`)
+);
+```
+
+## Custom Load Context
+
+Pass Express request and response objects to your routes:
+
+```js
+const reactRouterHandler = createRequestHandler({
+  build: await import("./build/server/index.js"),
+  getLoadContext: (req, res) => ({
+    user: req.user,
+    session: req.session,
+    expressRequest: req,
+    expressResponse: res,
+  }),
+});
+```
+
+Access the context in your routes:
+
+```ts
+import type { Route } from "./+types/dashboard";
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const user = context.user;
+  const session = context.session;
+  
+  return { user };
+}
+```
+
+## Express Middleware
+
+Use Express middleware before the React Router handler:
+
+```js
+import cookieParser from "cookie-parser";
+import session from "express-session";
+import passport from "passport";
+
+app.use(cookieParser());
+app.use(
+  session({
+    secret: "s3cr3t",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+app.use(passport.initialize());
+app.use(passport.session());
+
+app.all("*", reactRouterHandler);
+```
+
+## API Routes
+
+Combine Express API routes with React Router:
+
+```js
+// API routes
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+app.post("/api/webhook", express.json(), (req, res) => {
+  // Handle webhook
+  res.sendStatus(200);
+});
+
+// React Router handles all other routes
+app.all("*", reactRouterHandler);
+```
+
+## Error Handling
+
+The request handler automatically passes errors to Express error handlers:
+
+```js
+app.all("*", reactRouterHandler);
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).send("Internal Server Error");
+});
+```
+
+## Request/Response Utilities
+
+The package exports utilities for converting between Express and Web APIs:
+
+```ts
+import {
+  createRemixRequest,
+  createRemixHeaders,
+  sendRemixResponse,
+} from "@react-router/express";
+```
+
+### createRemixHeaders
+
+Convert Express headers to Web API Headers:
+
+```ts
+const headers = createRemixHeaders(req.headers);
+```
+
+### createRemixRequest
+
+Convert Express request to Web API Request:
+
+```ts
+const request = createRemixRequest(req, res);
+```
+
+### sendRemixResponse
+
+Send a Web API Response via Express:
+
+```ts
+const response = new Response("Hello", {
+  headers: { "Content-Type": "text/plain" },
+});
+await sendRemixResponse(res, response);
+```
+
+## Trust Proxy
+
+When deploying behind a proxy (nginx, load balancer, etc.), enable trust proxy:
+
+```js
+app.set("trust proxy", 1);
+```
+
+This ensures `req.hostname`, `req.protocol`, and client IP are correctly detected.
+
+## Production Deployment
+
+1. Build your application:
+   ```bash
+   npm run build
+   ```
+
+2. Set environment variable:
+   ```bash
+   NODE_ENV=production node server.js
+   ```
+
+3. Use a process manager like PM2:
+   ```bash
+   pm2 start server.js --name "my-app"
+   ```
+
+## TypeScript Support
+
+Add Express types:
+
+```bash
+npm install --save-dev @types/express
+```
+
+Type your load context:
+
+```ts
+import type { GetLoadContextFunction } from "@react-router/express";
+
+interface AppLoadContext {
+  user: User | null;
+  session: Session;
+}
+
+const getLoadContext: GetLoadContextFunction = (req, res) => {
+  return {
+    user: req.user ?? null,
+    session: req.session,
+  };
+};
+```
+
+<Note>
+  Express middleware runs before React Router, allowing you to augment requests with authentication, sessions, and other context.
+</Note>

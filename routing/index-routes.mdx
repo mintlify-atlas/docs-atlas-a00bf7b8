@@ -1,0 +1,360 @@
+---
+title: Index Routes
+description: Learn how to use index routes for default child routes in React Router
+---
+
+# Index Routes
+
+Index routes render in their parent's `<Outlet />` when the parent's path exactly matches the URL. They provide default content for layout routes and are commonly used for home pages, dashboards, and list views.
+
+## Basic Index Routes
+
+Use the `index()` helper to define an index route:
+
+```ts
+// app/routes.ts
+import { index } from "@react-router/dev/routes";
+
+export default [
+  index("routes/home.tsx"),
+];
+```
+
+This renders `home.tsx` at the root path `/`.
+
+## Index Routes in Nested Layouts
+
+Index routes are most useful as default children of parent routes:
+
+```ts
+// app/routes.ts
+import { route, index } from "@react-router/dev/routes";
+
+export default [
+  route("dashboard", "routes/dashboard.tsx", [
+    index("routes/dashboard/overview.tsx"),
+    route("analytics", "routes/dashboard/analytics.tsx"),
+    route("settings", "routes/dashboard/settings.tsx"),
+  ]),
+];
+```
+
+URL behavior:
+- `/dashboard` → renders `dashboard.tsx` with `overview.tsx` in the outlet (index route)
+- `/dashboard/analytics` → renders `dashboard.tsx` with `analytics.tsx` in the outlet
+- `/dashboard/settings` → renders `dashboard.tsx` with `settings.tsx` in the outlet
+
+## Parent Route with Index
+
+```tsx
+// app/routes/dashboard.tsx
+import { Outlet, NavLink } from "react-router";
+
+export default function Dashboard() {
+  return (
+    <div>
+      <h1>Dashboard</h1>
+      <nav>
+        <NavLink to=".">Overview</NavLink>
+        <NavLink to="analytics">Analytics</NavLink>
+        <NavLink to="settings">Settings</NavLink>
+      </nav>
+      
+      <main>
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+```
+
+```tsx
+// app/routes/dashboard/overview.tsx
+export default function Overview() {
+  return <h2>Dashboard Overview</h2>;
+}
+```
+
+## File-Based Index Routes
+
+When using `flatRoutes()`, use `_index` for index routes:
+
+```
+app/routes/
+├── _index.tsx                       # / (root index)
+├── dashboard.tsx                    # /dashboard
+├── dashboard._index.tsx             # /dashboard (dashboard index)
+├── dashboard.analytics.tsx          # /dashboard/analytics
+└── dashboard.settings.tsx           # /dashboard/settings
+```
+
+Alternatively, use folder-based structure:
+
+```
+app/routes/
+├── _index.tsx                       # /
+└── dashboard/
+    ├── route.tsx                    # /dashboard
+    ├── _index.tsx                   # /dashboard (index)
+    ├── analytics.tsx                # /dashboard/analytics
+    └── settings.tsx                 # /dashboard/settings
+```
+
+## Index vs. Layout Routes
+
+Understand the difference between index routes and layout routes:
+
+**Layout route** (no path, wraps children):
+```ts
+layout("routes/app-layout.tsx", [
+  route("dashboard", "routes/dashboard.tsx"),
+  route("profile", "routes/profile.tsx"),
+])
+// URLs: /dashboard, /profile (no /app-layout URL)
+```
+
+**Index route** (default child):
+```ts
+route("app", "routes/app.tsx", [
+  index("routes/app/home.tsx"),
+  route("dashboard", "routes/app/dashboard.tsx"),
+])
+// URLs: /app (shows home.tsx), /app/dashboard
+```
+
+## Loading Data in Index Routes
+
+Index routes can have loaders like any other route:
+
+```tsx
+// app/routes/dashboard/overview.tsx
+import type { Route } from "./+types/dashboard/overview";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const stats = await getDashboardStats();
+  return { stats };
+}
+
+export default function Overview({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h2>Dashboard Overview</h2>
+      <div>Total Users: {loaderData.stats.users}</div>
+      <div>Revenue: ${loaderData.stats.revenue}</div>
+    </div>
+  );
+}
+```
+
+## Index Route Actions
+
+Handle form submissions in index routes:
+
+```tsx
+// app/routes/_index.tsx
+import { Form } from "react-router";
+import type { Route } from "./+types/_index";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  
+  await subscribeToNewsletter(email);
+  
+  return { success: true };
+}
+
+export default function Home({ actionData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Welcome</h1>
+      <Form method="post">
+        <input type="email" name="email" />
+        <button type="submit">Subscribe</button>
+      </Form>
+      {actionData?.success && <p>Thanks for subscribing!</p>}
+    </div>
+  );
+}
+```
+
+## Navigation to Index Routes
+
+Link to index routes using the parent's path:
+
+```tsx
+import { Link, NavLink } from "react-router";
+
+export default function Navigation() {
+  return (
+    <nav>
+      {/* Link to root index */}
+      <Link to="/">Home</Link>
+      
+      {/* Link to dashboard index */}
+      <Link to="/dashboard">Dashboard</Link>
+      
+      {/* Relative link to parent (index route) */}
+      <NavLink to=".">Overview</NavLink>
+      
+      {/* Relative link to sibling */}
+      <NavLink to="../dashboard">Dashboard</NavLink>
+    </nav>
+  );
+}
+```
+
+## Active Link Styling
+
+Index routes require special handling for active link styling:
+
+```tsx
+import { NavLink } from "react-router";
+
+export default function DashboardNav() {
+  return (
+    <nav>
+      {/* Use "end" prop to only match exact path */}
+      <NavLink to="." end>
+        Overview
+      </NavLink>
+      
+      <NavLink to="analytics">
+        Analytics
+      </NavLink>
+    </nav>
+  );
+}
+```
+
+Without `end`, the link to `.` (index) would always be active since all child paths start with `/dashboard`.
+
+## Multiple Index Routes (Layouts)
+
+Different layout routes can have their own index routes:
+
+```ts
+// app/routes.ts
+import { route, layout, index } from "@react-router/dev/routes";
+
+export default [
+  layout("routes/marketing-layout.tsx", [
+    index("routes/marketing-home.tsx"),
+    route("about", "routes/about.tsx"),
+  ]),
+  
+  layout("routes/app-layout.tsx", [
+    route("app", "routes/app.tsx", [
+      index("routes/app/dashboard.tsx"),
+      route("settings", "routes/app/settings.tsx"),
+    ]),
+  ]),
+];
+```
+
+## Index Route Redirects
+
+Redirect from an index route:
+
+```tsx
+// app/routes/dashboard/_index.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/dashboard/_index";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  
+  if (!user.hasCompletedOnboarding) {
+    return redirect("/onboarding");
+  }
+  
+  return { user };
+}
+```
+
+## Error Boundaries
+
+Index routes can have their own error boundaries:
+
+```tsx
+// app/routes/_index.tsx
+import { useRouteError, isRouteErrorResponse } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+  
+  return <h1>Unknown Error</h1>;
+}
+
+export default function Home() {
+  return <h1>Welcome Home</h1>;
+}
+```
+
+## Index Route Meta
+
+Export meta data for SEO:
+
+```tsx
+// app/routes/_index.tsx
+import type { Route } from "./+types/_index";
+
+export function meta({}: Route.MetaArgs) {
+  return [
+    { title: "Welcome | My App" },
+    { name: "description", content: "Welcome to My App!" },
+  ];
+}
+
+export default function Home() {
+  return <h1>Welcome</h1>;
+}
+```
+
+## Common Patterns
+
+### Dashboard with Overview
+
+```ts
+route("dashboard", "routes/dashboard.tsx", [
+  index("routes/dashboard/overview.tsx"),
+  route("reports", "routes/dashboard/reports.tsx"),
+])
+```
+
+### Product Listing
+
+```ts
+route("products", "routes/products.tsx", [
+  index("routes/products/list.tsx"),
+  route(":productId", "routes/products/detail.tsx"),
+])
+```
+
+### Documentation Site
+
+```ts
+route("docs", "routes/docs.tsx", [
+  index("routes/docs/introduction.tsx"),
+  route("getting-started", "routes/docs/getting-started.tsx"),
+  route("api", "routes/docs/api.tsx"),
+])
+```
+
+## Best Practices
+
+1. **Default content**: Use index routes for the most common/default child view
+2. **Use `end` prop**: Add `end` to NavLinks pointing to index routes
+3. **Descriptive names**: Name index route files after their content (e.g., `overview.tsx` not `index.tsx`)
+4. **Avoid empty outlets**: Always provide an index route for layouts with children
+5. **Consider redirects**: Redirect from index routes when user state requires it
+6. **Data loading**: Don't hesitate to add loaders to index routes

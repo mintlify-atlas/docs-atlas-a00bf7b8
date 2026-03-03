@@ -1,0 +1,343 @@
+---
+title: File Uploads
+---
+
+# File Uploads
+
+Learn how to handle file uploads in React Router applications using actions and forms.
+
+## Overview
+
+React Router handles file uploads through the standard `FormData` API. Files are submitted to action functions where you can process, validate, and store them.
+
+## Basic File Upload
+
+Handle a single file upload:
+
+```tsx
+// app/routes/upload.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/upload";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const file = formData.get("file") as File;
+
+  if (!file || file.size === 0) {
+    return { error: "Please select a file" };
+  }
+
+  // Validate file type
+  const allowedTypes = ["image/jpeg", "image/png", "image/gif"];
+  if (!allowedTypes.includes(file.type)) {
+    return { error: "Only JPEG, PNG, and GIF images are allowed" };
+  }
+
+  // Validate file size (e.g., 5MB limit)
+  const maxSize = 5 * 1024 * 1024;
+  if (file.size > maxSize) {
+    return { error: "File size must be less than 5MB" };
+  }
+
+  // Read file contents
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  // Save file (example using a storage service)
+  const url = await saveToStorage(buffer, file.name, file.type);
+
+  return redirect(`/uploads/${url}`);
+}
+
+export default function Upload({ actionData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Upload File</h1>
+      <Form method="post" encType="multipart/form-data">
+        <input type="file" name="file" accept="image/*" />
+        {actionData?.error && <p className="error">{actionData.error}</p>}
+        <button type="submit">Upload</button>
+      </Form>
+    </div>
+  );
+}
+```
+
+## Multiple File Uploads
+
+Handle multiple files at once:
+
+```tsx
+import type { Route } from "./+types/gallery";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const files = formData.getAll("files") as File[];
+
+  if (files.length === 0) {
+    return { error: "Please select at least one file" };
+  }
+
+  const uploadedUrls: string[] = [];
+  const errors: string[] = [];
+
+  for (const file of files) {
+    if (file.size === 0) continue;
+
+    // Validate each file
+    if (!file.type.startsWith("image/")) {
+      errors.push(`${file.name}: Only images are allowed`);
+      continue;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const url = await saveToStorage(buffer, file.name, file.type);
+      uploadedUrls.push(url);
+    } catch (error) {
+      errors.push(`${file.name}: Upload failed`);
+    }
+  }
+
+  return { uploadedUrls, errors };
+}
+
+export default function Gallery({ actionData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>Upload Gallery</h1>
+      <Form method="post" encType="multipart/form-data">
+        <input type="file" name="files" multiple accept="image/*" />
+        <button type="submit">Upload Files</button>
+      </Form>
+
+      {actionData?.errors && actionData.errors.length > 0 && (
+        <div className="errors">
+          <h3>Errors:</h3>
+          <ul>
+            {actionData.errors.map((error, i) => (
+              <li key={i}>{error}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {actionData?.uploadedUrls && actionData.uploadedUrls.length > 0 && (
+        <div className="success">
+          <h3>Uploaded {actionData.uploadedUrls.length} files</h3>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Upload with Progress
+
+Show upload progress using a fetcher:
+
+```tsx
+import { useFetcher } from "react-router";
+import { useState } from "react";
+
+export default function UploadWithProgress() {
+  const fetcher = useFetcher();
+  const [progress, setProgress] = useState(0);
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    // Create XMLHttpRequest for progress tracking
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        const percent = (e.loaded / e.total) * 100;
+        setProgress(percent);
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      setProgress(100);
+    });
+
+    xhr.open("POST", "/upload");
+    xhr.send(formData);
+  }
+
+  const isUploading = fetcher.state === "submitting";
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input type="file" name="file" disabled={isUploading} />
+      <button type="submit" disabled={isUploading}>
+        {isUploading ? "Uploading..." : "Upload"}
+      </button>
+
+      {isUploading && (
+        <div className="progress-bar">
+          <div
+            className="progress-fill"
+            style={{ width: `${progress}%` }}
+          />
+          <span>{Math.round(progress)}%</span>
+        </div>
+      )}
+    </form>
+  );
+}
+```
+
+## Client-Side Preview
+
+Show image preview before uploading:
+
+```tsx
+import { Form } from "react-router";
+import { useState } from "react";
+
+export default function UploadWithPreview() {
+  const [preview, setPreview] = useState<string | null>(null);
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  return (
+    <Form method="post" encType="multipart/form-data">
+      <input
+        type="file"
+        name="file"
+        accept="image/*"
+        onChange={handleFileChange}
+      />
+
+      {preview && (
+        <div className="preview">
+          <h3>Preview:</h3>
+          <img src={preview} alt="Preview" style={{ maxWidth: 300 }} />
+        </div>
+      )}
+
+      <button type="submit">Upload</button>
+    </Form>
+  );
+}
+```
+
+## Direct Upload to Cloud Storage
+
+Upload directly to services like S3 or Cloudflare R2:
+
+```tsx
+import type { Route } from "./+types/upload";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const file = formData.get("file") as File;
+
+  if (!file) {
+    return { error: "No file provided" };
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const key = `uploads/${Date.now()}-${file.name}`;
+
+  try {
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: process.env.S3_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: file.type,
+      })
+    );
+
+    const url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`;
+    return { success: true, url };
+  } catch (error) {
+    return { error: "Upload failed" };
+  }
+}
+```
+
+## Signed Upload URLs
+
+Use presigned URLs for direct client-to-storage uploads:
+
+```tsx
+// app/routes/api.upload-url.tsx
+import { json } from "react-router";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { Route } from "./+types/api.upload-url";
+
+export async function action({ request }: Route.ActionArgs) {
+  const { filename, contentType } = await request.json();
+
+  const key = `uploads/${Date.now()}-${filename}`;
+
+  const command = new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  const uploadUrl = await getSignedUrl(s3Client, command, {
+    expiresIn: 3600,
+  });
+
+  return json({ uploadUrl, key });
+}
+
+// Client component
+import { useFetcher } from "react-router";
+
+export default function DirectUpload() {
+  const fetcher = useFetcher();
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const file = formData.get("file") as File;
+
+    // Get signed URL
+    fetcher.submit(
+      { filename: file.name, contentType: file.type },
+      { method: "post", action: "/api/upload-url", encType: "application/json" }
+    );
+  }
+
+  return <form onSubmit={handleSubmit}>{/* ... */}</form>;
+}
+```
+
+## Best Practices
+
+1. **Always validate files** - Check type, size, and content on the server
+2. **Set size limits** - Prevent large uploads from overwhelming your server
+3. **Use encType="multipart/form-data"** - Required for file uploads
+4. **Sanitize filenames** - Remove dangerous characters before storage
+5. **Consider direct uploads** - Upload to cloud storage directly to reduce server load
+6. **Show progress** - Provide feedback for large uploads
+7. **Handle errors gracefully** - Network issues and file problems should be recoverable

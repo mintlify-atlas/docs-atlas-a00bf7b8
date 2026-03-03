@@ -1,0 +1,457 @@
+---
+title: Concurrency Patterns
+description: Handle multiple simultaneous requests efficiently
+---
+
+# Concurrency Patterns
+
+React Router automatically manages concurrent requests, ensuring your UI stays responsive and displays the most recent data.
+
+## Browser Behavior
+
+React Router mirrors browser behavior for navigation:
+
+**Link Clicks**: When you click a link and then click another before the first loads, the browser cancels the first request.
+
+**Form Submissions**: When you submit a form and then submit another, the browser cancels the first submission.
+
+React Router implements the same behavior for client-side navigation.
+
+## Automatic Cancellation
+
+### Interrupted Navigation
+
+Requests are automatically cancelled when interrupted:
+
+```tsx
+// User clicks Link A
+<Link to="/page-a">Page A</Link>
+// → Starts loading /page-a
+
+// User quickly clicks Link B (before A finishes)
+<Link to="/page-b">Page B</Link>
+// → Cancels /page-a request
+// → Starts loading /page-b
+```
+
+### Interrupted Submissions
+
+Form submissions cancel previous submissions:
+
+```tsx
+// User submits Form 1
+<Form method="post" action="/update">
+  {/* ... */}
+</Form>
+// → POST to /update starts
+
+// User quickly submits Form 2
+<Form method="post" action="/create">
+  {/* ... */}
+</Form>
+// → Cancels Form 1's POST
+// → Starts Form 2's POST
+```
+
+## Concurrent Fetchers
+
+Unlike navigation, fetchers can run simultaneously:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export function Component() {
+  const fetcher1 = useFetcher();
+  const fetcher2 = useFetcher();
+  const fetcher3 = useFetcher();
+  
+  return (
+    <div>
+      {/* All three can be loading at once */}
+      <fetcher1.Form method="post" action="/action1">
+        <button type="submit">Action 1</button>
+      </fetcher1.Form>
+      
+      <fetcher2.Form method="post" action="/action2">
+        <button type="submit">Action 2</button>
+      </fetcher2.Form>
+      
+      <fetcher3.Form method="post" action="/action3">
+        <button type="submit">Action 3</button>
+      </fetcher3.Form>
+    </div>
+  );
+}
+```
+
+## Revalidation
+
+After any action completes, React Router revalidates all page data:
+
+```text
+Using this key:
+  |     Submission begins
+  ✓     Action complete, revalidation begins  
+  ✅    Revalidation complete, data committed to UI
+  ❌    Request cancelled
+
+submission 1: |----✓-----✅
+submission 2:    |-----✓-----✅
+submission 3:             |-----✓-----✅
+```
+
+Each submission triggers its own revalidation, and they can overlap.
+
+## Stale Data Prevention
+
+React Router prevents stale data from appearing:
+
+```text
+submission 1: |----✓---------❌
+submission 2:    |-----✓-----✅
+submission 3:             |-----✓-----✅
+```
+
+If submission 2's revalidation completes before submission 1's, the data from submission 1 is discarded as stale.
+
+The rule: **Data from requests that started later takes precedence.**
+
+## Concurrent Loaders
+
+Loaders run in parallel by default:
+
+```tsx
+const routes = [
+  {
+    path: "/",
+    loader: rootLoader,      // ← runs in parallel
+    children: [
+      {
+        path: "dashboard",
+        loader: dashboardLoader, // ← runs in parallel
+      },
+    ],
+  },
+];
+
+// When navigating to /dashboard:
+// Both rootLoader and dashboardLoader start immediately
+```
+
+## Sequential Loading
+
+Use data strategy for sequential loading:
+
+```tsx
+const router = createBrowserRouter(routes, {
+  async dataStrategy({ matches }) {
+    // Wait for each loader sequentially
+    const results = [];
+    for (const match of matches) {
+      results.push(await match.resolve());
+    }
+    return results;
+  },
+});
+```
+
+## Type-Ahead Search
+
+Automatic concurrency management for search:
+
+```tsx
+export async function loader({ request }) {
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q");
+  return searchCities(query);
+}
+
+export function CitySearch() {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form action="/city-search">
+      <input
+        name="q"
+        onChange={(e) => {
+          // Submit on every keystroke
+          fetcher.submit(e.target.form);
+        }}
+      />
+      
+      {/* Always shows results for latest query */}
+      {fetcher.data?.map((city) => (
+        <div key={city.id}>{city.name}</div>
+      ))}
+    </fetcher.Form>
+  );
+}
+```
+
+**How it works**:
+1. User types "New"
+2. Request 1: `?q=N`
+3. User types "e" (before request 1 completes)
+4. Request 1 cancelled, Request 2: `?q=Ne`
+5. User types "w"
+6. Request 2 cancelled, Request 3: `?q=New`
+7. Only Request 3's results are shown
+
+## Debouncing
+
+Reduce request frequency:
+
+```tsx
+import { useFetcher } from "react-router";
+import { useDebouncedCallback } from "use-debounce";
+
+export function SearchBox() {
+  const fetcher = useFetcher();
+  
+  const search = useDebouncedCallback(
+    (form) => fetcher.submit(form),
+    300
+  );
+  
+  return (
+    <fetcher.Form action="/search">
+      <input
+        name="q"
+        onChange={(e) => search(e.target.form)}
+      />
+    </fetcher.Form>
+  );
+}
+```
+
+## Throttling
+
+Limit request rate:
+
+```tsx
+import { useThrottledCallback } from "use-debounce";
+
+export function InfiniteScroll() {
+  const fetcher = useFetcher();
+  
+  const loadMore = useThrottledCallback(
+    () => fetcher.load("/api/next-page"),
+    1000,
+    { trailing: false }
+  );
+  
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY + window.innerHeight >= document.height) {
+        loadMore();
+      }
+    };
+    
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+  
+  return <div>{/* content */}</div>;
+}
+```
+
+## Race Condition Prevention
+
+Fetchers prevent UI bugs from race conditions:
+
+```tsx
+export function TodoList() {
+  const fetcher = useFetcher();
+  const [optimisticFilter, setOptimisticFilter] = useState("all");
+  
+  const handleFilterChange = (filter) => {
+    // Set optimistic state
+    setOptimisticFilter(filter);
+    
+    // Submit to server
+    fetcher.submit(
+      { filter },
+      { method: "get", action: "/todos" }
+    );
+  };
+  
+  // fetcher.data always matches the latest request
+  // Even if requests resolve out of order
+  return (
+    <div>
+      <FilterButtons
+        value={optimisticFilter}
+        onChange={handleFilterChange}
+      />
+      
+      <TodoItems items={fetcher.data ?? []} />
+    </div>
+  );
+}
+```
+
+## Request Coordination
+
+Coordinate multiple dependent requests:
+
+```tsx
+export function Dashboard() {
+  const userFetcher = useFetcher();
+  const settingsFetcher = useFetcher();
+  
+  useEffect(() => {
+    // Load user first
+    userFetcher.load("/api/user");
+  }, []);
+  
+  useEffect(() => {
+    // Load settings after user loads
+    if (userFetcher.data?.id) {
+      settingsFetcher.load(`/api/settings/${userFetcher.data.id}`);
+    }
+  }, [userFetcher.data?.id]);
+  
+  return <div>{/* ... */}</div>;
+}
+```
+
+## Batch Requests
+
+Batch multiple requests into one:
+
+```tsx
+const router = createBrowserRouter(routes, {
+  async dataStrategy({ matches }) {
+    // Collect all route IDs
+    const routeIds = matches.map(m => m.route.id);
+    
+    // Single fetch for all data
+    const response = await fetch(
+      `/api/batch?routes=${routeIds.join(",")}`
+    );
+    const batchData = await response.json();
+    
+    // Map data back to routes
+    return matches.map((match) => ({
+      type: "data",
+      result: batchData[match.route.id],
+    }));
+  },
+});
+```
+
+## Optimistic UI
+
+Show immediate feedback during concurrent requests:
+
+```tsx
+export function LikeButton({ postId, initialLikes }) {
+  const fetcher = useFetcher();
+  
+  // Calculate optimistic state
+  const likes = fetcher.formData
+    ? initialLikes + 1
+    : fetcher.data?.likes ?? initialLikes;
+  
+  const isLiking = fetcher.state !== "idle";
+  
+  return (
+    <fetcher.Form method="post" action="/like">
+      <input type="hidden" name="postId" value={postId} />
+      <button type="submit" disabled={isLiking}>
+        ♥ {likes}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+## Polling
+
+Poll for updates without blocking UI:
+
+```tsx
+export function LiveData() {
+  const fetcher = useFetcher();
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (fetcher.state === "idle") {
+        fetcher.load("/api/live-data");
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [fetcher]);
+  
+  return <div>{fetcher.data?.value}</div>;
+}
+```
+
+## Request Deduplication
+
+Prevent duplicate concurrent requests:
+
+```tsx
+const requestCache = new Map();
+
+export async function loader({ request }) {
+  const url = request.url;
+  
+  if (requestCache.has(url)) {
+    return requestCache.get(url);
+  }
+  
+  const promise = fetch(url).then(r => r.json());
+  requestCache.set(url, promise);
+  
+  try {
+    return await promise;
+  } finally {
+    requestCache.delete(url);
+  }
+}
+```
+
+## Best Practices
+
+1. **Trust automatic cancellation**: Don't manually track requests
+2. **Use fetchers for concurrent operations**: Navigation is singleton
+3. **Debounce rapid inputs**: Reduce server load
+4. **Show loading states**: Indicate pending requests
+5. **Handle optimistic failures**: Revert on error
+
+## Monitoring Concurrency
+
+Track concurrent request metrics:
+
+```tsx
+import { useNavigation, useFetchers } from "react-router";
+
+export function RequestMonitor() {
+  const navigation = useNavigation();
+  const fetchers = useFetchers();
+  
+  const activeRequests = [
+    navigation.state !== "idle" ? "navigation" : null,
+    ...fetchers
+      .filter(f => f.state !== "idle")
+      .map((_, i) => `fetcher-${i}`)
+  ].filter(Boolean);
+  
+  return (
+    <div>
+      Active requests: {activeRequests.length}
+      {activeRequests.map(id => (
+        <div key={id}>{id}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Related
+
+- [Race Conditions](./race-conditions)
+- [Data Strategy](./data-strategy)
+- [useFetcher](../api/hooks/useFetcher)

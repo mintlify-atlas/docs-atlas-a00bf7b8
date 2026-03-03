@@ -1,0 +1,319 @@
+---
+title: 'isRouteErrorResponse'
+description: 'Type guard for route error responses'
+---
+
+## Summary
+
+Check if a thrown error is an [`ErrorResponse`](https://api.reactrouter.com/v7/types/react-router.ErrorResponse.html) generated from a 4xx/5xx [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response) thrown from an action or loader.
+
+Use this in `ErrorBoundary` components to differentiate between route errors (like 404s) and other errors.
+
+## Signature
+
+```typescript
+function isRouteErrorResponse(
+  error: unknown
+): error is ErrorResponse
+```
+
+## Parameters
+
+<ParamField path="error" type="unknown" required>
+  The error to check. Typically received in an `ErrorBoundary` component.
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="boolean">
+  Returns `true` if the error is an `ErrorResponse` with `status`, `statusText`, and `data` properties. Returns `false` otherwise.
+</ResponseField>
+
+## ErrorResponse Type
+
+When `isRouteErrorResponse` returns `true`, the error has this shape:
+
+```typescript
+interface ErrorResponse {
+  status: number;        // HTTP status code (e.g., 404, 500)
+  statusText: string;    // Status text (e.g., "Not Found")
+  data: any;            // Error data from the response
+}
+```
+
+## Examples
+
+### Basic error handling
+
+```tsx
+import { isRouteErrorResponse } from "react-router";
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div>
+      <h1>Unexpected Error</h1>
+      <p>{error instanceof Error ? error.message : "Unknown error"}</p>
+    </div>
+  );
+}
+```
+
+### Handling specific status codes
+
+```tsx
+import { isRouteErrorResponse } from "react-router";
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) {
+      return (
+        <div>
+          <h1>Page Not Found</h1>
+          <p>The page you're looking for doesn't exist.</p>
+          <Link to="/">Go Home</Link>
+        </div>
+      );
+    }
+    
+    if (error.status === 401) {
+      return (
+        <div>
+          <h1>Unauthorized</h1>
+          <p>Please log in to view this page.</p>
+          <Link to="/login">Login</Link>
+        </div>
+      );
+    }
+    
+    if (error.status === 500) {
+      return (
+        <div>
+          <h1>Server Error</h1>
+          <p>Something went wrong on our end.</p>
+        </div>
+      );
+    }
+  }
+  
+  return <div>An unexpected error occurred</div>;
+}
+```
+
+### With TypeScript type narrowing
+
+```tsx
+import { isRouteErrorResponse } from "react-router";
+
+interface NotFoundError {
+  message: string;
+  suggestions: string[];
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    const data = error.data as NotFoundError;
+    
+    return (
+      <div>
+        <h1>Not Found</h1>
+        <p>{data.message}</p>
+        {data.suggestions && (
+          <ul>
+            {data.suggestions.map((suggestion) => (
+              <li key={suggestion}>
+                <Link to={suggestion}>{suggestion}</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+  
+  return <div>Error occurred</div>;
+}
+```
+
+### Custom error messages per status
+
+```tsx
+import { isRouteErrorResponse } from "react-router";
+
+const ERROR_MESSAGES: Record<number, { title: string; message: string }> = {
+  400: {
+    title: "Bad Request",
+    message: "The request was invalid. Please check your input.",
+  },
+  401: {
+    title: "Unauthorized",
+    message: "You need to be logged in to access this resource.",
+  },
+  403: {
+    title: "Forbidden",
+    message: "You don't have permission to access this resource.",
+  },
+  404: {
+    title: "Not Found",
+    message: "The page you're looking for doesn't exist.",
+  },
+  500: {
+    title: "Server Error",
+    message: "Something went wrong on our servers.",
+  },
+};
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error)) {
+    const errorInfo = ERROR_MESSAGES[error.status] || {
+      title: `Error ${error.status}`,
+      message: error.statusText,
+    };
+    
+    return (
+      <div>
+        <h1>{errorInfo.title}</h1>
+        <p>{errorInfo.message}</p>
+        {error.data && <pre>{JSON.stringify(error.data, null, 2)}</pre>}
+      </div>
+    );
+  }
+  
+  return <DefaultErrorPage error={error} />;
+}
+```
+
+## Creating Route Errors
+
+Throw responses with 4xx/5xx status codes to create route errors:
+
+```tsx
+// In a loader
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  
+  if (!user) {
+    throw new Response("User not found", {
+      status: 404,
+      statusText: "Not Found",
+    });
+  }
+  
+  return { user };
+}
+
+// With data() helper
+import { data } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  
+  if (!user) {
+    throw data(
+      { message: "User not found", userId: params.id },
+      { status: 404 }
+    );
+  }
+  
+  return { user };
+}
+```
+
+## Common Patterns
+
+### Logging errors
+
+```tsx
+import { isRouteErrorResponse } from "react-router";
+import { logError } from "./logging";
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  useEffect(() => {
+    if (isRouteErrorResponse(error)) {
+      // Log route errors
+      logError({
+        type: "route_error",
+        status: error.status,
+        data: error.data,
+      });
+    } else {
+      // Log unexpected errors
+      logError({
+        type: "unexpected_error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [error]);
+  
+  return <ErrorDisplay error={error} />;
+}
+```
+
+### Nested error boundaries
+
+```tsx
+// Root error boundary - catches all errors
+export function RootErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <NotFoundPage />;
+  }
+  
+  return <GenericErrorPage error={error} />;
+}
+
+// Route-specific error boundary - handles route-specific errors
+export function ProfileErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) {
+      return <UserNotFound />;
+    }
+    if (error.status === 403) {
+      return <ProfileAccessDenied />;
+    }
+  }
+  
+  // Let unexpected errors bubble to root boundary
+  throw error;
+}
+```
+
+## Type Safety
+
+`isRouteErrorResponse` acts as a TypeScript type guard:
+
+```tsx
+function handleError(error: unknown) {
+  // error is unknown here
+  
+  if (isRouteErrorResponse(error)) {
+    // error is ErrorResponse here
+    console.log(error.status);     // ✓ Valid
+    console.log(error.statusText); // ✓ Valid
+    console.log(error.data);       // ✓ Valid
+  } else {
+    // error is still unknown here
+    console.log(error.message); // ✗ Type error
+  }
+}
+```
+
+## Related
+
+- [`ErrorBoundary`](/api/route-module#errorboundary) - Handle route errors
+- [`data`](/api/utils/data) - Throw errors with custom data
+- [`useRouteError`](/api/hooks/use-route-error) - Access error in components
+
+## Notes
+
+- Only checks for 4xx/5xx responses thrown from loaders/actions
+- Other errors (network errors, JS errors, etc.) return `false`
+- The `data` property can contain any serializable data you passed when throwing
+- Use specific status codes for better error handling and user experience

@@ -1,0 +1,412 @@
+---
+title: useMatches
+---
+
+# useMatches
+
+Returns the active route matches, useful for accessing `loaderData` for parent/child routes or the route `handle` property.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useMatches(): UIMatch[]
+
+interface UIMatch {
+  id: string;
+  pathname: string;
+  params: Params;
+  data: unknown;
+  handle: unknown;
+}
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="matches" type="UIMatch[]">
+  An array of route matches for the current route hierarchy, from root to leaf. Each match contains:
+  
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The route's unique ID.
+    </ResponseField>
+    
+    <ResponseField name="pathname" type="string">
+      The pathname that was matched.
+    </ResponseField>
+    
+    <ResponseField name="params" type="Params">
+      The URL parameters that were parsed from the pathname.
+    </ResponseField>
+    
+    <ResponseField name="data" type="unknown">
+      The loader data for this route.
+    </ResponseField>
+    
+    <ResponseField name="handle" type="unknown">
+      The route handle value.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Access parent route data
+
+```tsx
+import { useMatches } from "react-router";
+
+function ChildRoute() {
+  const matches = useMatches();
+  
+  // Find parent route data
+  const parentMatch = matches.find(
+    (match) => match.id === "routes/parent"
+  );
+  
+  return <div>Parent data: {parentMatch?.data}</div>;
+}
+```
+
+### Build breadcrumbs
+
+```tsx
+// In route modules, export a handle with breadcrumb
+export const handle = {
+  breadcrumb: "Dashboard",
+};
+
+// In a breadcrumb component
+function Breadcrumbs() {
+  const matches = useMatches();
+  
+  return (
+    <nav>
+      {matches
+        .filter((match) => match.handle?.breadcrumb)
+        .map((match, index) => (
+          <span key={match.id}>
+            {index > 0 && " > "}
+            <Link to={match.pathname}>
+              {match.handle.breadcrumb}
+            </Link>
+          </span>
+        ))}
+    </nav>
+  );
+}
+```
+
+### Dynamic breadcrumbs with data
+
+```tsx
+// app/routes/projects.$id.tsx
+export async function loader({ params }) {
+  const project = await getProject(params.id);
+  return { project };
+}
+
+export const handle = {
+  breadcrumb: (match) => match.data.project.name,
+};
+
+// Breadcrumb component
+function Breadcrumbs() {
+  const matches = useMatches();
+  
+  return (
+    <nav>
+      {matches
+        .filter((match) => match.handle?.breadcrumb)
+        .map((match) => {
+          const breadcrumb =
+            typeof match.handle.breadcrumb === "function"
+              ? match.handle.breadcrumb(match)
+              : match.handle.breadcrumb;
+          
+          return (
+            <Link key={match.id} to={match.pathname}>
+              {breadcrumb}
+            </Link>
+          );
+        })}
+    </nav>
+  );
+}
+```
+
+### Get current route ID
+
+```tsx
+function Component() {
+  const matches = useMatches();
+  const currentMatch = matches[matches.length - 1];
+  
+  return <div>Current route: {currentMatch.id}</div>;
+}
+```
+
+### Access all loader data
+
+```tsx
+function Component() {
+  const matches = useMatches();
+  
+  // Collect all loader data
+  const allData = matches.map((match) => match.data);
+  
+  return <pre>{JSON.stringify(allData, null, 2)}</pre>;
+}
+```
+
+## Common Patterns
+
+### Page title from route handles
+
+```tsx
+// In route modules
+export const handle = {
+  title: "Dashboard",
+};
+
+// In root layout
+function Root() {
+  const matches = useMatches();
+  const currentMatch = matches[matches.length - 1];
+  const title = currentMatch?.handle?.title || "App";
+  
+  return (
+    <html>
+      <head>
+        <title>{title}</title>
+      </head>
+      <body>
+        <Outlet />
+      </body>
+    </html>
+  );
+}
+```
+
+### Dynamic meta tags
+
+```tsx
+// Route handle
+export const handle = {
+  meta: (match) => ({
+    title: match.data.post.title,
+    description: match.data.post.excerpt,
+  }),
+};
+
+// Meta component
+function Meta() {
+  const matches = useMatches();
+  const currentMatch = matches[matches.length - 1];
+  const meta = currentMatch?.handle?.meta?.(currentMatch);
+  
+  return (
+    <>
+      {meta?.title && <title>{meta.title}</title>}
+      {meta?.description && (
+        <meta name="description" content={meta.description} />
+      )}
+    </>
+  );
+}
+```
+
+### Navigation with active states
+
+```tsx
+function Nav() {
+  const matches = useMatches();
+  const matchIds = matches.map((m) => m.id);
+  
+  return (
+    <nav>
+      <Link
+        to="/dashboard"
+        className={matchIds.includes("routes/dashboard") ? "active" : ""}
+      >
+        Dashboard
+      </Link>
+    </nav>
+  );
+}
+```
+
+### Analytics tracking
+
+```tsx
+function Analytics() {
+  const matches = useMatches();
+  
+  useEffect(() => {
+    const currentRoute = matches[matches.length - 1];
+    
+    // Send to analytics
+    analytics.track("pageview", {
+      route: currentRoute.id,
+      pathname: currentRoute.pathname,
+      params: currentRoute.params,
+    });
+  }, [matches]);
+  
+  return null;
+}
+```
+
+### Hierarchical permissions
+
+```tsx
+// Route handles
+export const handle = {
+  permission: "admin",
+};
+
+// Permission check
+function useRequirePermission() {
+  const matches = useMatches();
+  const { user } = useLoaderData();
+  
+  const requiredPermissions = matches
+    .map((m) => m.handle?.permission)
+    .filter(Boolean);
+  
+  const hasPermission = requiredPermissions.every((permission) =>
+    user.permissions.includes(permission)
+  );
+  
+  if (!hasPermission) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+}
+```
+
+### Layout configuration
+
+```tsx
+// Route handle
+export const handle = {
+  layout: "full-width",
+  showSidebar: false,
+};
+
+// Layout component
+function Layout() {
+  const matches = useMatches();
+  const currentMatch = matches[matches.length - 1];
+  const config = currentMatch?.handle || {};
+  
+  return (
+    <div className={config.layout || "default"}>
+      {config.showSidebar !== false && <Sidebar />}
+      <main>
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+```
+
+### Collect all route errors
+
+```tsx
+function ErrorSummary() {
+  const matches = useMatches();
+  
+  const errors = matches
+    .map((match) => match.data?.error)
+    .filter(Boolean);
+  
+  if (errors.length === 0) return null;
+  
+  return (
+    <div className="errors">
+      {errors.map((error, i) => (
+        <div key={i}>{error.message}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Route-based feature flags
+
+```tsx
+// Route handle
+export const handle = {
+  features: ["comments", "likes"],
+};
+
+// Feature check
+function useFeature(feature: string) {
+  const matches = useMatches();
+  
+  return matches.some((match) =>
+    match.handle?.features?.includes(feature)
+  );
+}
+
+function Post() {
+  const hasComments = useFeature("comments");
+  
+  return (
+    <div>
+      {/* Post content */}
+      {hasComments && <Comments />}
+    </div>
+  );
+}
+```
+
+## Type Safety
+
+### Type route handles
+
+```tsx
+interface RouteHandle {
+  breadcrumb?: string | ((match: UIMatch) => string);
+  title?: string;
+  permission?: string;
+}
+
+// In route
+export const handle: RouteHandle = {
+  breadcrumb: "Dashboard",
+  title: "Dashboard - App",
+};
+
+// In component
+function Component() {
+  const matches = useMatches();
+  const handles = matches.map((m) => m.handle as RouteHandle);
+}
+```
+
+### Type loader data
+
+```tsx
+import type { loader as rootLoader } from "~/root";
+
+function Component() {
+  const matches = useMatches();
+  const rootMatch = matches.find((m) => m.id === "root");
+  const rootData = rootMatch?.data as ReturnType<typeof rootLoader>;
+}
+```
+
+## Related
+
+- [`useRouteLoaderData`](/api/hooks/use-route-loader-data) - Access specific route's loader data
+- [`useLoaderData`](/api/hooks/use-loader-data) - Access current route's loader data
+- [`handle`](/start/framework/route-module#handle) - Route handle export
+- [`loader`](/start/framework/route-module#loader) - Define route loader

@@ -1,0 +1,534 @@
+---
+title: Accessibility
+---
+
+# Accessibility
+
+Learn how to build accessible React Router applications that work for all users.
+
+## Overview
+
+React Router provides features and patterns to help you build accessible web applications. This includes proper focus management, ARIA attributes, keyboard navigation, and semantic HTML.
+
+## Focus Management
+
+React Router automatically manages focus on route transitions:
+
+```tsx
+// Focus is automatically moved to the top of the page on navigation
+import { Outlet } from "react-router";
+
+export default function Layout() {
+  return (
+    <div>
+      <nav>
+        <Link to="/">Home</Link>
+        <Link to="/about">About</Link>
+      </nav>
+      <main id="main-content" tabIndex={-1}>
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+```
+
+## Skip Links
+
+Provide skip links for keyboard users:
+
+```tsx
+// app/root.tsx
+import { Links, Meta, Outlet, Scripts } from "react-router";
+
+export default function Root() {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
+
+        <header>
+          <nav>{/* Navigation */}</nav>
+        </header>
+
+        <main id="main-content" tabIndex={-1}>
+          <Outlet />
+        </main>
+
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+Style skip links:
+
+```css
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #000;
+  color: #fff;
+  padding: 8px;
+  text-decoration: none;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+```
+
+## Semantic HTML
+
+Use proper HTML elements and landmarks:
+
+```tsx
+export default function Layout() {
+  return (
+    <div>
+      <header>
+        <nav aria-label="Main navigation">
+          <ul>
+            <li><Link to="/">Home</Link></li>
+            <li><Link to="/products">Products</Link></li>
+            <li><Link to="/about">About</Link></li>
+          </ul>
+        </nav>
+      </header>
+
+      <main>
+        <Outlet />
+      </main>
+
+      <aside aria-label="Sidebar">
+        {/* Sidebar content */}
+      </aside>
+
+      <footer>
+        <nav aria-label="Footer navigation">
+          {/* Footer links */}
+        </nav>
+      </footer>
+    </div>
+  );
+}
+```
+
+## Form Accessibility
+
+Create accessible forms with proper labels and error handling:
+
+```tsx
+import { Form, useActionData } from "react-router";
+import type { Route } from "./+types/contact";
+
+export default function Contact({ actionData }: Route.ComponentProps) {
+  const errors = actionData?.errors;
+
+  return (
+    <Form method="post" aria-label="Contact form">
+      <div>
+        <label htmlFor="name">Name</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          required
+          aria-invalid={errors?.name ? "true" : "false"}
+          aria-describedby={errors?.name ? "name-error" : undefined}
+        />
+        {errors?.name && (
+          <p id="name-error" className="error" role="alert">
+            {errors.name}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="email">Email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          required
+          aria-invalid={errors?.email ? "true" : "false"}
+          aria-describedby={errors?.email ? "email-error" : undefined}
+        />
+        {errors?.email && (
+          <p id="email-error" className="error" role="alert">
+            {errors.email}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="message">Message</label>
+        <textarea
+          id="message"
+          name="message"
+          required
+          aria-invalid={errors?.message ? "true" : "false"}
+          aria-describedby={errors?.message ? "message-error" : undefined}
+        />
+        {errors?.message && (
+          <p id="message-error" className="error" role="alert">
+            {errors.message}
+          </p>
+        )}
+      </div>
+
+      <button type="submit">Send Message</button>
+    </Form>
+  );
+}
+```
+
+## Loading States
+
+Announce loading states to screen readers:
+
+```tsx
+import { useNavigation } from "react-router";
+
+export default function ProductList({ loaderData }: Route.ComponentProps) {
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "loading";
+
+  return (
+    <div>
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {isLoading ? "Loading products..." : "Products loaded"}
+      </div>
+
+      {isLoading ? (
+        <div aria-busy="true">
+          <p>Loading...</p>
+          <div className="spinner" aria-hidden="true" />
+        </div>
+      ) : (
+        <ul aria-label="Product list">
+          {loaderData.products.map((product) => (
+            <li key={product.id}>
+              <ProductCard product={product} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+## Live Regions
+
+Create announcements for dynamic updates:
+
+```tsx
+import { useState, useEffect } from "react";
+
+export function LiveRegion({ message }: { message: string }) {
+  const [announcement, setAnnouncement] = useState("");
+
+  useEffect(() => {
+    if (message) {
+      setAnnouncement(message);
+      const timer = setTimeout(() => setAnnouncement(""), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="sr-only"
+    >
+      {announcement}
+    </div>
+  );
+}
+
+// Usage
+export default function Cart({ actionData }: Route.ComponentProps) {
+  return (
+    <div>
+      <LiveRegion message={actionData?.message} />
+      {/* Cart UI */}
+    </div>
+  );
+}
+```
+
+## Keyboard Navigation
+
+Ensure all interactive elements are keyboard accessible:
+
+```tsx
+import { useState } from "react";
+
+export function Dropdown() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  function handleKeyDown(event: React.KeyboardEvent) {
+    if (event.key === "Escape") {
+      setIsOpen(false);
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      setIsOpen(!isOpen);
+    }
+  }
+
+  return (
+    <div className="dropdown">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        onKeyDown={handleKeyDown}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+      >
+        Menu
+      </button>
+
+      {isOpen && (
+        <ul role="menu">
+          <li role="menuitem">
+            <Link to="/profile">Profile</Link>
+          </li>
+          <li role="menuitem">
+            <Link to="/settings">Settings</Link>
+          </li>
+          <li role="menuitem">
+            <button onClick={handleLogout}>Logout</button>
+          </li>
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+## Modal Dialogs
+
+Create accessible modal dialogs:
+
+```tsx
+import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router";
+
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}
+
+export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Focus close button when modal opens
+      closeButtonRef.current?.focus();
+
+      // Trap focus within modal
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          onClose();
+        }
+      };
+
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <div className="modal-content">
+        <div className="modal-header">
+          <h2 id="modal-title">{title}</h2>
+          <button
+            ref={closeButtonRef}
+            onClick={onClose}
+            aria-label="Close dialog"
+          >
+            ×
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+```
+
+## Breadcrumbs
+
+Implement accessible breadcrumb navigation:
+
+```tsx
+import { useMatches, Link } from "react-router";
+
+export function Breadcrumbs() {
+  const matches = useMatches();
+
+  const breadcrumbs = matches
+    .filter((match) => match.handle?.breadcrumb)
+    .map((match) => ({
+      label: match.handle.breadcrumb,
+      path: match.pathname,
+    }));
+
+  return (
+    <nav aria-label="Breadcrumb">
+      <ol>
+        {breadcrumbs.map((crumb, index) => {
+          const isLast = index === breadcrumbs.length - 1;
+
+          return (
+            <li key={crumb.path}>
+              {isLast ? (
+                <span aria-current="page">{crumb.label}</span>
+              ) : (
+                <Link to={crumb.path}>{crumb.label}</Link>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+```
+
+## Error Messages
+
+Provide accessible error boundaries:
+
+```tsx
+import { isRouteErrorResponse, useRouteError } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  let title = "Error";
+  let message = "An unexpected error occurred";
+
+  if (isRouteErrorResponse(error)) {
+    title = `${error.status} ${error.statusText}`;
+    message = error.data?.message || error.statusText;
+  } else if (error instanceof Error) {
+    message = error.message;
+  }
+
+  return (
+    <div role="alert" aria-live="assertive">
+      <h1>{title}</h1>
+      <p>{message}</p>
+      <nav aria-label="Error recovery">
+        <Link to="/">Go to Home</Link>
+      </nav>
+    </div>
+  );
+}
+```
+
+## Color Contrast
+
+Ensure sufficient color contrast:
+
+```css
+/* Good contrast ratios (WCAG AA minimum 4.5:1 for normal text) */
+.button {
+  background: #0066cc;
+  color: #ffffff;
+}
+
+.error {
+  color: #c41e3a; /* Sufficient contrast on white background */
+}
+
+.success {
+  color: #2d7a2d;
+}
+
+/* Focus indicators */
+:focus-visible {
+  outline: 2px solid #0066cc;
+  outline-offset: 2px;
+}
+```
+
+## Screen Reader Only Content
+
+Add helpful text for screen readers:
+
+```css
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+```
+
+```tsx
+export function ProductCard({ product }) {
+  return (
+    <article>
+      <img src={product.image} alt={product.name} />
+      <h3>{product.name}</h3>
+      <p className="price">
+        <span className="sr-only">Price: </span>
+        ${product.price}
+      </p>
+      <Link to={`/products/${product.id}`}>
+        View Details
+        <span className="sr-only"> for {product.name}</span>
+      </Link>
+    </article>
+  );
+}
+```
+
+## Best Practices
+
+1. **Use semantic HTML** - Proper elements convey meaning to assistive tech
+2. **Provide text alternatives** - Alt text for images, labels for inputs
+3. **Ensure keyboard navigation** - All functionality available via keyboard
+4. **Manage focus properly** - Move focus logically through the page
+5. **Use ARIA appropriately** - Only when semantic HTML isn't enough
+6. **Test with assistive tech** - Use screen readers to test your app
+7. **Maintain color contrast** - Ensure text is readable for all users
+8. **Provide skip links** - Help keyboard users navigate efficiently
+9. **Announce dynamic changes** - Use live regions for updates
+10. **Make forms accessible** - Labels, error messages, and validation feedback

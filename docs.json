@@ -1,122 +1,249 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "React Router",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#CA2C31",
+    "light": "#E94C50",
+    "dark": "#A01E22"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/remix-run/react-router"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/remix-run/react-router"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Overview",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Getting Started",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "getting-started/picking-a-mode",
+              "getting-started/framework-mode",
+              "getting-started/data-mode",
+              "getting-started/declarative-mode"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "concepts/routing",
+              "concepts/loaders-and-actions",
+              "concepts/navigation",
+              "concepts/route-modules",
+              "concepts/data-fetching",
+              "concepts/form-handling",
+              "concepts/error-boundaries"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Routing",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "routing/route-configuration",
+              "routing/nested-routes",
+              "routing/dynamic-segments",
+              "routing/index-routes",
+              "routing/layout-routes",
+              "routing/file-conventions"
+            ]
+          },
+          {
+            "group": "Data Loading",
+            "pages": [
+              "data/loaders",
+              "data/actions",
+              "data/fetchers",
+              "data/revalidation",
+              "data/optimistic-ui",
+              "data/client-data",
+              "data/resource-routes"
+            ]
+          },
+          {
+            "group": "Framework Features",
+            "pages": [
+              "framework/vite-plugin",
+              "framework/server-rendering",
+              "framework/type-generation",
+              "framework/middleware",
+              "framework/presets",
+              "framework/server-bundles"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/form-validation",
+              "guides/file-uploads",
+              "guides/meta-tags",
+              "guides/headers-and-cookies",
+              "guides/sessions",
+              "guides/error-handling",
+              "guides/navigation-blocking",
+              "guides/search-params",
+              "guides/accessibility",
+              "guides/view-transitions",
+              "guides/suspense",
+              "guides/spa-mode",
+              "guides/pre-rendering"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/data-strategy",
+              "advanced/lazy-route-discovery",
+              "advanced/code-splitting",
+              "advanced/hydration",
+              "advanced/progressive-enhancement",
+              "advanced/concurrency",
+              "advanced/race-conditions",
+              "advanced/hmr",
+              "advanced/instrumentation",
+              "advanced/react-server-components"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/node",
+              "deployment/cloudflare",
+              "deployment/express",
+              "deployment/custom-server"
+            ]
+          },
+          {
+            "group": "Migration",
+            "pages": [
+              "migration/from-v6",
+              "migration/from-remix"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Components",
             "pages": [
-              "api-reference/introduction"
+              "api/components/router-provider",
+              "api/components/browser-router",
+              "api/components/memory-router",
+              "api/components/routes",
+              "api/components/route",
+              "api/components/outlet",
+              "api/components/link",
+              "api/components/nav-link",
+              "api/components/form",
+              "api/components/navigate",
+              "api/components/scroll-restoration",
+              "api/components/await"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Hooks",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/hooks/use-navigate",
+              "api/hooks/use-location",
+              "api/hooks/use-params",
+              "api/hooks/use-search-params",
+              "api/hooks/use-loader-data",
+              "api/hooks/use-action-data",
+              "api/hooks/use-route-loader-data",
+              "api/hooks/use-fetcher",
+              "api/hooks/use-fetchers",
+              "api/hooks/use-navigation",
+              "api/hooks/use-submit",
+              "api/hooks/use-revalidator",
+              "api/hooks/use-matches",
+              "api/hooks/use-route-error",
+              "api/hooks/use-blocker",
+              "api/hooks/use-href",
+              "api/hooks/use-outlet",
+              "api/hooks/use-routes"
+            ]
+          },
+          {
+            "group": "Routers",
+            "pages": [
+              "api/routers/create-browser-router",
+              "api/routers/create-memory-router",
+              "api/routers/create-hash-router"
+            ]
+          },
+          {
+            "group": "Route Module",
+            "pages": [
+              "api/route-module/loader",
+              "api/route-module/action",
+              "api/route-module/default",
+              "api/route-module/error-boundary",
+              "api/route-module/headers",
+              "api/route-module/links",
+              "api/route-module/meta",
+              "api/route-module/should-revalidate",
+              "api/route-module/handle",
+              "api/route-module/client-loader",
+              "api/route-module/client-action"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utils/redirect",
+              "api/utils/json",
+              "api/utils/data",
+              "api/utils/defer",
+              "api/utils/is-route-error-response",
+              "api/utils/match-routes",
+              "api/utils/match-path",
+              "api/utils/resolve-path",
+              "api/utils/generate-path"
+            ]
+          },
+          {
+            "group": "Server APIs",
+            "pages": [
+              "api/server/create-request-handler",
+              "api/server/create-cookie",
+              "api/server/create-session-storage",
+              "api/server/create-cookie-session-storage",
+              "api/server/create-memory-session-storage"
+            ]
+          },
+          {
+            "group": "Vite Plugin",
+            "pages": [
+              "api/vite/react-router",
+              "api/vite/cloudflare"
+            ]
+          },
+          {
+            "group": "Config",
+            "pages": [
+              "api/config/routes-config",
+              "api/config/react-router-config"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

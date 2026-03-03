@@ -1,0 +1,317 @@
+---
+title: action
+---
+
+# action
+
+A server-side function that handles data mutations (form submissions, API calls) for a route.
+
+## Signature
+
+```tsx
+export function action(args: ActionFunctionArgs): Promise<Response | Data> | Response | Data
+```
+
+<ParamField path="args" type="ActionFunctionArgs" required>
+  Arguments passed to the action function
+
+  <Expandable title="properties">
+    <ParamField path="request" type="Request" required>
+      A Fetch Request instance containing the form submission or request data
+    </ParamField>
+
+    <ParamField path="params" type="Params" required>
+      Dynamic route params for the current route
+
+      ```tsx
+      // For route: /posts/:postId/edit
+      params.postId // string
+      ```
+    </ParamField>
+
+    <ParamField path="context" type="Context">
+      The context from your server adapter's `getLoadContext()` function
+    </ParamField>
+
+    <ParamField path="unstable_pattern" type="string">
+      The un-interpolated route pattern (e.g., `/posts/:postId/edit`)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Response | Data">
+  Can return:
+  - A Response object (redirect, json, etc.)
+  - Plain data (accessible via `useActionData()`)
+  - A Promise resolving to either
+</ResponseField>
+
+## Basic Example
+
+```tsx
+// app/routes/projects.new.tsx
+import { Form, redirect, useActionData } from "react-router";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const project = await createProject({
+    name: formData.get("name"),
+    description: formData.get("description")
+  });
+
+  return redirect(`/projects/${project.id}`);
+}
+
+export default function NewProject() {
+  return (
+    <Form method="post">
+      <input name="name" required />
+      <textarea name="description" />
+      <button type="submit">Create Project</button>
+    </Form>
+  );
+}
+```
+
+## Handling Form Data
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  
+  // Get individual fields
+  const title = formData.get("title");
+  const published = formData.get("published") === "on";
+  
+  // Get all values for a multi-select
+  const tags = formData.getAll("tags");
+  
+  // Convert to object
+  const data = Object.fromEntries(formData);
+  
+  await updatePost(data);
+  return { success: true };
+}
+```
+
+## Validation and Error Handling
+
+```tsx
+import { useActionData } from "react-router";
+
+type ActionData = {
+  errors?: {
+    email?: string;
+    password?: string;
+  };
+};
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  const password = formData.get("password");
+
+  const errors: ActionData["errors"] = {};
+  
+  if (!email?.includes("@")) {
+    errors.email = "Invalid email address";
+  }
+  
+  if (!password || password.length < 8) {
+    errors.password = "Password must be at least 8 characters";
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+
+  await createUser({ email, password });
+  return redirect("/dashboard");
+}
+
+export default function Signup() {
+  const actionData = useActionData<typeof action>();
+
+  return (
+    <Form method="post">
+      <div>
+        <input name="email" type="email" />
+        {actionData?.errors?.email && (
+          <span className="error">{actionData.errors.email}</span>
+        )}
+      </div>
+      <div>
+        <input name="password" type="password" />
+        {actionData?.errors?.password && (
+          <span className="error">{actionData.errors.password}</span>
+        )}
+      </div>
+      <button type="submit">Sign Up</button>
+    </Form>
+  );
+}
+```
+
+## JSON Submissions
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const data = await request.json();
+  
+  const result = await updateSettings(data);
+  
+  return Response.json({ result }, { status: 200 });
+}
+
+// From the client
+fetch("/settings", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ theme: "dark" })
+});
+```
+
+## Multiple Actions with Intent
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  switch (intent) {
+    case "delete": {
+      const id = formData.get("id");
+      await deletePost(id);
+      return { deleted: id };
+    }
+    case "publish": {
+      const id = formData.get("id");
+      await publishPost(id);
+      return { published: id };
+    }
+    default: {
+      throw new Error(`Unknown intent: ${intent}`);
+    }
+  }
+}
+
+export default function Post() {
+  return (
+    <>
+      <Form method="post">
+        <input type="hidden" name="intent" value="publish" />
+        <input type="hidden" name="id" value={post.id} />
+        <button type="submit">Publish</button>
+      </Form>
+      
+      <Form method="post">
+        <input type="hidden" name="intent" value="delete" />
+        <input type="hidden" name="id" value={post.id} />
+        <button type="submit">Delete</button>
+      </Form>
+    </>
+  );
+}
+```
+
+## File Uploads
+
+```tsx
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const file = formData.get("avatar") as File;
+
+  if (!file || file.size === 0) {
+    return { error: "Please select a file" };
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return { error: "File must be an image" };
+  }
+
+  const buffer = await file.arrayBuffer();
+  const url = await uploadToStorage(buffer, file.type);
+
+  await updateUserAvatar(url);
+  return { success: true };
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always revalidate after mutations">
+    By default, loaders are automatically revalidated after actions. This ensures your UI stays in sync:
+
+    ```tsx
+    export async function loader({ params }: Route.LoaderArgs) {
+      return { post: await getPost(params.id) };
+    }
+
+    export async function action({ params, request }: Route.ActionArgs) {
+      const formData = await request.formData();
+      await updatePost(params.id, Object.fromEntries(formData));
+      
+      // Loader automatically revalidates, UI updates
+      return { success: true };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Return data for optimistic UI">
+    Return data instead of redirecting to enable optimistic updates:
+
+    ```tsx
+    export async function action({ request }: Route.ActionArgs) {
+      const formData = await request.formData();
+      const comment = await createComment(Object.fromEntries(formData));
+      
+      // Return data so UI can update immediately
+      return { comment };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use redirect after successful mutations">
+    For create/delete operations, redirect to the appropriate page:
+
+    ```tsx
+    import { redirect } from "react-router";
+
+    export async function action({ request }: Route.ActionArgs) {
+      const formData = await request.formData();
+      const post = await createPost(Object.fromEntries(formData));
+      
+      // Redirect to the new post
+      return redirect(`/posts/${post.id}`);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle errors appropriately">
+    Throw responses for error boundaries or return errors for inline display:
+
+    ```tsx
+    export async function action({ request }: Route.ActionArgs) {
+      try {
+        const formData = await request.formData();
+        await processPayment(formData);
+        return redirect("/success");
+      } catch (error) {
+        if (error.code === "CARD_DECLINED") {
+          // Return error for inline display
+          return { error: "Card was declined" };
+        }
+        // Throw for error boundary
+        throw error;
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [clientAction](/api/route-module/client-action) - Client-side mutations
+- [useActionData](/api/hooks/use-action-data) - Access action data in components
+- [Form](/api/components/form) - Form component for submissions

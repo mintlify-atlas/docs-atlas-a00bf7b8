@@ -1,0 +1,372 @@
+---
+title: useRevalidator
+---
+
+# useRevalidator
+
+Revalidate the data on the page for reasons outside of normal data mutations like window focus or polling on an interval.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+<Note>
+  Page data is already revalidated automatically after actions. If you find yourself using this for normal CRUD operations, you're probably not taking advantage of [`Form`](/api/components/form), [`useFetcher`](/api/hooks/use-fetcher), or [`useSubmit`](/api/hooks/use-submit) that do this automatically.
+</Note>
+
+## Signature
+
+```tsx
+function useRevalidator(): {
+  revalidate: () => Promise<void>;
+  state: "idle" | "loading";
+}
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="revalidator" type="object">
+  An object with the following properties:
+  
+  <Expandable title="properties">
+    <ResponseField name="revalidate" type="() => Promise<void>">
+      A function to trigger revalidation of all route loaders.
+    </ResponseField>
+    
+    <ResponseField name="state" type="'idle' | 'loading'">
+      The current revalidation state:
+      - `"idle"` - No revalidation is in progress
+      - `"loading"` - Route loaders are being called
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Revalidate on window focus
+
+```tsx
+import { useRevalidator } from "react-router";
+import { useEffect } from "react";
+
+export default function Component() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const onFocus = () => revalidator.revalidate();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [revalidator]);
+  
+  return (
+    <div>
+      {revalidator.state === "loading" && <p>Refreshing...</p>}
+      {/* Your content */}
+    </div>
+  );
+}
+```
+
+### Revalidate on interval
+
+```tsx
+function LiveData() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      revalidator.revalidate();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [revalidator]);
+  
+  return (
+    <div>
+      {revalidator.state === "loading" && "Updating..."}
+      {/* Display data */}
+    </div>
+  );
+}
+```
+
+### Manual refresh button
+
+```tsx
+function RefreshButton() {
+  const revalidator = useRevalidator();
+  
+  return (
+    <button
+      onClick={() => revalidator.revalidate()}
+      disabled={revalidator.state === "loading"}
+    >
+      {revalidator.state === "loading" ? "Refreshing..." : "Refresh"}
+    </button>
+  );
+}
+```
+
+### Revalidate on visibility change
+
+```tsx
+function Component() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        revalidator.revalidate();
+      }
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [revalidator]);
+  
+  return <div>...</div>;
+}
+```
+
+### Revalidate on network status
+
+```tsx
+function Component() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const handleOnline = () => revalidator.revalidate();
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [revalidator]);
+  
+  return <div>...</div>;
+}
+```
+
+## Common Patterns
+
+### Window focus revalidation utility
+
+```tsx
+function useRevalidateOnFocus() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const onFocus = () => {
+      if (revalidator.state === "idle") {
+        revalidator.revalidate();
+      }
+    };
+    
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [revalidator]);
+}
+
+// Use in components
+function Dashboard() {
+  useRevalidateOnFocus();
+  const data = useLoaderData();
+  return <div>{data.content}</div>;
+}
+```
+
+### Polling with cleanup
+
+```tsx
+function usePolling(interval: number) {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      revalidator.revalidate();
+    }, interval);
+    
+    return () => clearInterval(timer);
+  }, [revalidator, interval]);
+  
+  return revalidator;
+}
+
+function LiveFeed() {
+  const revalidator = usePolling(10000); // Poll every 10s
+  const data = useLoaderData();
+  
+  return (
+    <div>
+      {revalidator.state === "loading" && <Spinner />}
+      <Feed items={data.items} />
+    </div>
+  );
+}
+```
+
+### Smart revalidation
+
+```tsx
+function useSmartRevalidation() {
+  const revalidator = useRevalidator();
+  const [lastRevalidation, setLastRevalidation] = useState(Date.now());
+  
+  const smartRevalidate = useCallback(() => {
+    const now = Date.now();
+    // Only revalidate if 30 seconds have passed
+    if (now - lastRevalidation > 30000) {
+      revalidator.revalidate();
+      setLastRevalidation(now);
+    }
+  }, [revalidator, lastRevalidation]);
+  
+  return { revalidate: smartRevalidate, state: revalidator.state };
+}
+```
+
+### Revalidate with loading state
+
+```tsx
+function Component() {
+  const revalidator = useRevalidator();
+  const data = useLoaderData();
+  
+  return (
+    <div>
+      <button onClick={() => revalidator.revalidate()}>
+        Refresh
+      </button>
+      
+      <div
+        style={{
+          opacity: revalidator.state === "loading" ? 0.5 : 1,
+          transition: "opacity 200ms",
+        }}
+      >
+        {data.content}
+      </div>
+    </div>
+  );
+}
+```
+
+### Conditional revalidation
+
+```tsx
+function Component() {
+  const revalidator = useRevalidator();
+  const { hasUpdates } = useLoaderData();
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (hasUpdates) {
+        revalidator.revalidate();
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [revalidator, hasUpdates]);
+  
+  return <div>...</div>;
+}
+```
+
+### Global revalidation component
+
+```tsx
+// In your root layout
+function RevalidationManager() {
+  const revalidator = useRevalidator();
+  
+  useEffect(() => {
+    // Revalidate on focus
+    const onFocus = () => revalidator.revalidate();
+    window.addEventListener("focus", onFocus);
+    
+    // Revalidate when coming back online
+    const onOnline = () => revalidator.revalidate();
+    window.addEventListener("online", onOnline);
+    
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [revalidator]);
+  
+  return null;
+}
+
+export default function Root() {
+  return (
+    <>
+      <RevalidationManager />
+      <Outlet />
+    </>
+  );
+}
+```
+
+### Revalidate after mutation
+
+```tsx
+function Component() {
+  const revalidator = useRevalidator();
+  const [hasMutated, setHasMutated] = useState(false);
+  
+  const performAction = async () => {
+    await someApiCall();
+    setHasMutated(true);
+  };
+  
+  useEffect(() => {
+    if (hasMutated) {
+      revalidator.revalidate();
+      setHasMutated(false);
+    }
+  }, [hasMutated, revalidator]);
+  
+  return <button onClick={performAction}>Do Action</button>;
+}
+```
+
+<Note>
+  If you're revalidating after a mutation, consider using [`Form`](/api/components/form), [`useFetcher`](/api/hooks/use-fetcher), or [`useSubmit`](/api/hooks/use-submit) instead, which handle revalidation automatically.
+</Note>
+
+## Important Notes
+
+### Automatic revalidation
+
+React Router automatically revalidates data in these cases:
+- After an `action` is called from a `<Form>`, `useFetcher`, or `useSubmit`
+- When URL params change
+- When search params change for routes with `shouldRevalidate` returning `true`
+
+### When to use
+
+Use `useRevalidator` for:
+- Window focus revalidation
+- Polling/interval updates
+- WebSocket message handlers
+- Manual refresh buttons
+- Network status changes
+
+Don't use for:
+- Normal form submissions (use `<Form>` instead)
+- CRUD operations (use `useFetcher` or `useSubmit`)
+- Navigation (data loads automatically)
+
+### Performance
+
+Revalidation calls all active route loaders. For partial updates, consider using `useFetcher` to load specific routes.
+
+## Related
+
+- [`loader`](/start/framework/route-module#loader) - Define route loader
+- [`shouldRevalidate`](/start/framework/route-module#shouldrevalidate) - Control automatic revalidation
+- [`useFetcher`](/api/hooks/use-fetcher) - Load data without navigation
+- [`useNavigation`](/api/hooks/use-navigation) - Track navigation state

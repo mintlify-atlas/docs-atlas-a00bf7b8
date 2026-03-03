@@ -1,0 +1,241 @@
+---
+title: NavLink
+---
+
+Wraps `<Link>` with additional props for styling active and pending states.
+
+```tsx
+import { NavLink } from "react-router";
+
+<NavLink to="/messages">Messages</NavLink>
+```
+
+## Type Declaration
+
+```tsx
+export interface NavLinkProps
+  extends Omit<LinkProps, "className" | "style" | "children"> {
+  children?: React.ReactNode | ((props: NavLinkRenderProps) => React.ReactNode);
+  caseSensitive?: boolean;
+  className?: string | ((props: NavLinkRenderProps) => string | undefined);
+  end?: boolean;
+  style?:
+    | React.CSSProperties
+    | ((props: NavLinkRenderProps) => React.CSSProperties | undefined);
+}
+
+export interface NavLinkRenderProps {
+  isActive: boolean;
+  isPending: boolean;
+  isTransitioning: boolean;
+}
+
+export const NavLink: React.ForwardRefExoticComponent<
+  NavLinkProps & React.RefAttributes<HTMLAnchorElement>
+>;
+```
+
+## Props
+
+Inherits all props from [`<Link>`](./link), with the following differences:
+
+<ParamField path="className" type="string | ((props: NavLinkRenderProps) => string)">
+  Classes are automatically applied to NavLink that correspond to the state:
+
+  ```css
+  a.active { color: red; }
+  a.pending { color: blue; }
+  a.transitioning { view-transition-name: my-transition; }
+  ```
+
+  Or specify a function that receives render props:
+
+  ```tsx
+  <NavLink
+    to="/messages"
+    className={({ isActive, isPending }) =>
+      isPending ? "pending" : isActive ? "active" : ""
+    }
+  />
+  ```
+</ParamField>
+
+<ParamField path="style" type="React.CSSProperties | ((props: NavLinkRenderProps) => React.CSSProperties)">
+  Styles can be applied statically or dynamically via a function:
+
+  ```tsx
+  <NavLink to="/messages" style={{ color: "red" }} />
+
+  <NavLink
+    to="/messages"
+    style={({ isActive, isPending }) => ({
+      color: isActive ? "red" : isPending ? "blue" : "black",
+    })}
+  />
+  ```
+</ParamField>
+
+<ParamField path="children" type="React.ReactNode | ((props: NavLinkRenderProps) => React.ReactNode)">
+  Can be regular React children or a function that receives render props:
+
+  ```tsx
+  <NavLink to="/messages">
+    {({ isActive }) => (
+      <span className={isActive ? "active" : ""}>Messages</span>
+    )}
+  </NavLink>
+  ```
+</ParamField>
+
+<ParamField path="end" type="boolean">
+  Changes the matching logic for the active and pending states to only match to the "end" of the to path.
+
+  | Link                           | URL          | isActive |
+  | ------------------------------ | ------------ | -------- |
+  | `<NavLink to="/tasks" />`      | `/tasks`     | true     |
+  | `<NavLink to="/tasks" />`      | `/tasks/123` | true     |
+  | `<NavLink to="/tasks" end />`  | `/tasks`     | true     |
+  | `<NavLink to="/tasks" end />`  | `/tasks/123` | false    |
+
+  `<NavLink to="/" />` is an exceptional case because every URL matches `/`. To avoid this matching every single route by default, it effectively ignores the `end` prop and only matches when you're at the root route.
+</ParamField>
+
+<ParamField path="caseSensitive" type="boolean">
+  Changes the matching logic to make it case-sensitive:
+
+  | Link                                          | URL           | isActive |
+  | --------------------------------------------- | ------------- | -------- |
+  | `<NavLink to="/SpOnGe-bOB" />`                | `/sponge-bob` | true     |
+  | `<NavLink to="/SpOnGe-bOB" caseSensitive />`  | `/sponge-bob` | false    |
+</ParamField>
+
+## Examples
+
+### Basic Active Styling
+
+```tsx
+// CSS
+.nav a {
+  color: black;
+}
+
+.nav a.active {
+  color: red;
+}
+
+// Component
+function Nav() {
+  return (
+    <nav className="nav">
+      <NavLink to="/">Home</NavLink>
+      <NavLink to="/messages">Messages</NavLink>
+      <NavLink to="/tasks">Tasks</NavLink>
+    </nav>
+  );
+}
+```
+
+### With className Function
+
+```tsx
+<NavLink
+  to="/messages"
+  className={({ isActive, isPending, isTransitioning }) => {
+    return [
+      isPending ? "pending" : "",
+      isActive ? "active" : "",
+      isTransitioning ? "transitioning" : "",
+    ].join(" ");
+  }}
+>
+  Messages
+</NavLink>
+```
+
+### With style Function
+
+```tsx
+<NavLink
+  to="/messages"
+  style={({ isActive, isPending }) => ({
+    fontWeight: isActive ? "bold" : "",
+    color: isPending ? "red" : "black",
+  })}
+>
+  Messages
+</NavLink>
+```
+
+### With children Function
+
+```tsx
+<NavLink to="/tasks">
+  {({ isActive, isPending }) => (
+    <span className={isActive ? "active" : ""}>
+      Tasks
+      {isPending && " (loading...)"}
+    </span>
+  )}
+</NavLink>
+```
+
+### Vertical Navigation
+
+```tsx
+function Sidebar() {
+  return (
+    <nav>
+      <NavLink to="dashboard" end>
+        <DashboardIcon />
+        Dashboard
+      </NavLink>
+      <NavLink to="dashboard/settings">
+        <SettingsIcon />
+        Settings
+      </NavLink>
+      <NavLink to="dashboard/profile">
+        <ProfileIcon />
+        Profile
+      </NavLink>
+    </nav>
+  );
+}
+```
+
+### Breadcrumbs
+
+```tsx
+function Breadcrumbs() {
+  const matches = useMatches();
+
+  return (
+    <ol>
+      {matches.map((match, index) => (
+        <li key={index}>
+          <NavLink to={match.pathname} end>
+            {({ isActive }) => (
+              <span className={isActive ? "font-bold" : ""}>
+                {match.handle?.crumb?.(match.data) || match.pathname}
+              </span>
+            )}
+          </NavLink>
+        </li>
+      ))}
+    </ol>
+  );
+}
+```
+
+## Behavior
+
+- Automatically applies `aria-current="page"` to the link when it's active
+- The `isActive` state indicates if the link's URL matches the current location
+- The `isPending` state is only available in Framework and Data modes and indicates if the pending location matches the link's URL
+- The `isTransitioning` state indicates if a view transition to the link's URL is in progress
+- Default class names (`active`, `pending`, `transitioning`) are applied automatically
+
+## Notes
+
+- `isPending` is only available when using a data router (Framework or Data mode)
+- Root links (`to="/"`) always use `end` behavior to avoid matching every route
+- Inherits all other props from `<Link>` including `prefetch`, `replace`, `state`, etc.

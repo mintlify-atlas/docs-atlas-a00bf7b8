@@ -1,0 +1,413 @@
+---
+title: useFetchers
+---
+
+# useFetchers
+
+Returns an array of all in-flight fetchers. This is useful for components throughout the app that didn't create the fetchers but want to use their submissions to participate in optimistic UI.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useFetchers(): (Fetcher & { key: string })[]
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="fetchers" type="Array<Fetcher & { key: string }>">
+  An array of all in-flight fetchers, each with a unique `key` property and the following fields:
+  
+  <Expandable title="properties">
+    <ResponseField name="key" type="string">
+      A unique identifier for the fetcher.
+    </ResponseField>
+    
+    <ResponseField name="state" type="'idle' | 'loading' | 'submitting'">
+      The current state of the fetcher.
+    </ResponseField>
+    
+    <ResponseField name="data" type="any">
+      The data returned from the loader or action.
+    </ResponseField>
+    
+    <ResponseField name="formData" type="FormData">
+      The `FormData` being submitted (available during `submitting` state).
+    </ResponseField>
+    
+    <ResponseField name="formAction" type="string">
+      The URL being submitted to.
+    </ResponseField>
+    
+    <ResponseField name="formMethod" type="'get' | 'post' | 'put' | 'patch' | 'delete'">
+      The HTTP method being used.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Global loading indicator
+
+```tsx
+import { useFetchers } from "react-router";
+
+function GlobalLoadingIndicator() {
+  const fetchers = useFetchers();
+  const isLoading = fetchers.some(
+    (fetcher) => fetcher.state !== "idle"
+  );
+  
+  if (!isLoading) return null;
+  
+  return (
+    <div className="global-spinner">
+      <Spinner />
+    </div>
+  );
+}
+```
+
+### Optimistic UI across components
+
+```tsx
+// Component A - adds items
+function AddToCart({ productId }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form method="post" action="/cart/add">
+      <input type="hidden" name="productId" value={productId} />
+      <button type="submit">Add to Cart</button>
+    </fetcher.Form>
+  );
+}
+
+// Component B - shows cart count
+function CartBadge() {
+  const fetchers = useFetchers();
+  const { cart } = useLoaderData();
+  
+  // Count items being added
+  const addingToCart = fetchers.filter(
+    (f) =>
+      f.formAction === "/cart/add" &&
+      f.state === "submitting"
+  ).length;
+  
+  const totalItems = cart.items.length + addingToCart;
+  
+  return <span className="badge">{totalItems}</span>;
+}
+```
+
+### Track pending deletions
+
+```tsx
+function TodoList({ todos }) {
+  const fetchers = useFetchers();
+  
+  // Get IDs of todos being deleted
+  const deletingIds = fetchers
+    .filter((f) => f.formData?.get("intent") === "delete")
+    .map((f) => f.formData?.get("id"));
+  
+  return (
+    <ul>
+      {todos.map((todo) => {
+        const isDeleting = deletingIds.includes(todo.id);
+        
+        return (
+          <li
+            key={todo.id}
+            style={{ opacity: isDeleting ? 0.5 : 1 }}
+          >
+            {todo.title}
+            {isDeleting && " (deleting...)"}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+```
+
+### Show pending form submissions
+
+```tsx
+function PendingMessages() {
+  const fetchers = useFetchers();
+  
+  const pendingMessages = fetchers
+    .filter(
+      (f) =>
+        f.formAction === "/messages" &&
+        f.formData != null
+    )
+    .map((f) => ({
+      id: f.key,
+      text: f.formData.get("message"),
+      pending: true,
+    }));
+  
+  if (pendingMessages.length === 0) return null;
+  
+  return (
+    <div className="pending-messages">
+      <h3>Sending...</h3>
+      <ul>
+        {pendingMessages.map((msg) => (
+          <li key={msg.id} className="pending">
+            {msg.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+### Count active requests
+
+```tsx
+function RequestCounter() {
+  const fetchers = useFetchers();
+  
+  const activeCount = fetchers.filter(
+    (f) => f.state === "loading" || f.state === "submitting"
+  ).length;
+  
+  if (activeCount === 0) return null;
+  
+  return <div>{activeCount} active requests</div>;
+}
+```
+
+## Common Patterns
+
+### Optimistic shopping cart
+
+```tsx
+function ShoppingCart() {
+  const { cart } = useLoaderData();
+  const fetchers = useFetchers();
+  
+  // Combine real items with optimistic additions
+  const itemsBeingAdded = fetchers
+    .filter((f) => f.formAction?.includes("/cart/add"))
+    .map((f) => ({
+      id: `temp-${f.key}`,
+      productId: f.formData?.get("productId"),
+      pending: true,
+    }));
+  
+  const allItems = [...cart.items, ...itemsBeingAdded];
+  
+  return (
+    <div>
+      <h2>Cart ({allItems.length})</h2>
+      <ul>
+        {allItems.map((item) => (
+          <li key={item.id}>
+            Product {item.productId}
+            {item.pending && " (adding...)"}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+### Show all form errors
+
+```tsx
+function GlobalErrors() {
+  const fetchers = useFetchers();
+  
+  const errors = fetchers
+    .filter((f) => f.data?.error)
+    .map((f) => ({
+      key: f.key,
+      error: f.data.error,
+    }));
+  
+  if (errors.length === 0) return null;
+  
+  return (
+    <div className="error-banner">
+      {errors.map(({ key, error }) => (
+        <div key={key} className="error">
+          {error}
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Disable button during any submission
+
+```tsx
+function SubmitButton() {
+  const fetchers = useFetchers();
+  const isSubmitting = fetchers.some(
+    (f) => f.state === "submitting"
+  );
+  
+  return (
+    <button disabled={isSubmitting}>
+      {isSubmitting ? "Saving..." : "Save All"}
+    </button>
+  );
+}
+```
+
+### Track upload progress
+
+```tsx
+function UploadManager() {
+  const fetchers = useFetchers();
+  
+  const uploads = fetchers
+    .filter((f) => f.formAction === "/upload")
+    .map((f) => ({
+      key: f.key,
+      filename: f.formData?.get("file")?.name,
+      state: f.state,
+    }));
+  
+  if (uploads.length === 0) return null;
+  
+  return (
+    <div className="upload-manager">
+      <h3>Uploading {uploads.length} files</h3>
+      <ul>
+        {uploads.map((upload) => (
+          <li key={upload.key}>
+            {upload.filename} - {upload.state}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+### Optimistic list updates
+
+```tsx
+function TodoApp() {
+  const { todos } = useLoaderData();
+  const fetchers = useFetchers();
+  
+  // Get optimistic additions
+  const optimisticTodos = fetchers
+    .filter(
+      (f) =>
+        f.formAction === "/todos/new" &&
+        f.formData != null
+    )
+    .map((f) => ({
+      id: `temp-${f.key}`,
+      title: f.formData.get("title"),
+      pending: true,
+    }));
+  
+  // Get IDs being deleted
+  const deletingIds = fetchers
+    .filter((f) => f.formData?.get("intent") === "delete")
+    .map((f) => f.formData?.get("id"));
+  
+  // Combine real and optimistic, filter out deleting
+  const allTodos = [...todos, ...optimisticTodos]
+    .filter((todo) => !deletingIds.includes(todo.id))
+    .sort((a, b) => a.pending ? -1 : b.pending ? 1 : 0);
+  
+  return (
+    <ul>
+      {allTodos.map((todo) => (
+        <li key={todo.id}>
+          {todo.title}
+          {todo.pending && " (pending...)"}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Type Safety
+
+```tsx
+interface CartItem {
+  productId: string;
+  quantity: number;
+}
+
+function Component() {
+  const fetchers = useFetchers();
+  
+  // Filter and type fetchers
+  const cartFetchers = fetchers.filter(
+    (f): f is typeof f & { formData: FormData } =>
+      f.formAction === "/cart/add" && f.formData != null
+  );
+  
+  const addingItems = cartFetchers.map((f) => ({
+    productId: f.formData.get("productId") as string,
+    quantity: Number(f.formData.get("quantity")),
+  }));
+}
+```
+
+## Important Notes
+
+### Only in-flight fetchers
+
+`useFetchers` only returns fetchers that are currently active (not idle with no data). Once a fetcher completes and moves to idle state, it will still appear in the array if it has data.
+
+### Key uniqueness
+
+Each fetcher has a unique `key` that you can use to identify it:
+
+```tsx
+const fetchers = useFetchers();
+
+fetchers.forEach((fetcher) => {
+  console.log(fetcher.key);  // Unique identifier
+});
+```
+
+### Performance
+
+For large numbers of fetchers, consider memoizing filtered results:
+
+```tsx
+import { useMemo } from "react";
+import { useFetchers } from "react-router";
+
+function Component() {
+  const fetchers = useFetchers();
+  
+  const cartFetchers = useMemo(
+    () => fetchers.filter((f) => f.formAction === "/cart/add"),
+    [fetchers]
+  );
+  
+  // Use cartFetchers...
+}
+```
+
+## Related
+
+- [`useFetcher`](/api/hooks/use-fetcher) - Create individual fetchers
+- [`useNavigation`](/api/hooks/use-navigation) - Track navigation state
+- [`Form`](/api/components/form) - Form with navigation

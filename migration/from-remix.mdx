@@ -1,0 +1,495 @@
+---
+title: Migrating from Remix
+order: 2
+---
+
+# Migrating from Remix
+
+React Router v7 is the successor to Remix v2. This guide helps you migrate your Remix v2 application to React Router v7.
+
+## Prerequisites
+
+React Router v7 requires:
+
+- **Node.js**: v20 or higher
+- **React**: v18 or higher
+- **react-dom**: v18 or higher
+
+## Overview
+
+React Router v7 is essentially Remix v3. If you've enabled all Remix v2 future flags, upgrading mainly involves updating dependencies and configuration files.
+
+<docs-info>
+Most steps 2-8 can be automated using a [codemod](https://codemod.com/registry/remix-2-react-router-upgrade) created by community member [James Restall](https://github.com/jrestall).
+</docs-info>
+
+## Step 1: Adopt Remix v2 Future Flags
+
+Before upgrading, enable all [Remix v2 future flags](https://remix.run/docs/start/future-flags) in your Remix application:
+
+- `v3_fetcherPersist`
+- `v3_relativeSplatPath`
+- `v3_throwAbortReason`
+- `v3_singleFetch`
+- `v3_lazyRouteDiscovery`
+
+Test your application with these flags enabled before proceeding.
+
+## Step 2: Update Dependencies
+
+Most shared APIs from runtime-specific packages have been consolidated into `react-router`.
+
+### Automated Update (Recommended)
+
+Run the codemod to automatically update packages and imports:
+
+```bash
+npx codemod remix/2/react-router/upgrade
+```
+
+Then install the updated dependencies:
+
+```bash
+npm install
+```
+
+### Manual Update
+
+If you prefer manual migration:
+
+#### Package Name Changes
+
+| Remix v2 Package                   | React Router v7 Package                     |
+| ---------------------------------- | ------------------------------------------- |
+| `@remix-run/architect`             | `@react-router/architect`                   |
+| `@remix-run/cloudflare`            | `@react-router/cloudflare`                  |
+| `@remix-run/dev`                   | `@react-router/dev`                         |
+| `@remix-run/express`               | `@react-router/express`                     |
+| `@remix-run/fs-routes`             | `@react-router/fs-routes`                   |
+| `@remix-run/node`                  | `@react-router/node`                        |
+| `@remix-run/react`                 | `react-router`                              |
+| `@remix-run/route-config`          | `@react-router/dev`                         |
+| `@remix-run/routes-option-adapter` | `@react-router/remix-routes-option-adapter` |
+| `@remix-run/serve`                 | `@react-router/serve`                       |
+| `@remix-run/server-runtime`        | `react-router`                              |
+| `@remix-run/testing`               | `react-router`                              |
+
+#### Update Import Statements
+
+```diff
+-import { redirect } from "@remix-run/node";
++import { redirect } from "react-router";
+```
+
+Runtime-specific APIs remain in their respective packages:
+
+```js
+// Still import from runtime packages
+import { createFileSessionStorage } from "@react-router/node";
+import { createWorkersKVSessionStorage } from "@react-router/cloudflare";
+```
+
+## Step 3: Update Package Scripts
+
+<docs-info>
+Skip this step if you used the codemod.
+</docs-info>
+
+Update your `package.json` scripts:
+
+| Script      | Remix v2                            | React Router v7                            |
+| ----------- | ----------------------------------- | ------------------------------------------ |
+| `dev`       | `remix vite:dev`                    | `react-router dev`                         |
+| `build`     | `remix vite:build`                  | `react-router build`                       |
+| `start`     | `remix-serve build/server/index.js` | `react-router-serve build/server/index.js` |
+| `typecheck` | `tsc`                               | `react-router typegen && tsc`              |
+
+```diff
+{
+  "scripts": {
+-    "dev": "remix vite:dev",
+-    "build": "remix vite:build",
+-    "start": "remix-serve build/server/index.js",
+-    "typecheck": "tsc"
++    "dev": "react-router dev",
++    "build": "react-router build",
++    "start": "react-router-serve build/server/index.js",
++    "typecheck": "react-router typegen && tsc"
+  }
+}
+```
+
+## Step 4: Add `routes.ts` File
+
+<docs-info>
+Skip this step if you used the codemod AND had the Remix v2 `v3_routeConfig` flag enabled.
+</docs-info>
+
+React Router v7 uses a `app/routes.ts` file for route configuration.
+
+### If Using Remix v2 `v3_routeConfig` Flag
+
+Update dependencies in your existing `routes.ts`:
+
+```diff filename=app/routes.ts
+-import { type RouteConfig } from "@remix-run/route-config";
+-import { flatRoutes } from "@remix-run/fs-routes";
+-import { remixRoutesOptionAdapter } from "@remix-run/routes-option-adapter";
++import { type RouteConfig } from "@react-router/dev/routes";
++import { flatRoutes } from "@react-router/fs-routes";
++import { remixRoutesOptionAdapter } from "@react-router/remix-routes-option-adapter";
+
+export default [
+  // your routes
+] satisfies RouteConfig;
+```
+
+### If NOT Using Remix v2 `v3_routeConfig` Flag
+
+Create a new `app/routes.ts` file:
+
+```bash
+touch app/routes.ts
+```
+
+Choose the approach that matches your Remix v2 setup:
+
+#### Option 1: Flat Routes (Recommended)
+
+If you used the default "flat routes" convention:
+
+```ts filename=app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes() satisfies RouteConfig;
+```
+
+#### Option 2: Nested Routes (v1 Convention)
+
+If you used `@remix-run/v1-route-convention`:
+
+```ts filename=app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { remixRoutesOptionAdapter } from "@react-router/remix-routes-option-adapter";
+import { createRoutesFromFolders } from "@remix-run/v1-route-convention";
+
+export default remixRoutesOptionAdapter(
+  createRoutesFromFolders
+) satisfies RouteConfig;
+```
+
+#### Option 3: Config-Based Routes
+
+If you used the `routes` option in Vite config:
+
+```ts filename=app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { remixRoutesOptionAdapter } from "@react-router/remix-routes-option-adapter";
+
+export default remixRoutesOptionAdapter((defineRoutes) => {
+  return defineRoutes((route) => {
+    route("/", "home/route.tsx", { index: true });
+    route("about", "about/route.tsx");
+    route("", "concerts/layout.tsx", () => {
+      route("trending", "concerts/trending.tsx");
+      route(":city", "concerts/city.tsx");
+    });
+  });
+}) satisfies RouteConfig;
+```
+
+Remove the `routes` option from your `vite.config.ts`:
+
+```diff filename=vite.config.ts
+export default defineConfig({
+  plugins: [
+    remix({
+      ssr: true,
+-     ignoredRouteFiles: ['**/*'],
+-     routes(defineRoutes) {
+-       return defineRoutes((route) => {
+-         route("/somewhere/cool/*", "catchall.tsx");
+-       });
+-     },
+    })
+  ],
+});
+```
+
+## Step 5: Add React Router Config
+
+Create a `react-router.config.ts` file to replace the Vite plugin configuration:
+
+```bash
+touch react-router.config.ts
+```
+
+**Update `vite.config.ts`**:
+
+```diff filename=vite.config.ts
++import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig({
+  plugins: [
+-   remix({
+-     ssr: true,
+-     future: {/* all the v3 flags */}
+-   }),
++   reactRouter(),
+    tsconfigPaths(),
+  ],
+});
+```
+
+**Create `react-router.config.ts`**:
+
+```ts filename=react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  ssr: true,
+} satisfies Config;
+```
+
+<docs-info>
+Remove the v3 future flags from your config - they are now the default behavior in React Router v7.
+</docs-info>
+
+## Step 6: Update Vite Plugin
+
+<docs-info>
+Skip this step if you used the codemod.
+</docs-info>
+
+Change the Vite plugin import:
+
+```diff filename=vite.config.ts
+-import { vitePlugin as remix } from "@remix-run/dev";
++import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig({
+  plugins: [
+-   remix(),
++   reactRouter(),
+    tsconfigPaths(),
+  ],
+});
+```
+
+## Step 7: Enable Type Safety
+
+<docs-info>
+Skip this step if you're not using TypeScript.
+</docs-info>
+
+React Router v7 automatically generates types for route modules in a `.react-router/` directory.
+
+### Update `.gitignore`
+
+Add the generated types directory:
+
+```txt filename=.gitignore
+.react-router/
+```
+
+### Update `tsconfig.json`
+
+```diff filename=tsconfig.json
+{
+  "include": [
+    /* ... */
++   ".react-router/types/**/*"
+  ],
+  "compilerOptions": {
+-   "types": ["@remix-run/node", "vite/client"],
++   "types": ["@react-router/node", "vite/client"],
+    /* ... */
++   "rootDirs": [".", "./.react-router/types"]
+  }
+}
+```
+
+## Step 8: Rename Entry File Components
+
+<docs-info>
+Skip this step if you used the codemod.
+</docs-info>
+
+Update component names in your entry files:
+
+**`app/entry.server.tsx`**:
+
+```diff filename=app/entry.server.tsx
+-import { RemixServer } from "@remix-run/react";
++import { ServerRouter } from "react-router";
+
+-<RemixServer context={remixContext} url={request.url} />
++<ServerRouter context={remixContext} url={request.url} />
+```
+
+**`app/entry.client.tsx`**:
+
+```diff filename=app/entry.client.tsx
+-import { RemixBrowser } from "@remix-run/react";
++import { HydratedRouter } from "react-router/dom";
+
+hydrateRoot(
+  document,
+  <StrictMode>
+-   <RemixBrowser />
++   <HydratedRouter />
+  </StrictMode>
+);
+```
+
+## Step 9: Update `AppLoadContext` Types
+
+<docs-info>
+Skip this step if you used `remix-serve` (not a custom server).
+</docs-info>
+
+If you used a custom server, register your load context type:
+
+```ts filename=app/env.ts
+declare module "react-router" {
+  interface AppLoadContext {
+    whatever: string;
+  }
+
+  // TODO: Remove after migrating to Route.LoaderArgs
+  interface LoaderFunctionArgs {
+    context: AppLoadContext;
+  }
+
+  // TODO: Remove after migrating to Route.ActionArgs
+  interface ActionFunctionArgs {
+    context: AppLoadContext;
+  }
+}
+
+export {}; // necessary for TS module augmentation
+```
+
+Once you adopt the new route typegen, remove the `LoaderFunctionArgs` and `ActionFunctionArgs` augmentations:
+
+```ts filename=app/env.ts
+declare module "react-router" {
+  interface AppLoadContext {
+    whatever: string;
+  }
+}
+
+export {};
+```
+
+Use the generated types in your routes:
+
+```ts filename=app/routes/my-route.tsx
+import type { Route } from "./+types/my-route";
+
+export function loader({ context }: Route.LoaderArgs) {
+  // context is typed as AppLoadContext
+  console.log(context.whatever);
+}
+
+export function action({ context }: Route.ActionArgs) {
+  // context is typed as AppLoadContext
+  console.log(context.whatever);
+}
+```
+
+## Breaking Changes Summary
+
+### Package Restructuring
+
+- All Remix packages renamed to `@react-router/*`
+- Shared runtime APIs moved to `react-router` core package
+- Runtime-specific APIs (sessions, cookies) remain in platform packages
+
+### Configuration Changes
+
+- Routes now defined in `app/routes.ts` instead of Vite config
+- Plugin config moved to `react-router.config.ts`
+- Future flags removed (now default behavior)
+
+### Component Renames
+
+- `RemixServer` → `ServerRouter`
+- `RemixBrowser` → `HydratedRouter`
+- `RemixContext` → `FrameworkContext` (internal)
+
+### API Changes
+
+- `defer` removed (use raw promises)
+- `json` deprecated (use raw objects or `Response.json()`)
+- `installGlobals()` removed (Node 20+ includes necessary globals)
+
+### Type System Changes
+
+- Automatic route module type generation
+- `Route.LoaderArgs`, `Route.ActionArgs`, etc. for type safety
+- `useFetcher` generic changed: `useFetcher<typeof loader>()` instead of `useFetcher<LoaderData>()`
+
+## Migration Checklist
+
+- [ ] Enable all Remix v2 future flags
+- [ ] Run the codemod OR manually update dependencies
+- [ ] Update package.json scripts
+- [ ] Create or update `app/routes.ts`
+- [ ] Create `react-router.config.ts`
+- [ ] Update Vite plugin import
+- [ ] Add `.react-router/` to `.gitignore`
+- [ ] Update `tsconfig.json`
+- [ ] Update entry file components
+- [ ] Register `AppLoadContext` type (if using custom server)
+- [ ] Test your application thoroughly
+- [ ] Update CI/CD pipelines if needed
+
+## Common Issues
+
+### Module Resolution Errors
+
+If you see import errors after upgrading:
+
+1. Clear `node_modules` and reinstall: `rm -rf node_modules && npm install`
+2. Clear build artifacts: `rm -rf build .react-router`
+3. Restart your dev server
+
+### Type Errors After Upgrade
+
+Run type generation explicitly:
+
+```bash
+npm run typecheck
+```
+
+This runs `react-router typegen && tsc` which generates types before checking.
+
+### Vite Build Errors
+
+Ensure you're using compatible Vite version (5.x or 6.x). React Router v7 supports both.
+
+### Session Storage Issues
+
+The `crypto` global from Web Crypto API is now required. Node 20+ includes this by default. If using an older Node version (not recommended), ensure `crypto` is available.
+
+## Next Steps
+
+After migration:
+
+- Explore new [type safety features](/explanation/type-safety)
+- Set up [prerendering](/how-to/pre-rendering) for static pages
+- Review [performance optimization](/how-to/optimizing-performance) guides
+- Consider adopting [React Server Components](/how-to/react-server-components) (experimental)
+
+## Resources
+
+- [React Router v7 Release Blog Post](https://remix.run/blog/incremental-path-to-react-19)
+- [React Router v7 Changelog](https://github.com/remix-run/react-router/blob/main/CHANGELOG.md#v700)
+- [Type Safety Documentation](/explanation/type-safety)
+- [Codemod Repository](https://codemod.com/registry/remix-2-react-router-upgrade)

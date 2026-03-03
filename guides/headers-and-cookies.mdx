@@ -1,0 +1,360 @@
+---
+title: Headers and Cookies
+---
+
+# Headers and Cookies
+
+Learn how to work with HTTP headers and cookies in React Router applications.
+
+## Overview
+
+React Router provides APIs for managing HTTP headers through the `headers` export and cookies through the Cookie API. These work seamlessly with loaders, actions, and middleware.
+
+## Reading Headers
+
+Access request headers in loaders and actions:
+
+```tsx
+// app/routes/api.data.tsx
+import type { Route } from "./+types/api.data";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const userAgent = request.headers.get("User-Agent");
+  const acceptLanguage = request.headers.get("Accept-Language");
+  const referer = request.headers.get("Referer");
+
+  return {
+    userAgent,
+    language: acceptLanguage,
+    referer,
+  };
+}
+```
+
+## Setting Response Headers
+
+Return custom headers from loaders and actions:
+
+```tsx
+import { json } from "react-router";
+import type { Route } from "./+types/api.data";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const data = await fetchData();
+
+  return json(data, {
+    headers: {
+      "Cache-Control": "public, max-age=3600",
+      "X-Custom-Header": "value",
+    },
+  });
+}
+```
+
+## Headers Function
+
+Use the `headers` export for advanced header management:
+
+```tsx
+// app/routes/blog.$slug.tsx
+import type { Route } from "./+types/blog.$slug";
+import type { HeadersArgs } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const post = await getPost(params.slug);
+  return json(post, {
+    headers: {
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
+}
+
+export function headers({ loaderHeaders, parentHeaders }: HeadersArgs) {
+  return {
+    // Use loader's cache header
+    "Cache-Control": loaderHeaders.get("Cache-Control") || "no-cache",
+    // Inherit parent headers
+    "X-Custom": parentHeaders.get("X-Custom") || "default",
+  };
+}
+```
+
+## Working with Cookies
+
+Create and manage cookies using the Cookie API:
+
+```tsx
+// app/cookies.ts
+import { createCookie } from "react-router";
+
+export const userPrefs = createCookie("user-prefs", {
+  maxAge: 60 * 60 * 24 * 365, // 1 year
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+});
+```
+
+## Reading Cookies
+
+Parse cookies in loaders and actions:
+
+```tsx
+import { userPrefs } from "~/cookies";
+import type { Route } from "./+types/preferences";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const cookieHeader = request.headers.get("Cookie");
+  const prefs = await userPrefs.parse(cookieHeader);
+
+  return {
+    theme: prefs?.theme || "light",
+    language: prefs?.language || "en",
+  };
+}
+```
+
+## Setting Cookies
+
+Set cookies in action responses:
+
+```tsx
+import { redirect } from "react-router";
+import { userPrefs } from "~/cookies";
+import type { Route } from "./+types/preferences";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const theme = formData.get("theme");
+
+  const cookie = await userPrefs.serialize({ theme });
+
+  return redirect("/", {
+    headers: {
+      "Set-Cookie": cookie,
+    },
+  });
+}
+```
+
+## Signed Cookies
+
+Sign cookies to prevent tampering:
+
+```tsx
+import { createCookie } from "react-router";
+
+export const sessionCookie = createCookie("session", {
+  secrets: [process.env.SESSION_SECRET],
+  httpOnly: true,
+  secure: true,
+  sameSite: "strict",
+  maxAge: 60 * 60 * 24 * 7, // 1 week
+});
+```
+
+## Multiple Cookies
+
+Set multiple cookies in one response:
+
+```tsx
+import { redirect } from "react-router";
+import { sessionCookie, userPrefs } from "~/cookies";
+import type { Route } from "./+types/login";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const user = await login(formData);
+
+  const session = await sessionCookie.serialize({ userId: user.id });
+  const prefs = await userPrefs.serialize({ theme: user.theme });
+
+  return redirect("/dashboard", {
+    headers: [
+      ["Set-Cookie", session],
+      ["Set-Cookie", prefs],
+    ],
+  });
+}
+```
+
+## Deleting Cookies
+
+Expire cookies to delete them:
+
+```tsx
+import { redirect } from "react-router";
+import { sessionCookie } from "~/cookies";
+import type { Route } from "./+types/logout";
+
+export async function action({ request }: Route.ActionArgs) {
+  const cookie = await sessionCookie.serialize("", {
+    maxAge: 0,
+  });
+
+  return redirect("/", {
+    headers: {
+      "Set-Cookie": cookie,
+    },
+  });
+}
+```
+
+## Cookie Options
+
+Available cookie options:
+
+```tsx
+import { createCookie } from "react-router";
+
+const cookie = createCookie("name", {
+  // Security
+  httpOnly: true, // Prevents JavaScript access
+  secure: true, // HTTPS only
+  sameSite: "strict", // CSRF protection: "strict" | "lax" | "none"
+
+  // Lifetime
+  maxAge: 3600, // Seconds until expiration
+  expires: new Date("2025-01-01"), // Absolute expiration date
+
+  // Scope
+  domain: ".example.com", // Cookie domain
+  path: "/", // Cookie path
+
+  // Signing
+  secrets: ["secret1", "secret2"], // Secret keys for signing
+});
+```
+
+## Cache Control Headers
+
+Manage caching with appropriate headers:
+
+```tsx
+import { json } from "react-router";
+import type { Route } from "./+types/api.data";
+
+export async function loader({}: Route.LoaderArgs) {
+  const data = await fetchData();
+
+  // Cache for 1 hour
+  return json(data, {
+    headers: {
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
+}
+
+// Never cache
+export async function action({}: Route.ActionArgs) {
+  return json(
+    { success: true },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    }
+  );
+}
+
+// Cache but revalidate
+export async function loader2({}: Route.LoaderArgs) {
+  return json(data, {
+    headers: {
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      ETag: generateETag(data),
+    },
+  });
+}
+```
+
+## CORS Headers
+
+Handle cross-origin requests:
+
+```tsx
+import { json } from "react-router";
+import type { Route } from "./+types/api.public";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const data = await fetchPublicData();
+
+  return json(data, {
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
+}
+
+export async function action({ request }: Route.ActionArgs) {
+  // Handle preflight request
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }
+
+  // Handle actual request
+  const result = await processRequest(request);
+  return json(result, {
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+```
+
+## Custom Headers Function
+
+Merge headers from multiple sources:
+
+```tsx
+import type { HeadersArgs } from "react-router";
+
+export function headers({
+  loaderHeaders,
+  parentHeaders,
+  actionHeaders,
+  errorHeaders,
+}: HeadersArgs) {
+  const headers = new Headers();
+
+  // Prioritize action headers
+  if (actionHeaders.has("Set-Cookie")) {
+    actionHeaders.getSetCookie().forEach((cookie) => {
+      headers.append("Set-Cookie", cookie);
+    });
+  }
+
+  // Add loader cache control
+  const cacheControl = loaderHeaders.get("Cache-Control");
+  if (cacheControl) {
+    headers.set("Cache-Control", cacheControl);
+  }
+
+  // Inherit custom headers from parent
+  const customHeader = parentHeaders.get("X-Custom");
+  if (customHeader) {
+    headers.set("X-Custom", customHeader);
+  }
+
+  return headers;
+}
+```
+
+## Best Practices
+
+1. **Use httpOnly for sensitive cookies** - Prevents XSS attacks
+2. **Always use secure in production** - Ensures HTTPS-only transmission
+3. **Set appropriate SameSite** - Protects against CSRF attacks
+4. **Sign sensitive cookies** - Prevents tampering
+5. **Set reasonable expiration** - Balance convenience and security
+6. **Use Cache-Control wisely** - Improve performance without serving stale data
+7. **Handle CORS properly** - Allow legitimate cross-origin requests while maintaining security
+8. **Rotate cookie secrets** - Keep multiple secrets for zero-downtime rotation

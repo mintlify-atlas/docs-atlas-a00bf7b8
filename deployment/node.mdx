@@ -1,0 +1,172 @@
+---
+title: "Node.js Deployment"
+description: "Deploy React Router applications to Node.js servers"
+---
+
+## Overview
+
+The `@react-router/node` package provides Node.js platform abstractions for React Router, allowing you to run your application on any Node.js server environment.
+
+## Installation
+
+```bash
+npm install @react-router/node
+```
+
+## Basic Setup
+
+Create a request listener that handles incoming HTTP requests using Node's built-in HTTP server.
+
+```ts
+import { createServer } from "node:http";
+import { createRequestListener } from "@react-router/node";
+
+const server = createServer(
+  createRequestListener({
+    build: await import("./build/server/index.js"),
+  })
+);
+
+const port = process.env.PORT || 3000;
+server.listen(port, () => {
+  console.log(`Server listening at http://localhost:${port}`);
+});
+```
+
+## Configuration Options
+
+The `createRequestListener` function accepts the following options:
+
+### build
+
+The server build to use for rendering. Can be a `ServerBuild` object or a function that returns one.
+
+```ts
+// Static import
+createRequestListener({
+  build: await import("./build/server/index.js"),
+});
+
+// Dynamic import function
+createRequestListener({
+  build: () => import("./build/server/index.js"),
+});
+```
+
+### getLoadContext
+
+A function that returns the load context to pass to route loaders and actions. This allows you to pass environment/platform-specific values.
+
+```ts
+createRequestListener({
+  build: await import("./build/server/index.js"),
+  getLoadContext: (request, client) => {
+    return {
+      clientAddress: client.address,
+      serverUrl: process.env.SERVER_URL,
+    };
+  },
+});
+```
+
+### mode
+
+The mode to run the server in (`"development"` or `"production"`).
+
+```ts
+createRequestListener({
+  build: await import("./build/server/index.js"),
+  mode: process.env.NODE_ENV,
+});
+```
+
+## Session Storage
+
+The `@react-router/node` package includes file-based session storage:
+
+```ts
+import { createFileSessionStorage } from "@react-router/node";
+
+const sessionStorage = createFileSessionStorage({
+  dir: "./sessions",
+  cookie: {
+    name: "__session",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    secrets: ["s3cr3t"],
+    sameSite: "lax",
+  },
+});
+```
+
+Use the session storage in your routes:
+
+```ts
+import type { Route } from "./+types/login";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  return {
+    user: session.get("user"),
+  };
+}
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  session.set("user", { id: 1, name: "User" });
+  
+  return redirect("/", {
+    headers: {
+      "Set-Cookie": await sessionStorage.commitSession(session),
+    },
+  });
+}
+```
+
+## Stream Utilities
+
+The package also exports utilities for working with Node.js streams:
+
+```ts
+import {
+  createReadableStreamFromReadable,
+  writeReadableStreamToWritable,
+  writeAsyncIterableToWritable,
+  readableStreamToString,
+} from "@react-router/node";
+```
+
+## Production Deployment
+
+For production deployments:
+
+1. Build your application:
+   ```bash
+   npm run build
+   ```
+
+2. Set the `NODE_ENV` environment variable:
+   ```bash
+   NODE_ENV=production node server.js
+   ```
+
+3. Configure appropriate environment variables for your hosting platform.
+
+## Platform Support
+
+This package works with any Node.js hosting platform including:
+
+- Traditional VPS (DigitalOcean, Linode, etc.)
+- Platform-as-a-Service (Heroku, Railway, Render)
+- Containerized environments (Docker, Kubernetes)
+- Serverless Node.js runtimes
+
+<Note>
+  For Express.js integration, see the [Express deployment guide](/deployment/express).
+</Note>

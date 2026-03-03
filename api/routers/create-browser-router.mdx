@@ -1,0 +1,445 @@
+---
+title: createBrowserRouter
+---
+
+# createBrowserRouter
+
+Create a new data router that manages the application path via [`history.pushState`](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState) and [`history.replaceState`](https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState).
+
+This is the recommended router for all React Router web applications and is used for data-driven applications with loaders and actions.
+
+## Function Signature
+
+```tsx
+function createBrowserRouter(
+  routes: RouteObject[],
+  opts?: DOMRouterOpts
+): DataRouter
+```
+
+## Route Configuration
+
+The `routes` parameter is an array of route objects that define your application's routing structure. Each route object can be either an index route or a non-index route.
+
+### Route Object Properties
+
+```tsx
+interface RouteObject {
+  // Path pattern to match
+  path?: string;
+  
+  // Whether the path should be case-sensitive
+  caseSensitive?: boolean;
+  
+  // Unique identifier for the route
+  id?: string;
+  
+  // Whether this is an index route (renders at parent's path)
+  index?: boolean;
+  
+  // Data loading function
+  loader?: LoaderFunction;
+  
+  // Data mutation function
+  action?: ActionFunction;
+  
+  // Middleware function that runs before loader/action
+  middleware?: MiddlewareFunction;
+  
+  // React element to render
+  element?: React.ReactNode;
+  
+  // React component to render (alternative to element)
+  Component?: React.ComponentType;
+  
+  // Error boundary element
+  errorElement?: React.ReactNode;
+  
+  // Error boundary component (alternative to errorElement)
+  ErrorBoundary?: React.ComponentType;
+  
+  // Fallback element during hydration
+  hydrateFallbackElement?: React.ReactNode;
+  
+  // Fallback component during hydration
+  HydrateFallback?: React.ComponentType;
+  
+  // Nested child routes
+  children?: RouteObject[];
+  
+  // Lazy load route definition
+  lazy?: LazyRouteFunction;
+  
+  // Custom revalidation logic
+  shouldRevalidate?: ShouldRevalidateFunction;
+  
+  // Custom data for route matching
+  handle?: any;
+}
+```
+
+## Options Parameter
+
+```tsx
+interface DOMRouterOpts {
+  // Base path for all routes
+  basename?: string;
+  
+  // Context provider function for loaders/actions
+  getContext?: () => RouterContextProvider;
+  
+  // Future flags for opt-in features
+  future?: Partial<FutureConfig>;
+  
+  // Initial data from server-side rendering
+  hydrationData?: HydrationState;
+  
+  // Instrumentation for observability
+  unstable_instrumentations?: unstable_ClientInstrumentation[];
+  
+  // Custom data loading strategy
+  dataStrategy?: DataStrategyFunction;
+  
+  // Lazy route discovery ("Fog of War")
+  patchRoutesOnNavigation?: PatchRoutesOnNavigationFunction;
+  
+  // Window object override (defaults to global window)
+  window?: Window;
+}
+```
+
+## Return Type
+
+Returns an initialized `DataRouter` instance to be passed to `<RouterProvider>`.
+
+```tsx
+interface DataRouter {
+  // Current router state
+  state: RouterState;
+  
+  // Subscribe to router state changes
+  subscribe(subscriber: (state: RouterState) => void): () => void;
+  
+  // Navigate to a new location
+  navigate(to: To, options?: NavigateOptions): void;
+  
+  // Create an href for a location
+  createHref(to: To): string;
+  
+  // And other router methods...
+}
+```
+
+## Examples
+
+### Basic Usage
+
+```tsx
+import { createBrowserRouter, RouterProvider } from "react-router";
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <Root />,
+    errorElement: <ErrorPage />,
+    loader: rootLoader,
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: "about",
+        element: <About />,
+        loader: aboutLoader,
+      },
+      {
+        path: "contact",
+        element: <Contact />,
+        action: contactAction,
+      },
+    ],
+  },
+]);
+
+function App() {
+  return <RouterProvider router={router} />;
+}
+```
+
+### With Basename
+
+```tsx
+const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      element: <Root />,
+    },
+    {
+      path: "/about",
+      element: <About />,
+    },
+  ],
+  {
+    basename: "/app",
+  }
+);
+
+// Routes are now:
+// /app/ -> Root
+// /app/about -> About
+```
+
+### With Loaders and Actions
+
+```tsx
+import { createBrowserRouter, RouterProvider } from "react-router";
+import { createRoot } from "react-dom/client";
+
+// Loader function
+async function rootLoader() {
+  const user = await fetchUser();
+  return { user };
+}
+
+// Action function
+async function contactAction({ request }) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+  await sendEmail(email);
+  return { success: true };
+}
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <Root />,
+    loader: rootLoader,
+    children: [
+      {
+        path: "contact",
+        element: <Contact />,
+        action: contactAction,
+      },
+    ],
+  },
+]);
+
+createRoot(document.getElementById("root")).render(
+  <RouterProvider router={router} />
+);
+```
+
+### With Lazy Loading
+
+```tsx
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <Root />,
+    children: [
+      {
+        path: "dashboard",
+        lazy: async () => {
+          const { Component, loader } = await import("./dashboard");
+          return { Component, loader };
+        },
+      },
+    ],
+  },
+]);
+```
+
+### With Error Boundaries
+
+```tsx
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <Root />,
+    errorElement: <RootErrorBoundary />,
+    children: [
+      {
+        path: "dashboard",
+        element: <Dashboard />,
+        errorElement: <DashboardError />,
+        loader: dashboardLoader,
+      },
+    ],
+  },
+]);
+
+function RootErrorBoundary() {
+  const error = useRouteError();
+  return (
+    <div>
+      <h1>Oops!</h1>
+      <p>{error.message}</p>
+    </div>
+  );
+}
+```
+
+### With Hydration Data (SSR)
+
+```tsx
+const router = createBrowserRouter(
+  [
+    {
+      id: "root",
+      path: "/",
+      Component: Root,
+      loader: rootLoader,
+      children: [
+        {
+          id: "home",
+          index: true,
+          Component: Home,
+          loader: homeLoader,
+        },
+      ],
+    },
+  ],
+  {
+    hydrationData: {
+      loaderData: {
+        root: { user: "John" },
+        home: { posts: [] },
+      },
+    },
+  }
+);
+```
+
+### With Context Provider
+
+```tsx
+import {
+  createBrowserRouter,
+  createContext,
+  RouterContextProvider,
+} from "react-router";
+
+const apiClientContext = createContext<APIClient>();
+
+const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      element: <Root />,
+      loader: async ({ context }) => {
+        // Access the API client from context
+        const client = context.get(apiClientContext);
+        const data = await client.fetchData();
+        return data;
+      },
+    },
+  ],
+  {
+    getContext() {
+      const context = new RouterContextProvider();
+      context.set(apiClientContext, getApiClient());
+      return context;
+    },
+  }
+);
+```
+
+### With Lazy Route Discovery (Fog of War)
+
+```tsx
+const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      Component: Home,
+    },
+  ],
+  {
+    async patchRoutesOnNavigation({ patch, path }) {
+      // Lazily load the dashboard routes
+      if (path.startsWith("/dashboard")) {
+        const dashboardRoutes = await import("./dashboard-routes");
+        patch(null, dashboardRoutes.default);
+      }
+      
+      // Lazily load the account routes
+      if (path.startsWith("/account")) {
+        const accountRoutes = await import("./account-routes");
+        patch(null, accountRoutes.default);
+      }
+    },
+  }
+);
+```
+
+## Use Cases
+
+### When to Use createBrowserRouter
+
+Use `createBrowserRouter` when:
+
+- Building a modern web application with data loading requirements
+- You need loaders and actions for data fetching and mutations
+- You want the best performance with automatic code splitting via `lazy`
+- You need advanced features like middleware, error boundaries, and hydration
+- You're building a single-page application (SPA) with clean URLs
+- Server-side rendering (SSR) support is required
+- You want to use React Router's data APIs
+
+### When NOT to Use createBrowserRouter
+
+Consider alternatives when:
+
+- **Static hosting without server support**: Use `createHashRouter` if your hosting doesn't support client-side routing fallbacks
+- **Testing environment**: Use `createMemoryRouter` for unit/integration tests
+- **Simple declarative routing**: Use `<BrowserRouter>` if you don't need data APIs
+- **Server environment**: This is a client-only router; use server-specific routers for SSR data handling
+
+## Browser Support
+
+`createBrowserRouter` requires:
+
+- Modern browsers supporting the History API
+- `history.pushState` and `history.replaceState`
+- Server configuration to handle client-side routes (serve `index.html` for all routes)
+
+## Server Configuration
+
+Since `createBrowserRouter` uses clean URLs, your server must be configured to serve your app's entry point for all routes:
+
+### Nginx
+
+```nginx
+location / {
+  try_files $uri $uri/ /index.html;
+}
+```
+
+### Apache
+
+```apache
+RewriteEngine On
+RewriteBase /
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+```
+
+### Express.js
+
+```js
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "build", "index.html"));
+});
+```
+
+## Related
+
+- [`<RouterProvider>`](/api/components/router-provider) - Component to render the router
+- [`createHashRouter`](/api/routers/create-hash-router) - Hash-based routing alternative
+- [`createMemoryRouter`](/api/routers/create-memory-router) - In-memory routing for testing
+- [`loader`](/api/route/loader) - Route data loading
+- [`action`](/api/route/action) - Route data mutations

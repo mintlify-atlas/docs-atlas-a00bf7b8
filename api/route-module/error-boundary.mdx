@@ -1,0 +1,380 @@
+---
+title: ErrorBoundary
+---
+
+# ErrorBoundary
+
+A React component that renders when an error is thrown in a route's loader, action, or component.
+
+## Signature
+
+```tsx
+export function ErrorBoundary() {
+  const error = useRouteError();
+  // Render error UI
+}
+```
+
+The ErrorBoundary is a React component with no props. It uses the `useRouteError()` hook to access the error that was thrown.
+
+## Basic Example
+
+```tsx
+import { useRouteError, isRouteErrorResponse } from "react-router";
+
+export async function loader() {
+  const data = await fetchData();
+  if (!data) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  return { data };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1>Oops!</h1>
+      <p>Something went wrong.</p>
+    </div>
+  );
+}
+
+export default function Component() {
+  // Normal rendering
+}
+```
+
+## Handling Different Error Types
+
+```tsx
+import { 
+  useRouteError, 
+  isRouteErrorResponse,
+  Link 
+} from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  // Response errors (thrown via throw Response)
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) {
+      return (
+        <div>
+          <h1>Page Not Found</h1>
+          <p>Sorry, we couldn't find what you're looking for.</p>
+          <Link to="/">Go home</Link>
+        </div>
+      );
+    }
+
+    if (error.status === 401) {
+      return (
+        <div>
+          <h1>Unauthorized</h1>
+          <p>You don't have permission to access this.</p>
+          <Link to="/login">Log in</Link>
+        </div>
+      );
+    }
+
+    if (error.status === 503) {
+      return (
+        <div>
+          <h1>Service Unavailable</h1>
+          <p>Looks like our API is down. Please try again later.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+
+  // Regular JavaScript errors
+  if (error instanceof Error) {
+    return (
+      <div>
+        <h1>Error</h1>
+        <p>{error.message}</p>
+        {process.env.NODE_ENV === "development" && (
+          <pre>{error.stack}</pre>
+        )}
+      </div>
+    );
+  }
+
+  // Unknown error type
+  return (
+    <div>
+      <h1>Unknown Error</h1>
+      <p>An unexpected error occurred.</p>
+    </div>
+  );
+}
+```
+
+## Nested Error Boundaries
+
+```tsx
+// app/routes/dashboard.tsx
+export function ErrorBoundary() {
+  return (
+    <div className="dashboard-layout">
+      <nav>{/* Dashboard nav still renders */}</nav>
+      <main>
+        <h1>Dashboard Error</h1>
+        <p>Something went wrong in the dashboard.</p>
+      </main>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <div className="dashboard-layout">
+      <nav>{/* Dashboard nav */}</nav>
+      <main>
+        <Outlet /> {/* Child routes render here */}
+      </main>
+    </div>
+  );
+}
+```
+
+Error boundaries bubble up to the nearest parent route with an ErrorBoundary export:
+
+```
+/dashboard → Has ErrorBoundary
+  /dashboard/stats → No ErrorBoundary (bubbles up)
+  /dashboard/settings → Has ErrorBoundary (catches its own errors)
+```
+
+## With Loader Data
+
+```tsx
+import { useRouteError, useMatches } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const matches = useMatches();
+  
+  // Get data from parent routes that loaded successfully
+  const rootData = matches.find(m => m.id === "root")?.data;
+  
+  return (
+    <div>
+      {rootData?.user && (
+        <header>
+          <p>Logged in as {rootData.user.name}</p>
+        </header>
+      )}
+      
+      <main>
+        <h1>Error</h1>
+        <p>{error instanceof Error ? error.message : "Unknown error"}</p>
+      </main>
+    </div>
+  );
+}
+```
+
+## Resetting Errors
+
+```tsx
+import { useRouteError, useNavigate } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const navigate = useNavigate();
+
+  return (
+    <div>
+      <h1>Something went wrong</h1>
+      <p>{error instanceof Error ? error.message : "Unknown error"}</p>
+      
+      <button onClick={() => navigate(0)}>
+        Try again
+      </button>
+      
+      <button onClick={() => navigate("/")}>
+        Go home
+      </button>
+    </div>
+  );
+}
+```
+
+## Throwing Errors in Components
+
+```tsx
+export default function Product() {
+  const { product } = useLoaderData<typeof loader>();
+  
+  // This will be caught by ErrorBoundary
+  if (!product.isPublished) {
+    throw new Response("Product not available", { status: 403 });
+  }
+  
+  return <div>{product.name}</div>;
+}
+```
+
+## Custom Error Data
+
+```tsx
+// In loader or action
+export async function loader() {
+  const user = await getUser();
+  
+  if (!user) {
+    throw new Response(
+      JSON.stringify({ 
+        message: "Please log in",
+        redirectTo: "/login" 
+      }), 
+      { 
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
+  }
+  
+  return { user };
+}
+
+// In ErrorBoundary
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  if (isRouteErrorResponse(error) && error.status === 401) {
+    const data = typeof error.data === "string" 
+      ? JSON.parse(error.data) 
+      : error.data;
+    
+    return (
+      <div>
+        <h1>{data.message}</h1>
+        <Link to={data.redirectTo}>Log in</Link>
+      </div>
+    );
+  }
+  
+  return <div>An error occurred</div>;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Throw Response objects for expected errors">
+    Use Response objects for errors that are part of normal app flow:
+
+    ```tsx
+    export async function loader({ params }: Route.LoaderArgs) {
+      const post = await db.post.findUnique({ 
+        where: { id: params.postId } 
+      });
+      
+      if (!post) {
+        // Expected error - resource not found
+        throw new Response("Post not found", { status: 404 });
+      }
+      
+      return { post };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Let unexpected errors bubble">
+    Don't catch unexpected errors - let them reach ErrorBoundary:
+
+    ```tsx
+    // ❌ Don't do this
+    export async function loader() {
+      try {
+        return await fetchData();
+      } catch (error) {
+        return { error: "Something went wrong" };
+      }
+    }
+
+    // ✅ Let errors bubble to ErrorBoundary
+    export async function loader() {
+      return await fetchData(); // Errors automatically caught
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Provide contextual error messages">
+    Give users actionable information:
+
+    ```tsx
+    export function ErrorBoundary() {
+      const error = useRouteError();
+      
+      if (isRouteErrorResponse(error) && error.status === 404) {
+        return (
+          <div>
+            <h1>Project Not Found</h1>
+            <p>
+              The project you're looking for doesn't exist or has been deleted.
+            </p>
+            <Link to="/projects">View all projects</Link>
+          </div>
+        );
+      }
+      
+      return <div>Error occurred</div>;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use root ErrorBoundary as fallback">
+    Always provide a root-level ErrorBoundary:
+
+    ```tsx
+    // app/root.tsx
+    export function ErrorBoundary() {
+      const error = useRouteError();
+      
+      return (
+        <html>
+          <head>
+            <title>Error</title>
+          </head>
+          <body>
+            <h1>Application Error</h1>
+            <p>
+              {error instanceof Error 
+                ? error.message 
+                : "An unexpected error occurred"}
+            </p>
+          </body>
+        </html>
+      );
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [useRouteError](/api/hooks/use-route-error) - Access the error object
+- [isRouteErrorResponse](/api/utils/is-route-error-response) - Type guard for Response errors
+- [loader](/api/route-module/loader) - Server data loading

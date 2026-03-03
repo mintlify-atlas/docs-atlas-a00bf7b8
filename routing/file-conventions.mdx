@@ -1,0 +1,370 @@
+---
+title: File-Based Routing Conventions
+description: Learn React Router's file-based routing conventions using flatRoutes()
+---
+
+# File-Based Routing Conventions
+
+While React Router v7 recommends manual route configuration, the `@react-router/fs-routes` package provides file-based routing conventions for those who prefer convention over configuration.
+
+## Setup
+
+Install the package:
+
+```bash
+npm install @react-router/fs-routes
+```
+
+Use `flatRoutes()` in your `routes.ts`:
+
+```ts
+// app/routes.ts
+import { type RouteConfig } from "@react-router/dev/routes";
+import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes() satisfies RouteConfig;
+```
+
+This automatically discovers routes from the `app/routes/` directory.
+
+## Basic File Naming
+
+### Simple Routes
+
+File names map directly to URL paths:
+
+```
+app/routes/
+├── _index.tsx                       # /
+├── about.tsx                        # /about
+├── contact.tsx                      # /contact
+└── blog.tsx                         # /blog
+```
+
+### Nested Routes with Dot Notation
+
+Use dots (`.`) to create nested routes:
+
+```
+app/routes/
+├── dashboard.tsx                    # /dashboard (parent)
+├── dashboard.overview.tsx           # /dashboard/overview
+├── dashboard.analytics.tsx          # /dashboard/analytics
+└── dashboard.settings.tsx           # /dashboard/settings
+```
+
+The parent route (`dashboard.tsx`) must render an `<Outlet />` for children.
+
+## Dynamic Segments
+
+Prefix segments with `$` to create dynamic parameters:
+
+```
+app/routes/
+├── users.$userId.tsx                # /users/:userId
+├── posts.$postId.tsx                # /posts/:postId
+└── blog.$year.$month.$slug.tsx      # /blog/:year/:month/:slug
+```
+
+Access params in your component:
+
+```tsx
+// app/routes/users.$userId.tsx
+import { useParams } from "react-router";
+import type { Route } from "./+types/users/$userId";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  return { user: await getUser(params.userId) };
+}
+```
+
+## Index Routes
+
+Use `_index` suffix for index routes:
+
+```
+app/routes/
+├── _index.tsx                       # / (root index)
+├── dashboard.tsx                    # /dashboard (parent)
+└── dashboard._index.tsx             # /dashboard (dashboard index)
+```
+
+## Layout Routes (Pathless)
+
+Prefix with `_` to create layout routes that don't add URL segments:
+
+```
+app/routes/
+├── _marketing.tsx                   # Layout (no URL)
+├── _marketing._index.tsx            # /
+├── _marketing.about.tsx             # /about
+├── _marketing.pricing.tsx           # /pricing
+├── _app.tsx                         # Layout (no URL)
+├── _app.dashboard.tsx               # /dashboard
+└── _app.settings.tsx                # /settings
+```
+
+Both `_marketing.tsx` and `_app.tsx` are layout routes that wrap their children without adding URL segments.
+
+## Folder-Based Routes
+
+Alternatively, use folders with `route.tsx` or `index.tsx`:
+
+```
+app/routes/
+├── _index.tsx                       # /
+├── dashboard/
+│   ├── route.tsx                    # /dashboard (parent)
+│   ├── _index.tsx                   # /dashboard (index)
+│   ├── analytics.tsx                # /dashboard/analytics
+│   └── settings.tsx                 # /dashboard/settings
+└── users/
+    └── $userId/
+        ├── route.tsx                # /users/:userId
+        └── edit.tsx                 # /users/:userId/edit
+```
+
+**Note**: Don't mix `route.tsx` and file name in the same folder:
+
+```
+# ❌ Wrong - causes conflict
+app/routes/
+└── dashboard/
+    ├── route.tsx
+    └── index.tsx                    # Conflict!
+
+# ✅ Correct - use one or the other
+app/routes/
+└── dashboard/
+    ├── route.tsx
+    └── _index.tsx                   # OK - different purpose
+```
+
+## Escaping Special Characters
+
+Use square brackets `[]` to escape special characters:
+
+```
+app/routes/
+├── posts.$slug[.]json.tsx           # /posts/:slug.json
+├── [sitemap.xml].tsx                # /sitemap.xml (literal)
+├── users.$id[.].tsx                 # /users/:id. (trailing dot)
+└── api[/]v2.tsx                     # /api/v2 (literal slash)
+```
+
+Escaped characters are treated literally in the URL.
+
+## Optional Segments
+
+Wrap segments in parentheses `()` to make them optional:
+
+```
+app/routes/
+├── blog.($year).($month).$slug.tsx  # /blog/:slug or /blog/:year/:month/:slug
+├── (lang).$page.tsx                 # /:page or /:lang/:page
+└── docs.(section).($page).tsx       # /docs, /docs/:section, /docs/:section/:page
+```
+
+Optional segments create multiple route patterns:
+
+```tsx
+// app/routes/blog.($year).($month).$slug.tsx
+import type { Route } from "./+types/blog/($year)/($month)/$slug";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const { slug, year, month } = params;
+  
+  if (year && month) {
+    return getPostByDate(year, month, slug);
+  }
+  
+  return getPostBySlug(slug);
+}
+```
+
+## Splat Routes (Catch-All)
+
+Use `$` alone to match remaining path segments:
+
+```
+app/routes/
+├── files.$.tsx                      # /files/*
+└── docs.$.tsx                       # /docs/*
+```
+
+Access the splat value via `params["*"]`:
+
+```tsx
+// app/routes/files.$.tsx
+import type { Route } from "./+types/files/$";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const filepath = params["*"];
+  // /files/docs/report.pdf → filepath = "docs/report.pdf"
+  return { file: await getFile(filepath) };
+}
+```
+
+## Escaping Routes (Opt-Out of Nesting)
+
+Use trailing underscore `_` to escape parent layout:
+
+```
+app/routes/
+├── app.tsx                          # /app (parent layout)
+├── app.dashboard.tsx                # /app/dashboard (nested)
+├── app.profile.tsx                  # /app/profile (nested)
+└── app_.admin.tsx                   # /admin (NOT nested under /app)
+```
+
+Double underscore to skip multiple levels:
+
+```
+app/routes/
+├── app.tsx                          # /app
+├── app.settings.tsx                 # /app/settings
+├── app.settings.profile.tsx         # /app/settings/profile
+└── app_.settings_.public.tsx        # /public (skips both app and settings)
+```
+
+## Combining Conventions
+
+Mix file and folder approaches:
+
+```
+app/routes/
+├── _index.tsx                       # /
+├── _app.tsx                         # App layout
+├── _app.dashboard.tsx               # /dashboard
+├── _app.projects/
+│   ├── route.tsx                    # /projects
+│   ├── _index.tsx                   # /projects (index)
+│   └── $projectId/
+│       ├── route.tsx                # /projects/:projectId
+│       ├── edit.tsx                 # /projects/:projectId/edit
+│       └── settings.tsx             # /projects/:projectId/settings
+└── api.$.tsx                        # /api/* (catch-all)
+```
+
+## Ignored Files
+
+Files matching these patterns are ignored:
+
+- `.DS_Store`
+- Any file starting with `.` (hidden files)
+- Files matching patterns in the `ignoredRouteFiles` config
+
+```ts
+// app/routes.ts
+import { flatRoutes } from "@react-router/fs-routes";
+import { getAppDirectory } from "@react-router/dev/routes";
+
+export default flatRoutes(
+  getAppDirectory(),
+  ["**/*.test.tsx", "**/*.spec.tsx"] // Ignore test files
+);
+```
+
+## Custom Routes Directory
+
+Change the routes directory:
+
+```ts
+// app/routes.ts
+import { flatRoutes } from "@react-router/fs-routes";
+import { getAppDirectory } from "@react-router/dev/routes";
+
+export default flatRoutes(
+  getAppDirectory(),
+  [], // ignored patterns
+  "pages" // use app/pages instead of app/routes
+);
+```
+
+## Route Conflicts
+
+React Router detects and warns about route conflicts:
+
+```
+app/routes/
+├── users.$id.tsx                    # /users/:id
+└── users.new.tsx                    # /users/new
+```
+
+⚠️ Order matters! `users.new.tsx` should be defined before `users.$id.tsx` to match `/users/new` correctly. React Router automatically handles this when using `flatRoutes()`.
+
+## Complete Example
+
+A real-world file structure:
+
+```
+app/routes/
+├── _index.tsx                       # /
+├── _marketing.tsx                   # Marketing layout
+├── _marketing.about.tsx             # /about
+├── _marketing.pricing.tsx           # /pricing
+├── _marketing.contact.tsx           # /contact
+├── _app.tsx                         # App layout (requires auth)
+├── _app.dashboard.tsx               # /dashboard
+├── _app.projects.tsx                # /projects (parent)
+├── _app.projects._index.tsx         # /projects (list)
+├── _app.projects.$id.tsx            # /projects/:id
+├── _app.projects.$id.edit.tsx       # /projects/:id/edit
+├── _app.settings/
+│   ├── route.tsx                    # /settings
+│   ├── _index.tsx                   # /settings (index)
+│   ├── profile.tsx                  # /settings/profile
+│   ├── billing.tsx                  # /settings/billing
+│   └── security.tsx                 # /settings/security
+├── login.tsx                        # /login
+├── signup.tsx                       # /signup
+├── [sitemap.xml].tsx                # /sitemap.xml
+└── $.tsx                            # /* (404 catch-all)
+```
+
+## Migration Strategy
+
+When migrating from manual config to file-based routing:
+
+1. Start with existing `routes.ts` manual configuration
+2. Gradually move routes to file-based conventions
+3. Mix both approaches during migration:
+
+```ts
+// app/routes.ts
+import { flatRoutes } from "@react-router/fs-routes";
+import { route } from "@react-router/dev/routes";
+
+export default [
+  // File-based routes
+  ...await flatRoutes(),
+  
+  // Manual routes (override or supplement)
+  route("special", "routes/special-route.tsx"),
+];
+```
+
+## Best Practices
+
+1. **Consistent structure**: Choose file or folder approach and stick with it
+2. **Descriptive names**: Use clear, semantic file names
+3. **Logical grouping**: Group related routes in folders
+4. **Avoid deep nesting**: Keep route hierarchies shallow (3-4 levels max)
+5. **Use layouts wisely**: Leverage pathless layouts (`_`) for shared UI
+6. **Document escapes**: Comment why you're using `_` escapes
+7. **Consider manual config**: For complex apps, manual configuration may be clearer
+
+## When to Use File-Based Routing
+
+**Good for:**
+- Simple applications
+- Rapid prototyping
+- Teams familiar with file-based conventions
+- Projects with standard routing patterns
+
+**Prefer manual config when:**
+- Complex routing logic
+- Routes determined at runtime
+- Heavy route code splitting
+- Team prefers explicit configuration
+- Multiple routes share the same component

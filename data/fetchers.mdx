@@ -1,0 +1,452 @@
+---
+title: Fetchers
+---
+
+# Fetchers
+
+Fetchers enable data loading and mutations without causing navigation. They're perfect for parallel data loading, auto-saving forms, and complex UI interactions.
+
+## Basic Usage
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function NewsletterSignup() {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form method="post" action="/newsletter/subscribe">
+      <input type="email" name="email" />
+      <button type="submit">
+        {fetcher.state === "submitting" ? "Subscribing..." : "Subscribe"}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+## Fetcher States
+
+Fetchers have three possible states:
+
+```tsx
+const fetcher = useFetcher();
+
+// "idle" - not doing anything
+// "submitting" - POST, PUT, PATCH, or DELETE being submitted
+// "loading" - loader is being called
+fetcher.state;
+```
+
+## Loading Data with Fetchers
+
+Use `fetcher.load()` to load data without navigation:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function SearchBox() {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <input
+        type="text"
+        onChange={(e) => {
+          fetcher.load(`/search?q=${e.target.value}`);
+        }}
+      />
+      
+      {fetcher.state === "loading" && <div>Searching...</div>}
+      
+      {fetcher.data && (
+        <ul>
+          {fetcher.data.results.map((result) => (
+            <li key={result.id}>{result.name}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+## Submitting with Fetchers
+
+### Using `fetcher.Form`
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function TodoItem({ todo }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form method="post" action="/todos/toggle">
+      <input type="hidden" name="id" value={todo.id} />
+      <button type="submit">
+        {todo.completed ? "Undo" : "Complete"}
+      </button>
+    </fetcher.Form>
+  );
+}
+```
+
+### Using `fetcher.submit()`
+
+Submit FormData:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function AutoSaveForm() {
+  const fetcher = useFetcher();
+  
+  return (
+    <form
+      onChange={(e) => {
+        fetcher.submit(e.currentTarget);
+      }}
+    >
+      <input type="text" name="title" />
+      <textarea name="content" />
+    </form>
+  );
+}
+```
+
+Submit JSON data:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function LikeButton({ postId }) {
+  const fetcher = useFetcher();
+  
+  const handleLike = () => {
+    fetcher.submit(
+      { postId, action: "like" },
+      {
+        method: "post",
+        action: "/api/like",
+        encType: "application/json",
+      }
+    );
+  };
+  
+  return (
+    <button onClick={handleLike}>
+      {fetcher.state === "submitting" ? "Liking..." : "Like"}
+    </button>
+  );
+}
+```
+
+## Accessing Fetcher Data
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function CityWeather() {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <button
+        onClick={() => fetcher.load("/api/weather?city=NYC")}
+      >
+        Load Weather
+      </button>
+      
+      {fetcher.data && (
+        <div>
+          <h2>{fetcher.data.city}</h2>
+          <p>Temperature: {fetcher.data.temp}°F</p>
+          <p>Conditions: {fetcher.data.conditions}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Named Fetchers
+
+Share fetcher state across components with a key:
+
+```tsx
+// Component A
+import { useFetcher } from "react-router";
+
+export function SaveButton() {
+  const fetcher = useFetcher({ key: "my-key" });
+  
+  return (
+    <button onClick={() => fetcher.submit(data)}>
+      Save
+    </button>
+  );
+}
+
+// Component B
+import { useFetcher } from "react-router";
+
+export function SaveStatus() {
+  // Same fetcher, sharing state
+  const fetcher = useFetcher({ key: "my-key" });
+  
+  return (
+    <div>
+      {fetcher.state === "submitting" && "Saving..."}
+      {fetcher.state === "idle" && fetcher.data && "Saved!"}
+    </div>
+  );
+}
+```
+
+## Tracking All Fetchers
+
+Access all in-flight fetchers with `useFetchers`:
+
+```tsx
+import { useFetchers } from "react-router";
+
+export function GlobalLoadingIndicator() {
+  const fetchers = useFetchers();
+  const isLoading = fetchers.some(
+    (f) => f.state === "loading" || f.state === "submitting"
+  );
+  
+  return isLoading ? <div className="spinner" /> : null;
+}
+```
+
+## Optimistic UI with Fetchers
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function TaskList({ tasks }) {
+  const fetcher = useFetcher();
+  
+  // Optimistically show the new task
+  const displayTasks = fetcher.formData
+    ? [...tasks, { name: fetcher.formData.get("name"), pending: true }]
+    : tasks;
+  
+  return (
+    <div>
+      <ul>
+        {displayTasks.map((task, i) => (
+          <li key={i} className={task.pending ? "pending" : ""}>
+            {task.name}
+          </li>
+        ))}
+      </ul>
+      
+      <fetcher.Form method="post" action="/tasks">
+        <input type="text" name="name" />
+        <button type="submit">Add Task</button>
+      </fetcher.Form>
+    </div>
+  );
+}
+```
+
+## Form Data Access
+
+Access form data during submission:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function CommentForm({ postId }) {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <fetcher.Form method="post" action="/comments">
+        <input type="hidden" name="postId" value={postId} />
+        <textarea name="comment" />
+        <button type="submit">Post Comment</button>
+      </fetcher.Form>
+      
+      {fetcher.formData && (
+        <div className="preview">
+          <h4>Preview:</h4>
+          <p>{fetcher.formData.get("comment")}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Resetting Fetchers
+
+Reset a fetcher back to idle state:
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function FormWithReset() {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <fetcher.Form method="post">
+        <input type="text" name="data" />
+        <button type="submit">Submit</button>
+      </fetcher.Form>
+      
+      {fetcher.data?.success && (
+        <div>
+          <p>Success!</p>
+          <button onClick={() => fetcher.reset()}>
+            Submit Another
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Multiple Parallel Fetchers
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function Dashboard() {
+  const statsFetcher = useFetcher();
+  const activityFetcher = useFetcher();
+  const alertsFetcher = useFetcher();
+  
+  useEffect(() => {
+    // Load all data in parallel
+    statsFetcher.load("/api/stats");
+    activityFetcher.load("/api/activity");
+    alertsFetcher.load("/api/alerts");
+  }, []);
+  
+  return (
+    <div>
+      <section>
+        <h2>Stats</h2>
+        {statsFetcher.state === "loading" && <Spinner />}
+        {statsFetcher.data && <Stats data={statsFetcher.data} />}
+      </section>
+      
+      <section>
+        <h2>Activity</h2>
+        {activityFetcher.state === "loading" && <Spinner />}
+        {activityFetcher.data && <Activity data={activityFetcher.data} />}
+      </section>
+      
+      <section>
+        <h2>Alerts</h2>
+        {alertsFetcher.state === "loading" && <Spinner />}
+        {alertsFetcher.data && <Alerts data={alertsFetcher.data} />}
+      </section>
+    </div>
+  );
+}
+```
+
+## Type Safety
+
+```tsx
+import { useFetcher } from "react-router";
+import type { action } from "./api.newsletter";
+
+export default function NewsletterForm() {
+  const fetcher = useFetcher<typeof action>();
+  
+  return (
+    <div>
+      <fetcher.Form method="post" action="/api/newsletter">
+        <input type="email" name="email" />
+        <button type="submit">Subscribe</button>
+      </fetcher.Form>
+      
+      {fetcher.data?.success && <p>Thanks for subscribing!</p>}
+      {fetcher.data?.error && <p className="error">{fetcher.data.error}</p>}
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+### Debounce Search Requests
+
+```tsx
+import { useFetcher } from "react-router";
+import { useDebouncedCallback } from "use-debounce";
+
+export default function SearchBox() {
+  const fetcher = useFetcher();
+  
+  const debouncedSearch = useDebouncedCallback((query: string) => {
+    fetcher.load(`/search?q=${query}`);
+  }, 300);
+  
+  return (
+    <input
+      type="text"
+      onChange={(e) => debouncedSearch(e.target.value)}
+    />
+  );
+}
+```
+
+### Handle Errors
+
+```tsx
+import { useFetcher } from "react-router";
+
+export default function FormWithErrors() {
+  const fetcher = useFetcher();
+  
+  return (
+    <div>
+      <fetcher.Form method="post">
+        <input type="email" name="email" />
+        <button type="submit">Submit</button>
+      </fetcher.Form>
+      
+      {fetcher.data?.error && (
+        <div className="error">{fetcher.data.error}</div>
+      )}
+    </div>
+  );
+}
+```
+
+### Clean Up on Unmount
+
+Fetchers automatically clean up when their component unmounts, but you can manually reset them:
+
+```tsx
+import { useFetcher } from "react-router";
+import { useEffect } from "react";
+
+export default function Modal() {
+  const fetcher = useFetcher();
+  
+  useEffect(() => {
+    return () => {
+      // Reset when modal closes
+      fetcher.reset();
+    };
+  }, []);
+  
+  return <div>...</div>;
+}
+```
+
+## Related
+
+- [Loaders](/data/loaders) - Loading data on navigation
+- [Actions](/data/actions) - Handling mutations
+- [Optimistic UI](/data/optimistic-ui) - Update UI before server responds

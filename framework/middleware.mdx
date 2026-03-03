@@ -1,0 +1,396 @@
+---
+title: Middleware
+---
+
+# Middleware
+
+Middleware functions in React Router allow you to run code before your route loaders and actions execute, enabling authentication, authorization, logging, and more.
+
+## Enable Middleware
+
+Middleware is a future flag that must be enabled in `react-router.config.ts`:
+
+```typescript
+export default {
+  future: {
+    v8_middleware: true,
+  },
+} satisfies Config;
+```
+
+## Route Middleware
+
+Define middleware in route modules:
+
+```typescript
+import type { Route } from "./+types/route-name";
+import { redirect } from "react-router";
+
+export async function middleware({ request, context }: Route.MiddlewareArgs) {
+  // Check authentication
+  const user = await context.auth.getUser(request);
+  
+  if (!user) {
+    throw redirect("/login");
+  }
+
+  // Middleware can return data to pass to loader/action
+  return { user };
+}
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  // Access middleware data from context
+  const user = context.user;
+  
+  return {
+    user,
+    posts: await db.post.findMany({ userId: user.id }),
+  };
+}
+```
+
+## Middleware Execution Order
+
+Middleware executes in route hierarchy order, from parent to child:
+
+```typescript
+// routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("admin", "./admin.tsx", [
+    route("users", "./admin.users.tsx"),
+  ]),
+];
+```
+
+```typescript
+// app/admin.tsx
+export async function middleware({ request, context }) {
+  console.log("1. Admin middleware");
+  // Check if user is admin
+  if (!context.user?.isAdmin) {
+    throw redirect("/");
+  }
+  return { adminCheck: true };
+}
+```
+
+```typescript
+// app/admin.users.tsx
+export async function middleware({ request, context }) {
+  console.log("2. Users middleware");
+  // Parent middleware ran first
+  // Access parent middleware data via context
+  return { usersCheck: true };
+}
+
+export async function loader({ context }) {
+  // Both middleware results available
+  console.log(context.adminCheck); // true
+  console.log(context.usersCheck); // true
+}
+```
+
+## Middleware Return Values
+
+Middleware can return data that gets merged into the context:
+
+```typescript
+export async function middleware({ request, context }) {
+  const user = await getUserFromSession(request);
+  const permissions = await getPermissions(user.id);
+  
+  // Return an object to add to context
+  return {
+    user,
+    permissions,
+  };
+}
+
+export async function loader({ context }) {
+  // Access middleware data
+  const { user, permissions } = context;
+  
+  if (!permissions.canViewPosts) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+  
+  return { posts: await getPosts() };
+}
+```
+
+## Client Middleware
+
+Client-side middleware runs before client loaders and actions:
+
+```typescript
+import type { Route } from "./+types/route-name";
+
+export async function clientMiddleware({ request, context }: Route.ClientMiddlewareArgs) {
+  // Run on the client before clientLoader/clientAction
+  const token = localStorage.getItem("token");
+  
+  if (!token) {
+    throw redirect("/login");
+  }
+  
+  return { token };
+}
+
+export async function clientLoader({ request, context }: Route.ClientLoaderArgs) {
+  // Access client middleware data
+  const { token } = context;
+  
+  const response = await fetch("/api/data", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  
+  return response.json();
+}
+```
+
+## Middleware Arguments
+
+Middleware functions receive these arguments:
+
+```typescript
+export async function middleware({
+  request,  // Web Request object
+  params,   // Route parameters
+  context,  // Server context + parent middleware data
+}: Route.MiddlewareArgs) {
+  // ...
+}
+```
+
+### `request`
+
+The Web Fetch API [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request) object:
+
+```typescript
+export async function middleware({ request }) {
+  const url = new URL(request.url);
+  const cookies = request.headers.get("Cookie");
+  const method = request.method;
+  
+  if (method === "POST") {
+    const formData = await request.formData();
+  }
+}
+```
+
+### `params`
+
+Route parameters from the URL:
+
+```typescript
+// Route: posts/:postId/edit
+export async function middleware({ params }) {
+  const { postId } = params; // Typed as string
+  const post = await getPost(postId);
+  
+  if (!post) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  
+  return { post };
+}
+```
+
+### `context`
+
+Server context plus parent middleware data:
+
+```typescript
+export async function middleware({ context }) {
+  // Access data from load context
+  const db = context.db;
+  
+  // Access data from parent middleware
+  const user = context.user;
+}
+```
+
+## Throwing Responses
+
+Middleware can throw responses to short-circuit execution:
+
+```typescript
+export async function middleware({ context }) {
+  if (!context.user) {
+    // Redirect to login
+    throw redirect("/login");
+  }
+  
+  if (!context.user.emailVerified) {
+    // Return 403 Forbidden
+    throw new Response("Email not verified", { status: 403 });
+  }
+  
+  if (context.user.isBanned) {
+    // Return JSON error
+    throw new Response(
+      JSON.stringify({ error: "Account banned" }),
+      {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+}
+```
+
+## Common Use Cases
+
+### Authentication
+
+```typescript
+export async function middleware({ request, context }) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const user = session ? await db.user.findUnique({ where: { id: session.userId } }) : null;
+  
+  if (!user) {
+    throw redirect("/login");
+  }
+  
+  return { user };
+}
+```
+
+### Authorization
+
+```typescript
+export async function middleware({ context, params }) {
+  const { user } = context;
+  const post = await db.post.findUnique({ where: { id: params.postId } });
+  
+  if (post.authorId !== user.id && !user.isAdmin) {
+    throw new Response("Unauthorized", { status: 403 });
+  }
+  
+  return { post };
+}
+```
+
+### Logging
+
+```typescript
+export async function middleware({ request }) {
+  const start = Date.now();
+  console.log(`[${request.method}] ${request.url}`);
+  
+  return {
+    requestStart: start,
+  };
+}
+
+export async function loader({ context }) {
+  const data = await getData();
+  const duration = Date.now() - context.requestStart;
+  console.log(`Loader completed in ${duration}ms`);
+  return data;
+}
+```
+
+### Feature Flags
+
+```typescript
+export async function middleware({ context }) {
+  const features = await getFeatureFlags(context.user.id);
+  
+  if (!features.newDashboard) {
+    throw redirect("/old-dashboard");
+  }
+  
+  return { features };
+}
+```
+
+### Rate Limiting
+
+```typescript
+export async function middleware({ request, context }) {
+  const ip = request.headers.get("X-Forwarded-For") || "unknown";
+  const rateLimit = await context.redis.get(`ratelimit:${ip}`);
+  
+  if (rateLimit && parseInt(rateLimit) > 100) {
+    throw new Response("Too Many Requests", { status: 429 });
+  }
+  
+  await context.redis.incr(`ratelimit:${ip}`);
+  await context.redis.expire(`ratelimit:${ip}`, 60); // 1 minute window
+}
+```
+
+## Middleware vs. Loaders
+
+**Use middleware for:**
+- Authentication and authorization
+- Request validation
+- Logging and analytics
+- Setting up shared context
+- Rate limiting
+
+**Use loaders for:**
+- Fetching data to render
+- Database queries
+- API calls
+- Business logic specific to the route
+
+## TypeScript Types
+
+With type generation enabled:
+
+```typescript
+import type { Route } from "./+types/route-name";
+
+// Server middleware
+export const middleware: Route.MiddlewareFunction = async ({ request, params, context }) => {
+  // Fully typed
+  return { data: "..." };
+};
+
+// Client middleware
+export const clientMiddleware: Route.ClientMiddlewareFunction = async ({ request, params, context }) => {
+  // Fully typed
+  return { data: "..." };
+};
+```
+
+## Server-Only Middleware
+
+Server middleware exports are automatically removed from client bundles:
+
+```typescript
+// app/routes/admin.tsx
+
+// This runs ONLY on the server
+export async function middleware({ context }) {
+  // Safe to use server-only code
+  const secret = process.env.SECRET_KEY;
+  return { secret };
+}
+
+// This runs on server AND client
+export async function clientMiddleware({ context }) {
+  // Cannot access server-only code
+  // Can access browser APIs
+  const token = localStorage.getItem("token");
+  return { token };
+}
+```
+
+## Caveats
+
+1. **Middleware runs for every request** - Keep it fast
+2. **Middleware blocks rendering** - Avoid heavy computation
+3. **Context is merged** - Avoid key conflicts between parent/child middleware
+4. **Throwing ends execution** - No subsequent middleware/loaders run
+5. **Client middleware is different** - Runs separately from server middleware
+
+## See Also
+
+- [Type Generation](/framework/type-generation)
+- [Server Rendering](/framework/server-rendering)
+- [Route Loaders](https://reactrouter.com/start/framework/data-loading)

@@ -1,0 +1,399 @@
+---
+title: Error Handling
+---
+
+# Error Handling
+
+Learn how to handle errors gracefully in React Router applications using error boundaries and error responses.
+
+## Overview
+
+React Router provides a comprehensive error handling system through:
+
+- `ErrorBoundary` components for rendering errors
+- `throw` statements to trigger error boundaries
+- `isRouteErrorResponse` to identify different error types
+- Automatic error boundary inheritance from parent routes
+
+## Basic Error Boundary
+
+Export an `ErrorBoundary` component from your route:
+
+```tsx
+// app/routes/profile.tsx
+import { isRouteErrorResponse, useRouteError } from "react-router";
+import type { Route } from "./+types/profile";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.id);
+  if (!user) {
+    throw new Response("User not found", { status: 404 });
+  }
+  return { user };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error)) {
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1>Error</h1>
+      <p>Something went wrong</p>
+    </div>
+  );
+}
+```
+
+## Throwing Responses
+
+Throw HTTP responses to trigger error boundaries:
+
+```tsx
+import type { Route } from "./+types/post.$id";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const post = await getPost(params.id);
+
+  if (!post) {
+    throw new Response("Post not found", { status: 404 });
+  }
+
+  if (!post.published) {
+    throw new Response("Post not published", { status: 403 });
+  }
+
+  return { post };
+}
+```
+
+## Error Responses with Data
+
+Include structured data in error responses:
+
+```tsx
+import { json } from "react-router";
+import type { Route } from "./+types/api.users";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get("email");
+
+  const existing = await findUserByEmail(email);
+  if (existing) {
+    throw json(
+      { message: "Email already in use", field: "email" },
+      { status: 400 }
+    );
+  }
+
+  return { success: true };
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error) && error.status === 400) {
+    return (
+      <div>
+        <h1>Validation Error</h1>
+        <p>{error.data.message}</p>
+      </div>
+    );
+  }
+
+  return <div>An error occurred</div>;
+}
+```
+
+## Handling Different Error Types
+
+Handle various error scenarios:
+
+```tsx
+import { isRouteErrorResponse, useRouteError } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  // HTTP error responses (thrown via Response)
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) {
+      return (
+        <div>
+          <h1>404 - Not Found</h1>
+          <p>The page you're looking for doesn't exist.</p>
+        </div>
+      );
+    }
+
+    if (error.status === 401) {
+      return (
+        <div>
+          <h1>401 - Unauthorized</h1>
+          <p>Please log in to access this page.</p>
+        </div>
+      );
+    }
+
+    if (error.status === 503) {
+      return (
+        <div>
+          <h1>503 - Service Unavailable</h1>
+          <p>We're experiencing technical difficulties.</p>
+        </div>
+      );
+    }
+
+    // Generic error response
+    return (
+      <div>
+        <h1>{error.status} {error.statusText}</h1>
+        <p>{error.data}</p>
+      </div>
+    );
+  }
+
+  // JavaScript errors (Error instances)
+  if (error instanceof Error) {
+    return (
+      <div>
+        <h1>Application Error</h1>
+        <p>{error.message}</p>
+        {process.env.NODE_ENV === "development" && (
+          <pre>{error.stack}</pre>
+        )}
+      </div>
+    );
+  }
+
+  // Unknown errors
+  return <div>Unknown error occurred</div>;
+}
+```
+
+## Global Error Boundary
+
+Handle errors at the root level:
+
+```tsx
+// app/root.tsx
+import {
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  isRouteErrorResponse,
+  useRouteError,
+} from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  let status = 500;
+  let message = "An unexpected error occurred.";
+
+  if (isRouteErrorResponse(error)) {
+    status = error.status;
+    message = error.data?.message || error.statusText;
+  } else if (error instanceof Error) {
+    message = error.message;
+  }
+
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{status} Error</title>
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        <h1>{status} Error</h1>
+        <p>{message}</p>
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+```
+
+## Error Recovery
+
+Provide ways to recover from errors:
+
+```tsx
+import { Link, useNavigate } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const navigate = useNavigate();
+
+  return (
+    <div className="error-container">
+      <h1>Oops!</h1>
+      <p>Something went wrong.</p>
+
+      <div className="error-actions">
+        <button onClick={() => navigate(-1)}>Go Back</button>
+        <Link to="/">Go Home</Link>
+        <button onClick={() => window.location.reload()}>
+          Reload Page
+        </button>
+      </div>
+
+      {isRouteErrorResponse(error) && (
+        <details>
+          <summary>Error Details</summary>
+          <pre>{JSON.stringify(error.data, null, 2)}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+```
+
+## Action Errors
+
+Handle errors from form submissions:
+
+```tsx
+import { json } from "react-router";
+import type { Route } from "./+types/signup";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+
+  try {
+    const user = await createUser({
+      email: formData.get("email"),
+      password: formData.get("password"),
+    });
+    return redirect(`/users/${user.id}`);
+  } catch (error) {
+    if (error.code === "DUPLICATE_EMAIL") {
+      throw json(
+        { message: "Email already exists" },
+        { status: 400 }
+      );
+    }
+    throw error; // Re-throw unexpected errors
+  }
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error) && error.status === 400) {
+    return (
+      <div>
+        <h2>Registration Failed</h2>
+        <p>{error.data.message}</p>
+        <Link to="/signup">Try Again</Link>
+      </div>
+    );
+  }
+
+  return <div>Registration error occurred</div>;
+}
+```
+
+## Nested Error Boundaries
+
+Use route hierarchy for contextual error handling:
+
+```tsx
+// app/routes/admin._index.tsx
+export function ErrorBoundary() {
+  return (
+    <div className="admin-error">
+      <h1>Admin Panel Error</h1>
+      <p>Something went wrong in the admin panel.</p>
+      <Link to="/admin">Back to Admin</Link>
+    </div>
+  );
+}
+
+// Error bubbles to this boundary if child routes don't handle it
+```
+
+## Error Logging
+
+Log errors to external services:
+
+```tsx
+import { useEffect } from "react";
+import { useRouteError } from "react-router";
+import * as Sentry from "@sentry/react";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  useEffect(() => {
+    // Log to error tracking service
+    if (error instanceof Error) {
+      Sentry.captureException(error);
+    } else if (isRouteErrorResponse(error)) {
+      Sentry.captureMessage(`HTTP ${error.status}: ${error.statusText}`);
+    }
+  }, [error]);
+
+  return <div>{/* Error UI */}</div>;
+}
+```
+
+## Development vs Production
+
+Show detailed errors in development:
+
+```tsx
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const isDevelopment = process.env.NODE_ENV === "development";
+
+  return (
+    <div>
+      <h1>Error</h1>
+
+      {isDevelopment ? (
+        <>
+          {/* Detailed error info for developers */}
+          {error instanceof Error && (
+            <>
+              <h2>{error.message}</h2>
+              <pre>{error.stack}</pre>
+            </>
+          )}
+          {isRouteErrorResponse(error) && (
+            <pre>{JSON.stringify(error, null, 2)}</pre>
+          )}
+        </>
+      ) : (
+        <>{/* User-friendly message for production */}
+          <p>We're sorry, something went wrong.</p>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Always provide error boundaries** - At least at the root level
+2. **Use semantic status codes** - 404 for not found, 403 for forbidden, etc.
+3. **Provide recovery options** - Help users get back on track
+4. **Log errors** - Track issues in production
+5. **Show appropriate detail** - More in development, less in production
+6. **Handle expected errors** - Validate and throw descriptive errors
+7. **Use nested boundaries** - Provide context-specific error handling
+8. **Test error scenarios** - Ensure error boundaries work correctly

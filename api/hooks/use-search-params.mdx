@@ -1,0 +1,329 @@
+---
+title: useSearchParams
+---
+
+# useSearchParams
+
+Returns a tuple of the current URL's `URLSearchParams` and a function to update them. Setting the search params causes a navigation.
+
+## Signature
+
+```tsx
+function useSearchParams(
+  defaultInit?: URLSearchParamsInit
+): [URLSearchParams, SetURLSearchParams]
+
+type SetURLSearchParams = (
+  nextInit?:
+    | URLSearchParamsInit
+    | ((prev: URLSearchParams) => URLSearchParamsInit),
+  navigateOpts?: NavigateOptions
+) => void
+```
+
+## Parameters
+
+<ParamField path="defaultInit" type="URLSearchParamsInit">
+  Optional default search params. This **will not** change the URL on the first render.
+  
+  Can be:
+  - A search param string (e.g., `"?tab=1"`)
+  - A shorthand object (e.g., `{ tab: "1" }`)
+  - An object with array values (e.g., `{ brand: ["nike", "reebok"] }`)
+  - An array of tuples (e.g., `[["tab", "1"]]`)
+  - A `URLSearchParams` object
+</ParamField>
+
+## Returns
+
+<ResponseField name="[0]" type="URLSearchParams">
+  The current search params as a `URLSearchParams` object. This is a stable reference that won't change between renders.
+</ResponseField>
+
+<ResponseField name="[1]" type="SetURLSearchParams">
+  A function to update the search params and navigate to the new URL.
+  
+  <ParamField path="nextInit" type="URLSearchParamsInit | function">
+    The new search params or a function that receives the current params and returns new params.
+  </ParamField>
+  
+  <ParamField path="navigateOpts" type="NavigateOptions">
+    Optional navigation options like `replace`, `state`, `preventScrollReset`, etc.
+  </ParamField>
+</ResponseField>
+
+## Usage
+
+### Basic usage
+
+```tsx
+import { useSearchParams } from "react-router";
+
+function SearchFilter() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  return (
+    <div>
+      <p>Current query: {searchParams.get("q")}</p>
+      
+      <button
+        onClick={() => setSearchParams({ q: "react" })}
+      >
+        Search for React
+      </button>
+    </div>
+  );
+}
+```
+
+### Set search params
+
+Multiple ways to set search params:
+
+```tsx
+const [searchParams, setSearchParams] = useSearchParams();
+
+// String
+setSearchParams("?tab=1");
+
+// Object
+setSearchParams({ tab: "1" });
+
+// Multiple values for same key
+setSearchParams({ brand: ["nike", "reebok"] });
+
+// Array of tuples
+setSearchParams([["tab", "1"]]);
+
+// URLSearchParams object
+setSearchParams(new URLSearchParams("?tab=1"));
+```
+
+### Function callback
+
+Update search params based on current values:
+
+```tsx
+setSearchParams((prev) => {
+  prev.set("tab", "2");
+  return prev;
+});
+```
+
+<Warning>
+  The function callback version does not support React's `setState` queueing logic. Multiple calls in the same tick will not build on the prior value.
+</Warning>
+
+### Navigation options
+
+Pass navigation options as the second argument:
+
+```tsx
+// Replace history entry instead of pushing
+setSearchParams(
+  { tab: "2" },
+  { replace: true }
+);
+
+// Prevent scroll reset
+setSearchParams(
+  { tab: "2" },
+  { preventScrollReset: true }
+);
+```
+
+### Read search params
+
+```tsx
+const [searchParams] = useSearchParams();
+
+// Get single value
+const query = searchParams.get("q");
+
+// Get all values for a key
+const brands = searchParams.getAll("brand");
+
+// Check if key exists
+const hasFilter = searchParams.has("filter");
+
+// Iterate over all params
+for (const [key, value] of searchParams) {
+  console.log(key, value);
+}
+```
+
+### Default search params
+
+Provide default values that won't change the URL initially:
+
+```tsx
+const [searchParams, setSearchParams] = useSearchParams({
+  tab: "home",
+});
+
+// On first render: searchParams.get("tab") === "home"
+// URL remains unchanged unless user navigates to the page
+```
+
+### Form filters
+
+```tsx
+function ProductFilters() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  return (
+    <form
+      onChange={(e) => {
+        const formData = new FormData(e.currentTarget);
+        setSearchParams(formData);
+      }}
+    >
+      <input
+        type="search"
+        name="q"
+        defaultValue={searchParams.get("q") || ""}
+      />
+      
+      <select
+        name="category"
+        defaultValue={searchParams.get("category") || ""}
+      >
+        <option value="">All Categories</option>
+        <option value="shoes">Shoes</option>
+        <option value="clothing">Clothing</option>
+      </select>
+    </form>
+  );
+}
+```
+
+### Tab navigation
+
+```tsx
+function Tabs() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") || "profile";
+  
+  return (
+    <div>
+      <nav>
+        <button
+          onClick={() => setSearchParams(
+            { tab: "profile" },
+            { preventScrollReset: true }
+          )}
+        >
+          Profile
+        </button>
+        <button
+          onClick={() => setSearchParams(
+            { tab: "settings" },
+            { preventScrollReset: true }
+          )}
+        >
+          Settings
+        </button>
+      </nav>
+      
+      {activeTab === "profile" && <Profile />}
+      {activeTab === "settings" && <Settings />}
+    </div>
+  );
+}
+```
+
+### Preserve other params
+
+```tsx
+function UpdateSort() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  const updateSort = (sort: string) => {
+    setSearchParams((prev) => {
+      prev.set("sort", sort);
+      // Other params like "q", "filter" are preserved
+      return prev;
+    });
+  };
+  
+  return (
+    <button onClick={() => updateSort("date")}>
+      Sort by Date
+    </button>
+  );
+}
+```
+
+### Clear search params
+
+```tsx
+// Clear all params
+setSearchParams({});
+
+// Or
+setSearchParams("");
+
+// Remove specific param
+setSearchParams((prev) => {
+  prev.delete("filter");
+  return prev;
+});
+```
+
+## Important Notes
+
+### Stable reference
+
+`searchParams` is a stable reference, safe to use in `useEffect` dependencies:
+
+```tsx
+useEffect(() => {
+  const query = searchParams.get("q");
+  // Perform search
+}, [searchParams]);
+```
+
+### Mutability warning
+
+The `searchParams` object is mutable. If you change it without calling `setSearchParams`, values will change between renders but the URL won't update:
+
+```tsx
+// ❌ Don't do this
+searchParams.set("tab", "2");  // URL won't update!
+
+// ✅ Do this instead
+setSearchParams((prev) => {
+  prev.set("tab", "2");
+  return prev;
+});
+```
+
+## Type Safety
+
+Create a type-safe wrapper:
+
+```tsx
+interface SearchParams {
+  q?: string;
+  category?: string;
+  sort?: "date" | "name";
+}
+
+function useTypedSearchParams() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  const typedParams: SearchParams = {
+    q: searchParams.get("q") || undefined,
+    category: searchParams.get("category") || undefined,
+    sort: (searchParams.get("sort") as "date" | "name") || undefined,
+  };
+  
+  return [typedParams, setSearchParams] as const;
+}
+```
+
+## Related
+
+- [`useLocation`](/api/hooks/use-location) - Access current location
+- [`useNavigate`](/api/hooks/use-navigate) - Navigate programmatically
+- [`<Form>`](/api/components/form) - Submit forms with search params

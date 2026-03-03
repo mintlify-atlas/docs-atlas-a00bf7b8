@@ -1,0 +1,473 @@
+---
+title: routes.ts
+description: Route configuration API for React Router Framework Mode
+---
+
+# routes.ts
+
+Defines the route structure for your React Router application in Framework Mode. Located at `app/routes.ts`.
+
+## Import
+
+```ts
+import type { RouteConfig } from "@react-router/dev/routes";
+import { route, index, layout, prefix } from "@react-router/dev/routes";
+import { flatRoutes } from "@react-router/fs-routes";
+```
+
+## RouteConfig Type
+
+```ts
+export interface RouteConfigEntry {
+  id?: string;
+  path?: string;
+  index?: boolean;
+  caseSensitive?: boolean;
+  file: string;
+  children?: RouteConfigEntry[];
+}
+
+type RouteConfig = RouteConfigEntry[];
+```
+
+## Route Helpers
+
+### route()
+
+Defines a route with a path and component.
+
+<ParamField path="path" type="string | null | undefined" required>
+URL path pattern. Use `null` or `undefined` for pathless layout routes.
+
+- Static: `"/about"`
+- Dynamic: `"/users/:userId"`
+- Splat: `"/files/*"`
+</ParamField>
+
+<ParamField path="file" type="string" required>
+Path to route module file, relative to `app/` directory.
+
+```ts
+route("/about", "./routes/about.tsx")
+```
+</ParamField>
+
+<ParamField path="children" type="RouteConfigEntry[]" optional>
+Nested child routes.
+
+```ts
+route("/users", "./routes/users.tsx", [
+  index("./routes/users.index.tsx"),
+  route(":userId", "./routes/users.$userId.tsx"),
+])
+```
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+Additional route options:
+
+- `id?: string` - Custom route identifier
+- `caseSensitive?: boolean` - Case-sensitive path matching
+
+```ts
+route("/About", "./routes/about.tsx", {
+  id: "about-page",
+  caseSensitive: true,
+})
+```
+</ParamField>
+
+**Examples:**
+
+<CodeGroup>
+
+```ts Basic Route
+route("/about", "./routes/about.tsx")
+```
+
+```ts Dynamic Route
+route("/posts/:slug", "./routes/posts.$slug.tsx")
+```
+
+```ts With Children
+route("/dashboard", "./routes/dashboard.tsx", [
+  index("./routes/dashboard.index.tsx"),
+  route("settings", "./routes/dashboard.settings.tsx"),
+])
+```
+
+```ts Pathless Layout
+route(null, "./routes/auth-layout.tsx", [
+  route("login", "./routes/login.tsx"),
+  route("signup", "./routes/signup.tsx"),
+])
+```
+
+```ts With Options
+route("/API", "./routes/api.tsx", {
+  id: "api-route",
+  caseSensitive: true,
+})
+```
+
+</CodeGroup>
+
+### index()
+
+Defines an index route (renders at parent's path).
+
+<ParamField path="file" type="string" required>
+Path to route module file.
+
+```ts
+index("./routes/home.tsx")
+```
+</ParamField>
+
+<ParamField path="options" type="{ id?: string }" optional>
+Optional custom route ID.
+
+```ts
+index("./routes/home.tsx", { id: "home" })
+```
+</ParamField>
+
+**Examples:**
+
+<CodeGroup>
+
+```ts Root Index
+route("/", "./root.tsx", [
+  index("./routes/home.tsx"),
+])
+```
+
+```ts Nested Index
+route("/dashboard", "./routes/dashboard.tsx", [
+  index("./routes/dashboard.index.tsx"),
+  route("settings", "./routes/dashboard.settings.tsx"),
+])
+```
+
+```ts With Custom ID
+index("./routes/home.tsx", { id: "homepage" })
+```
+
+</CodeGroup>
+
+### layout()
+
+Defines a layout route that wraps children without adding to the URL.
+
+<ParamField path="file" type="string" required>
+Path to layout component file.
+
+```ts
+layout("./routes/auth-layout.tsx", [...])
+```
+</ParamField>
+
+<ParamField path="children" type="RouteConfigEntry[]" optional>
+Routes to wrap with this layout.
+
+```ts
+layout("./routes/marketing-layout.tsx", [
+  route("/", "./routes/home.tsx"),
+  route("/about", "./routes/about.tsx"),
+])
+```
+</ParamField>
+
+<ParamField path="options" type="{ id?: string }" optional>
+Optional custom route ID.
+
+```ts
+layout("./routes/dashboard-layout.tsx", { id: "dashboard" }, [...])
+```
+</ParamField>
+
+**Examples:**
+
+<CodeGroup>
+
+```ts Basic Layout
+layout("./routes/marketing-layout.tsx", [
+  route("/", "./routes/home.tsx"),
+  route("/pricing", "./routes/pricing.tsx"),
+])
+```
+
+```ts Nested Layouts
+layout("./routes/app-layout.tsx", [
+  layout("./routes/dashboard-layout.tsx", [
+    route("/dashboard", "./routes/dashboard.tsx"),
+    route("/dashboard/settings", "./routes/dashboard.settings.tsx"),
+  ]),
+])
+```
+
+```ts With Custom ID
+layout("./routes/admin-layout.tsx", { id: "admin" }, [
+  route("/admin", "./routes/admin.tsx"),
+])
+```
+
+</CodeGroup>
+
+### prefix()
+
+Adds a path prefix to multiple routes without a layout component.
+
+<ParamField path="prefixPath" type="string" required>
+Path segment to prepend to all routes.
+
+```ts
+prefix("/app", routes)
+```
+</ParamField>
+
+<ParamField path="routes" type="RouteConfigEntry[]" required>
+Routes to prefix.
+
+```ts
+prefix("/admin", [
+  route("/dashboard", "./routes/admin.dashboard.tsx"),
+  route("/users", "./routes/admin.users.tsx"),
+])
+```
+</ParamField>
+
+**Examples:**
+
+<CodeGroup>
+
+```ts Basic Prefix
+prefix("/blog", [
+  index("./routes/blog.index.tsx"),
+  route(":slug", "./routes/blog.$slug.tsx"),
+])
+// Results in: /blog and /blog/:slug
+```
+
+```ts API Routes
+prefix("/api", [
+  route("/users", "./routes/api.users.tsx"),
+  route("/posts", "./routes/api.posts.tsx"),
+])
+// Results in: /api/users and /api/posts
+```
+
+```ts Nested Prefix
+prefix("/admin", [
+  prefix("/settings", [
+    route("/profile", "./routes/admin.settings.profile.tsx"),
+    route("/billing", "./routes/admin.settings.billing.tsx"),
+  ]),
+])
+// Results in: /admin/settings/profile and /admin/settings/billing
+```
+
+</CodeGroup>
+
+## File-System Routes
+
+### flatRoutes()
+
+Generates routes from file-system structure using conventions.
+
+```ts filename="app/routes.ts"
+import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes();
+```
+
+**File Conventions:**
+
+| File | Route |
+|------|-------|
+| `routes/_index.tsx` | `/` |
+| `routes/about.tsx` | `/about` |
+| `routes/blog._index.tsx` | `/blog` |
+| `routes/blog.$slug.tsx` | `/blog/:slug` |
+| `routes/blog.$.tsx` | `/blog/*` |
+| `routes/users.$userId.tsx` | `/users/:userId` |
+| `routes/files.$.tsx` | `/files/*` |
+| `routes/_layout.tsx` | Layout (no path) |
+| `routes/dashboard.settings.tsx` | `/dashboard/settings` |
+
+**Directory Structure Example:**
+
+```
+app/
+├── routes/
+│   ├── _index.tsx           → /
+│   ├── about.tsx            → /about
+│   ├── blog._index.tsx      → /blog
+│   ├── blog.$slug.tsx       → /blog/:slug
+│   ├── users._index.tsx     → /users
+│   ├── users.$userId.tsx    → /users/:userId
+│   └── dashboard.settings.tsx → /dashboard/settings
+├── routes.ts
+└── root.tsx
+```
+
+### Custom Base Directory
+
+```ts filename="app/routes.ts"
+import { flatRoutes } from "@react-router/fs-routes";
+
+export default flatRoutes({
+  rootDirectory: "custom-routes",
+});
+```
+
+## Common Patterns
+
+### Mixed Approach
+
+Combine file-system routes with manual configuration:
+
+```ts filename="app/routes.ts"
+import { flatRoutes } from "@react-router/fs-routes";
+import { route, prefix } from "@react-router/dev/routes";
+
+export default [
+  // File-system routes
+  ...flatRoutes(),
+  
+  // Manual API routes
+  prefix("/api", [
+    route("/users", "./api/users.ts"),
+    route("/posts", "./api/posts.ts"),
+  ]),
+];
+```
+
+### Nested Route Groups
+
+```ts filename="app/routes.ts"
+import { route, index, layout } from "@react-router/dev/routes";
+
+export default [
+  // Public routes
+  layout("./layouts/public.tsx", [
+    route("/", "./routes/home.tsx"),
+    route("/about", "./routes/about.tsx"),
+    route("/pricing", "./routes/pricing.tsx"),
+  ]),
+  
+  // App routes (authenticated)
+  layout("./layouts/app.tsx", [
+    route("/dashboard", "./routes/dashboard.tsx", [
+      index("./routes/dashboard.index.tsx"),
+      route("settings", "./routes/dashboard.settings.tsx"),
+    ]),
+  ]),
+  
+  // Admin routes
+  layout("./layouts/admin.tsx", [
+    prefix("/admin", [
+      route("/users", "./routes/admin.users.tsx"),
+      route("/settings", "./routes/admin.settings.tsx"),
+    ]),
+  ]),
+];
+```
+
+### Dynamic Route Segments
+
+```ts filename="app/routes.ts"
+import { route, index } from "@react-router/dev/routes";
+
+export default [
+  route("/users/:userId", "./routes/users.$userId.tsx"),
+  route("/posts/:postId", "./routes/posts.$postId.tsx", [
+    index("./routes/posts.$postId.index.tsx"),
+    route("edit", "./routes/posts.$postId.edit.tsx"),
+  ]),
+  route("/files/*", "./routes/files.$.tsx"),
+];
+```
+
+### Relative Route Helpers
+
+Organize routes across multiple files:
+
+```ts filename="app/routes.ts"
+import { relative } from "@react-router/dev/routes";
+import { adminRoutes } from "./routes/admin/routes";
+import { blogRoutes } from "./routes/blog/routes";
+
+export default [
+  ...adminRoutes,
+  ...blogRoutes,
+];
+```
+
+```ts filename="app/routes/admin/routes.ts"
+import { relative } from "@react-router/dev/routes";
+import { getAppDirectory } from "@react-router/dev/routes";
+import path from "path";
+
+const { route, index, layout } = relative(
+  path.join(getAppDirectory(), "routes/admin")
+);
+
+export const adminRoutes = [
+  layout("layout.tsx", [
+    route("/admin", "dashboard.tsx"),
+    route("/admin/users", "users.tsx"),
+  ]),
+];
+```
+
+### Resource Routes (No UI)
+
+```ts filename="app/routes.ts"
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("/api/webhook", "./routes/webhook.ts"),
+  route("/healthcheck", "./routes/healthcheck.ts"),
+  route("/sitemap.xml", "./routes/sitemap.ts"),
+];
+```
+
+## Validation
+
+The route config is validated at build time:
+
+```ts
+// ✅ Valid
+route("/users", "./routes/users.tsx")
+
+// ❌ Invalid - missing file
+route("/users", "./routes/users.tsx") // Error: File not found
+
+// ❌ Invalid - reserved ID
+route("/users", "./routes/users.tsx", { id: "root" }) // Error: Cannot use 'root' as ID
+
+// ❌ Invalid - duplicate IDs
+route("/a", "./a.tsx", { id: "same" })
+route("/b", "./b.tsx", { id: "same" }) // Error: Duplicate ID
+```
+
+## TypeScript
+
+Ensure proper type checking:
+
+```ts filename="app/routes.ts"
+import type { RouteConfig } from "@react-router/dev/routes";
+import { route, index } from "@react-router/dev/routes";
+
+export default [
+  route("/", "./routes/home.tsx"),
+  route("/about", "./routes/about.tsx"),
+] satisfies RouteConfig;
+```
+
+## Related
+
+- [react-router.config.ts](/api/config/react-router-config)
+- [Route Modules](/concepts/route-modules)
+- [File-System Routing](/guides/file-system-routing)

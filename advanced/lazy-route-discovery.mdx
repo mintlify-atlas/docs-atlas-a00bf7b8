@@ -1,0 +1,264 @@
+---
+title: Lazy Route Discovery
+description: Dynamically discover and load routes on demand
+---
+
+# Lazy Route Discovery
+
+Lazy route discovery enables you to load route definitions dynamically, reducing initial bundle size and improving performance.
+
+## Overview
+
+React Router supports two levels of lazy loading:
+
+1. **Lazy route modules** (`route.lazy`) - Load route properties (loader, component, etc.)
+2. **Lazy route discovery** (`patchRoutesOnNavigation`) - Discover and add routes dynamically
+
+## Lazy Route Modules
+
+Use `lazy()` to load route properties on demand:
+
+```tsx
+const router = createBrowserRouter([
+  {
+    path: "/",
+    Component: Layout,
+    children: [
+      {
+        index: true,
+        Component: Home,
+      },
+      {
+        path: "about",
+        lazy: () => import("./routes/about"),
+      },
+    ],
+  },
+]);
+```
+
+Your lazy route module can export:
+
+```tsx
+// routes/about.tsx
+export async function loader() {
+  return { title: "About" };
+}
+
+export function Component() {
+  return <h1>About Page</h1>;
+}
+
+export function ErrorBoundary() {
+  return <div>Something went wrong!</div>;
+}
+```
+
+### Immutable Properties
+
+Some properties cannot be loaded lazily:
+
+- `path` - Needed for matching
+- `index` - Needed for matching  
+- `caseSensitive` - Needed for matching
+- `id` - Needed to identify the route
+- `children` - Needed for route hierarchy
+
+These must be defined statically.
+
+### Static Properties
+
+You can define properties statically and supplement with lazy loading:
+
+```tsx
+{
+  path: "dashboard",
+  // Static loader runs in parallel with lazy()
+  loader: () => fetch("/api/dashboard"),
+  // Lazy load the component
+  lazy: () => import("./routes/dashboard"),
+}
+```
+
+React Router optimizes by calling static loaders in parallel with `lazy()`.
+
+## Route Discovery with patchRoutesOnNavigation
+
+Discover and add routes dynamically during navigation:
+
+```tsx
+const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      Component: Layout,
+    },
+  ],
+  {
+    async patchRoutesOnNavigation({ path, patch }) {
+      if (path.startsWith("/dashboard")) {
+        const routes = await import("./routes/dashboard");
+        patch(null, routes.default);
+      }
+    },
+  }
+);
+```
+
+### The patch Function
+
+```tsx
+patch(routeId: string | null, routes: RouteObject[])
+```
+
+- `routeId`: Parent route ID, or `null` for root
+- `routes`: Array of routes to add
+
+### Eager Discovery (Framework Mode)
+
+In framework mode with RSC, routes can be discovered eagerly:
+
+```tsx
+<RSCHydratedRouter
+  payload={payload}
+  routeDiscovery="eager" // or "lazy"
+  createFromReadableStream={createFromReadableStream}
+/>
+```
+
+**Eager mode**: Discovers routes as links render in the DOM
+**Lazy mode**: Discovers routes only when clicked
+
+### Manifest Pattern
+
+Load route manifests for efficient discovery:
+
+```tsx
+let manifestCache = new Map();
+
+async function patchRoutesOnNavigation({ path, patch }) {
+  if (manifestCache.has(path)) {
+    patch(null, manifestCache.get(path));
+    return;
+  }
+
+  const response = await fetch(`${path}.manifest`);
+  const routes = await response.json();
+  
+  manifestCache.set(path, routes);
+  patch(null, routes);
+}
+```
+
+## Component vs element
+
+Use `Component` with lazy routes instead of `element`:
+
+```tsx
+// ❌ Don't do this
+{
+  path: "about",
+  lazy: async () => ({
+    element: <About />, // Awkward JSX in lazy module
+  }),
+}
+
+// ✅ Do this
+{
+  path: "about",
+  lazy: async () => ({
+    Component: About, // Clean component reference
+  }),
+}
+```
+
+## Interruptions
+
+If a navigation is interrupted while `lazy()` is loading, React Router still calls the returned handler to maintain consistency:
+
+```tsx
+// User clicks /about
+lazy: () => import("./about") // starts loading
+
+// User quickly clicks /contact (interrupts)
+// The about loader still runs when loaded
+// But the results are discarded
+```
+
+This ensures routes behave consistently on first and subsequent navigations.
+
+## SSR Hydration
+
+When server-rendering with lazy routes, preload them before hydration:
+
+```tsx
+// Determine initially matched lazy routes
+const lazyMatches = matchRoutes(routes, window.location)?.filter(
+  (m) => m.route.lazy
+);
+
+// Load them before creating the router
+if (lazyMatches?.length) {
+  await Promise.all(
+    lazyMatches.map(async (m) => {
+      const routeModule = await m.route.lazy!();
+      Object.assign(m.route, { ...routeModule, lazy: undefined });
+    })
+  );
+}
+
+const router = createBrowserRouter(routes, {
+  hydrationData: window.__hydrationData,
+});
+
+ReactDOM.hydrateRoot(
+  document.getElementById("app"),
+  <RouterProvider router={router} />
+);
+```
+
+## HMR Support
+
+Lazy routes work seamlessly with Hot Module Replacement during development:
+
+```tsx
+if (import.meta.hot) {
+  import.meta.hot.accept("./routes/about", () => {
+    // Route automatically updates
+  });
+}
+```
+
+## Benefits
+
+- **Smaller bundles**: Only load code when needed
+- **Faster initial load**: Reduce time to interactive
+- **Code splitting**: Automatic via dynamic imports
+- **Progressive enhancement**: Routes work before JS loads (with SSR)
+
+## Best Practices
+
+1. **Lazy load large sections**: Dashboard, admin, settings
+2. **Keep critical routes static**: Home, 404, layout
+3. **Use route.lazy for components**: Avoid lazy() for just loaders
+4. **Preload on hover**: Improve perceived performance
+5. **Cache manifests**: Don't re-fetch route definitions
+
+## Example: Feature Flags
+
+```tsx
+async function patchRoutesOnNavigation({ path, patch }) {
+  const features = await getFeatureFlags();
+  
+  if (path === "/beta" && features.betaAccess) {
+    const routes = await import("./routes/beta");
+    patch(null, routes.default);
+  }
+}
+```
+
+## Related
+
+- [Code Splitting](./code-splitting)
+- [Route Module API](../start/framework/route-module)
+- [Data Loading](../start/data/route-object#loader)

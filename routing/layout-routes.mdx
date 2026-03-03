@@ -1,0 +1,432 @@
+---
+title: Layout Routes
+description: Learn how to create layout routes that wrap child routes without adding URL segments
+---
+
+# Layout Routes
+
+Layout routes (also called "pathless routes") are routes that provide shared UI structure for child routes without adding segments to the URL. They're perfect for shared navigation, authentication layouts, and grouping routes with common UI.
+
+## Basic Layout Routes
+
+Use the `layout()` helper to create a layout route:
+
+```ts
+// app/routes.ts
+import { layout, route } from "@react-router/dev/routes";
+
+export default [
+  layout("routes/app-layout.tsx", [
+    route("dashboard", "routes/dashboard.tsx"),
+    route("profile", "routes/profile.tsx"),
+    route("settings", "routes/settings.tsx"),
+  ]),
+];
+```
+
+URL structure:
+- `/dashboard` → renders `app-layout.tsx` with `dashboard.tsx` in the outlet
+- `/profile` → renders `app-layout.tsx` with `profile.tsx` in the outlet
+- `/settings` → renders `app-layout.tsx` with `settings.tsx` in the outlet
+
+No `/app-layout` URL is created.
+
+## Layout Component
+
+Layout routes must render an `<Outlet />` for child routes:
+
+```tsx
+// app/routes/app-layout.tsx
+import { Outlet, Link } from "react-router";
+
+export default function AppLayout() {
+  return (
+    <div className="app">
+      <header>
+        <nav>
+          <Link to="/dashboard">Dashboard</Link>
+          <Link to="/profile">Profile</Link>
+          <Link to="/settings">Settings</Link>
+        </nav>
+      </header>
+      
+      <main>
+        <Outlet />
+      </main>
+      
+      <footer>
+        <p>&copy; 2024 My App</p>
+      </footer>
+    </div>
+  );
+}
+```
+
+## Multiple Layout Routes
+
+Create different layouts for different sections of your app:
+
+```ts
+// app/routes.ts
+import { layout, route, index } from "@react-router/dev/routes";
+
+export default [
+  // Marketing layout
+  layout("routes/marketing-layout.tsx", [
+    index("routes/home.tsx"),
+    route("about", "routes/about.tsx"),
+    route("pricing", "routes/pricing.tsx"),
+    route("contact", "routes/contact.tsx"),
+  ]),
+  
+  // App layout
+  layout("routes/app-layout.tsx", [
+    route("dashboard", "routes/dashboard.tsx"),
+    route("projects", "routes/projects.tsx"),
+    route("team", "routes/team.tsx"),
+  ]),
+  
+  // Auth layout
+  layout("routes/auth-layout.tsx", [
+    route("login", "routes/login.tsx"),
+    route("signup", "routes/signup.tsx"),
+    route("reset-password", "routes/reset-password.tsx"),
+  ]),
+];
+```
+
+## Nested Layout Routes
+
+Layout routes can be nested for hierarchical UI structures:
+
+```ts
+// app/routes.ts
+import { layout, route } from "@react-router/dev/routes";
+
+export default [
+  layout("routes/app-layout.tsx", [
+    route("account", "routes/account/layout.tsx", [
+      route("profile", "routes/account/profile.tsx"),
+      route("billing", "routes/account/billing.tsx"),
+      route("security", "routes/account/security.tsx"),
+    ]),
+  ]),
+];
+```
+
+URL `/account/profile` renders:
+1. `app-layout.tsx`
+2. → `account/layout.tsx` (in first outlet)
+3. → → `account/profile.tsx` (in second outlet)
+
+## File-Based Layout Routes
+
+When using `flatRoutes()`, prefix route names with `_` to create layout routes:
+
+```
+app/routes/
+├── _marketing.tsx                   # Marketing layout (no URL)
+├── _marketing._index.tsx            # /
+├── _marketing.about.tsx             # /about
+├── _marketing.pricing.tsx           # /pricing
+├── _app.tsx                         # App layout (no URL)
+├── _app.dashboard.tsx               # /dashboard
+└── _app.settings.tsx                # /settings
+```
+
+The leading `_` indicates a pathless layout route.
+
+## Layout with Shared Data
+
+Load shared data in layout routes:
+
+```tsx
+// app/routes/app-layout.tsx
+import { Outlet } from "react-router";
+import type { Route } from "./+types/app-layout";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  const notifications = await getNotifications(user.id);
+  
+  return { user, notifications };
+}
+
+export default function AppLayout({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <header>
+        <p>Welcome, {loaderData.user.name}</p>
+        <span>{loaderData.notifications.length} notifications</span>
+      </header>
+      <Outlet />
+    </div>
+  );
+}
+```
+
+Child routes can access this data with `useMatches()`:
+
+```tsx
+// app/routes/dashboard.tsx
+import { useMatches } from "react-router";
+
+export default function Dashboard() {
+  const matches = useMatches();
+  const layoutData = matches.find(m => m.id === "routes/app-layout")?.data;
+  
+  return <h1>Hello, {layoutData.user.name}</h1>;
+}
+```
+
+## Authentication Layout
+
+Protect routes with an auth layout:
+
+```tsx
+// app/routes/auth-required.tsx
+import { Outlet, redirect } from "react-router";
+import type { Route } from "./+types/auth-required";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  
+  if (!user) {
+    throw redirect("/login");
+  }
+  
+  return { user };
+}
+
+export default function AuthRequired({ loaderData }: Route.ComponentProps) {
+  return <Outlet context={{ user: loaderData.user }} />;
+}
+```
+
+```ts
+// app/routes.ts
+import { layout, route } from "@react-router/dev/routes";
+
+export default [
+  layout("routes/auth-required.tsx", [
+    route("dashboard", "routes/dashboard.tsx"),
+    route("profile", "routes/profile.tsx"),
+  ]),
+  
+  // Public routes
+  route("login", "routes/login.tsx"),
+  route("signup", "routes/signup.tsx"),
+];
+```
+
+## Layout with Context
+
+Pass data to child routes via outlet context:
+
+```tsx
+// app/routes/app-layout.tsx
+import { Outlet } from "react-router";
+import type { Route } from "./+types/app-layout";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  return { user };
+}
+
+export default function AppLayout({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <Outlet context={{ user: loaderData.user }} />
+    </div>
+  );
+}
+```
+
+```tsx
+// app/routes/dashboard.tsx
+import { useOutletContext } from "react-router";
+
+interface OutletContext {
+  user: { name: string; id: string };
+}
+
+export default function Dashboard() {
+  const { user } = useOutletContext<OutletContext>();
+  return <h1>Welcome, {user.name}</h1>;
+}
+```
+
+## Conditional Layouts
+
+Apply different layouts based on conditions:
+
+```tsx
+// app/routes/conditional-layout.tsx
+import { Outlet } from "react-router";
+import type { Route } from "./+types/conditional-layout";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  return { user };
+}
+
+export default function ConditionalLayout({ loaderData }: Route.ComponentProps) {
+  if (loaderData.user.role === "admin") {
+    return (
+      <div className="admin-layout">
+        <AdminSidebar />
+        <Outlet />
+      </div>
+    );
+  }
+  
+  return (
+    <div className="user-layout">
+      <UserSidebar />
+      <Outlet />
+    </div>
+  );
+}
+```
+
+## Pathless Routes with Paths
+
+Combine layout routes with path-based parent routes:
+
+```ts
+// app/routes.ts
+import { layout, route } from "@react-router/dev/routes";
+
+export default [
+  route("account", "routes/account.tsx", [
+    // Public account routes
+    layout("routes/account/public-layout.tsx", [
+      route("login", "routes/account/login.tsx"),
+      route("signup", "routes/account/signup.tsx"),
+    ]),
+    // Private account routes
+    layout("routes/account/private-layout.tsx", [
+      route("profile", "routes/account/profile.tsx"),
+      route("settings", "routes/account/settings.tsx"),
+    ]),
+  ]),
+];
+```
+
+URLs:
+- `/account/login` → account.tsx > public-layout.tsx > login.tsx
+- `/account/profile` → account.tsx > private-layout.tsx > profile.tsx
+
+## Layout Error Boundaries
+
+Handle errors in layout routes:
+
+```tsx
+// app/routes/app-layout.tsx
+import { Outlet, useRouteError, isRouteErrorResponse } from "react-router";
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  
+  return (
+    <div className="error-layout">
+      <h1>Application Error</h1>
+      {isRouteErrorResponse(error) ? (
+        <p>{error.status} {error.statusText}</p>
+      ) : (
+        <p>An unexpected error occurred</p>
+      )}
+    </div>
+  );
+}
+
+export default function AppLayout() {
+  return (
+    <div>
+      <header>My App</header>
+      <Outlet />
+    </div>
+  );
+}
+```
+
+## Layout Actions
+
+Handle form submissions in layouts:
+
+```tsx
+// app/routes/app-layout.tsx
+import { Outlet, Form } from "react-router";
+import type { Route } from "./+types/app-layout";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const theme = formData.get("theme");
+  
+  await setUserTheme(theme);
+  
+  return { success: true };
+}
+
+export default function AppLayout() {
+  return (
+    <div>
+      <header>
+        <Form method="post">
+          <select name="theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+          <button type="submit">Change Theme</button>
+        </Form>
+      </header>
+      <Outlet />
+    </div>
+  );
+}
+```
+
+## Common Patterns
+
+### Marketing + App Split
+
+```ts
+layout("routes/marketing.tsx", [
+  index("routes/home.tsx"),
+  route("features", "routes/features.tsx"),
+]),
+layout("routes/app.tsx", [
+  route("dashboard", "routes/dashboard.tsx"),
+])
+```
+
+### Role-Based Layouts
+
+```ts
+layout("routes/admin-layout.tsx", [
+  route("admin/users", "routes/admin/users.tsx"),
+  route("admin/settings", "routes/admin/settings.tsx"),
+]),
+layout("routes/user-layout.tsx", [
+  route("dashboard", "routes/dashboard.tsx"),
+])
+```
+
+### Multi-Step Forms
+
+```ts
+route("onboarding", "routes/onboarding/layout.tsx", [
+  route("step-1", "routes/onboarding/step-1.tsx"),
+  route("step-2", "routes/onboarding/step-2.tsx"),
+  route("step-3", "routes/onboarding/step-3.tsx"),
+])
+```
+
+## Best Practices
+
+1. **Shared UI only**: Use layouts for shared UI elements (nav, header, footer)
+2. **Minimal data loading**: Only load data needed by the layout itself
+3. **Clear naming**: Name layout files descriptively (e.g., `app-layout.tsx`, `auth-layout.tsx`)
+4. **Error boundaries**: Add error boundaries to layouts for better error handling
+5. **Avoid deep nesting**: Keep layout nesting to 2-3 levels maximum
+6. **Context over props**: Use outlet context for passing data to all children

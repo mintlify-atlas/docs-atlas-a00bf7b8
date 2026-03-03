@@ -1,0 +1,196 @@
+---
+title: loader
+---
+
+# loader
+
+A server-side function that loads data for a route before it renders.
+
+## Signature
+
+```tsx
+export function loader(args: LoaderFunctionArgs): Promise<Response | Data> | Response | Data
+```
+
+<ParamField path="args" type="LoaderFunctionArgs" required>
+  Arguments passed to the loader function
+
+  <Expandable title="properties">
+    <ParamField path="request" type="Request" required>
+      A Fetch Request instance that you can use to read headers, cookies, and URLSearchParams
+    </ParamField>
+
+    <ParamField path="params" type="Params" required>
+      Dynamic route params for the current route
+
+      ```tsx
+      // For route: /teams/:teamId
+      params.teamId // string
+      ```
+    </ParamField>
+
+    <ParamField path="context" type="Context">
+      The context passed to your server adapter's `getLoadContext()` function. Used to bridge the gap between the adapter's request/response API and your React Router app.
+    </ParamField>
+
+    <ParamField path="unstable_pattern" type="string">
+      The un-interpolated route pattern (e.g., `/blog/:slug`). Useful for logging/tracing.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Response | Data">
+  Can return:
+  - A Response object (with `json()`, `redirect()`, etc.)
+  - Plain data (automatically serialized)
+  - A Promise resolving to either
+</ResponseField>
+
+## Basic Example
+
+```tsx
+// app/routes/team.tsx
+import { useLoaderData } from "react-router";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const team = await fetchTeam(params.teamId);
+  return { team };
+}
+
+export default function Team() {
+  const { team } = useLoaderData<typeof loader>();
+  return <h1>{team.name}</h1>;
+}
+```
+
+## Returning Responses
+
+```tsx
+import { redirect } from "react-router";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  
+  if (!user) {
+    throw redirect("/login");
+  }
+
+  return Response.json({ user }, {
+    headers: {
+      "Cache-Control": "max-age=300"
+    }
+  });
+}
+```
+
+## Reading Request Data
+
+```tsx
+export async function loader({ request, params }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  const searchQuery = url.searchParams.get("q");
+  
+  const cookie = request.headers.get("Cookie");
+  const session = await getSession(cookie);
+
+  const results = await searchProducts({
+    query: searchQuery,
+    userId: session.userId,
+    category: params.category
+  });
+
+  return { results, query: searchQuery };
+}
+```
+
+## Using Context
+
+```tsx
+// Server adapter setup
+export default {
+  async fetch(request, env) {
+    return handleRequest(request, {
+      getLoadContext: () => ({ env })
+    });
+  }
+};
+
+// Route module
+export async function loader({ context }: Route.LoaderArgs) {
+  // Access Cloudflare env, Express req/res, etc.
+  const data = await context.env.DB.query(...);
+  return { data };
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Type safety with Route.LoaderArgs">
+    Use the route-specific type for automatic param type inference:
+
+    ```tsx
+    // ✅ Types are inferred from your route config
+    export async function loader({ params }: Route.LoaderArgs) {
+      params.teamId; // string (autocompleted)
+    }
+
+    // ❌ Generic types require manual annotation
+    export async function loader({ params }: LoaderFunctionArgs) {
+      params.teamId; // unknown
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Error handling">
+    Throw responses or errors to trigger error boundaries:
+
+    ```tsx
+    export async function loader({ params }: Route.LoaderArgs) {
+      const product = await db.product.findUnique({
+        where: { id: params.productId }
+      });
+
+      if (!product) {
+        throw new Response("Not Found", { status: 404 });
+      }
+
+      return { product };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Avoid serialization issues">
+    Only return JSON-serializable data:
+
+    ```tsx
+    // ❌ Dates, functions, and class instances don't serialize
+    return { createdAt: new Date() };
+
+    // ✅ Convert to strings
+    return { createdAt: new Date().toISOString() };
+    ```
+  </Accordion>
+
+  <Accordion title="Parallel data loading">
+    Use `Promise.all()` to load data in parallel:
+
+    ```tsx
+    export async function loader({ params }: Route.LoaderArgs) {
+      const [user, posts, comments] = await Promise.all([
+        fetchUser(params.userId),
+        fetchPosts(params.userId),
+        fetchComments(params.userId)
+      ]);
+
+      return { user, posts, comments };
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [clientLoader](/api/route-module/client-loader) - Client-side data loading
+- [useLoaderData](/api/hooks/use-loader-data) - Access loader data in components
+- [defer](/api/utils/defer) - Stream data to the client

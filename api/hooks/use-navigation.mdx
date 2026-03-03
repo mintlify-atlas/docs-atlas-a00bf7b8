@@ -1,0 +1,392 @@
+---
+title: useNavigation
+---
+
+# useNavigation
+
+Returns the current navigation state, defaulting to an "idle" navigation when no navigation is in progress. You can use this to render pending UI (like a global spinner) or read `FormData` from a form navigation.
+
+<Note>
+  This hook only works in Data and Framework modes.
+</Note>
+
+## Signature
+
+```tsx
+function useNavigation(): Navigation
+
+interface Navigation {
+  state: "idle" | "loading" | "submitting";
+  location?: Location;
+  formData?: FormData;
+  formAction?: string;
+  formMethod?: "get" | "post" | "put" | "patch" | "delete";
+  formEncType?: "application/x-www-form-urlencoded" | "multipart/form-data" | "application/json";
+}
+```
+
+## Parameters
+
+None.
+
+## Returns
+
+<ResponseField name="navigation" type="Navigation">
+  An object describing the current navigation:
+  
+  <Expandable title="properties">
+    <ResponseField name="state" type="'idle' | 'loading' | 'submitting'">
+      The current state of the navigation:
+      - `"idle"` - No navigation is pending
+      - `"submitting"` - A form is being submitted via POST, PUT, PATCH, or DELETE
+      - `"loading"` - The loaders for the next routes are being called to render the next page
+    </ResponseField>
+    
+    <ResponseField name="location" type="Location">
+      The location being navigated to. Only available when `state` is `"loading"` or `"submitting"`.
+    </ResponseField>
+    
+    <ResponseField name="formData" type="FormData">
+      The `FormData` being submitted. Only available when `state` is `"submitting"`.
+    </ResponseField>
+    
+    <ResponseField name="formAction" type="string">
+      The URL the form is being submitted to. Only available when `state` is `"submitting"`.
+    </ResponseField>
+    
+    <ResponseField name="formMethod" type="string">
+      The HTTP method used for the form submission. Only available when `state` is `"submitting"`.
+    </ResponseField>
+    
+    <ResponseField name="formEncType" type="string">
+      The encoding type of the form submission. Only available when `state` is `"submitting"`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Usage
+
+### Global loading indicator
+
+```tsx
+import { useNavigation } from "react-router";
+
+function GlobalSpinner() {
+  const navigation = useNavigation();
+  
+  return navigation.state !== "idle" ? (
+    <div className="spinner">Loading...</div>
+  ) : null;
+}
+```
+
+### Show loading bar
+
+```tsx
+function LoadingBar() {
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle";
+  
+  return (
+    <div
+      className="loading-bar"
+      style={{
+        opacity: isLoading ? 1 : 0,
+        width: isLoading ? "100%" : "0%",
+      }}
+    />
+  );
+}
+```
+
+### Disable UI during navigation
+
+```tsx
+function NavigationBlocker() {
+  const navigation = useNavigation();
+  
+  return (
+    <div>
+      <nav>
+        <Link to="/page1">Page 1</Link>
+        <Link to="/page2">Page 2</Link>
+      </nav>
+      
+      {navigation.state !== "idle" && (
+        <div className="overlay">
+          <p>Navigating...</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Show submitting state
+
+```tsx
+function SubmitButton() {
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+  
+  return (
+    <button type="submit" disabled={isSubmitting}>
+      {isSubmitting ? "Saving..." : "Save"}
+    </button>
+  );
+}
+```
+
+### Optimistic UI with form data
+
+```tsx
+function TodoList({ todos }) {
+  const navigation = useNavigation();
+  
+  // Get the optimistic todo from form submission
+  const optimisticTodo = navigation.formData
+    ? {
+        id: "temp",
+        title: navigation.formData.get("title"),
+        pending: true,
+      }
+    : null;
+  
+  const allTodos = optimisticTodo
+    ? [optimisticTodo, ...todos]
+    : todos;
+  
+  return (
+    <ul>
+      {allTodos.map((todo) => (
+        <li key={todo.id}>
+          {todo.title}
+          {todo.pending && " (saving...)"}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### Show destination
+
+```tsx
+function NavigationStatus() {
+  const navigation = useNavigation();
+  
+  if (navigation.state === "loading" && navigation.location) {
+    return (
+      <p>Navigating to {navigation.location.pathname}...</p>
+    );
+  }
+  
+  return null;
+}
+```
+
+## Common Patterns
+
+### Different states for loading and submitting
+
+```tsx
+function StatusIndicator() {
+  const navigation = useNavigation();
+  
+  if (navigation.state === "submitting") {
+    return <div>Saving...</div>;
+  }
+  
+  if (navigation.state === "loading") {
+    return <div>Loading...</div>;
+  }
+  
+  return null;
+}
+```
+
+### Detect specific action
+
+```tsx
+function DeleteIndicator() {
+  const navigation = useNavigation();
+  
+  const isDeleting =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("intent") === "delete";
+  
+  if (!isDeleting) return null;
+  
+  return <div className="alert">Deleting...</div>;
+}
+```
+
+### Loading skeleton
+
+```tsx
+function Content({ children }) {
+  const navigation = useNavigation();
+  const isNavigating = navigation.state === "loading";
+  
+  return (
+    <div className={isNavigating ? "loading" : ""}>
+      {isNavigating ? <Skeleton /> : children}
+    </div>
+  );
+}
+```
+
+### Page transition animation
+
+```tsx
+function PageTransition({ children }) {
+  const navigation = useNavigation();
+  
+  return (
+    <div
+      className="page"
+      style={{
+        opacity: navigation.state === "loading" ? 0.5 : 1,
+        transition: "opacity 200ms",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+```
+
+### Navigation progress
+
+```tsx
+function NavigationProgress() {
+  const navigation = useNavigation();
+  const [progress, setProgress] = useState(0);
+  
+  useEffect(() => {
+    if (navigation.state === "loading") {
+      setProgress(0);
+      const timer = setInterval(() => {
+        setProgress((p) => Math.min(p + 10, 90));
+      }, 200);
+      return () => clearInterval(timer);
+    } else {
+      setProgress(100);
+      setTimeout(() => setProgress(0), 200);
+    }
+  }, [navigation.state]);
+  
+  if (progress === 0) return null;
+  
+  return (
+    <div
+      className="progress-bar"
+      style={{ width: `${progress}%` }}
+    />
+  );
+}
+```
+
+### Disable links during navigation
+
+```tsx
+function NavLink({ to, children, ...props }) {
+  const navigation = useNavigation();
+  const isNavigating = navigation.state !== "idle";
+  
+  return (
+    <Link
+      to={to}
+      {...props}
+      style={{
+        pointerEvents: isNavigating ? "none" : "auto",
+        opacity: isNavigating ? 0.6 : 1,
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+```
+
+### Form-specific loading
+
+```tsx
+function ContactForm() {
+  const navigation = useNavigation();
+  
+  const isSubmittingContact =
+    navigation.state === "submitting" &&
+    navigation.formAction === "/contact";
+  
+  return (
+    <Form method="post" action="/contact">
+      <input type="email" name="email" />
+      <button type="submit" disabled={isSubmittingContact}>
+        {isSubmittingContact ? "Sending..." : "Send"}
+      </button>
+    </Form>
+  );
+}
+```
+
+## Navigation State Flow
+
+```
+User clicks link/submits form
+        ↓
+  state: "submitting"  (for POST/PUT/PATCH/DELETE)
+  formData is available
+        ↓
+    Action runs
+        ↓
+  state: "loading"
+  location is available
+        ↓
+   Loaders run
+        ↓
+  state: "idle"
+  Page renders
+```
+
+## Type Safety
+
+```tsx
+import { useNavigation } from "react-router";
+
+function Component() {
+  const navigation = useNavigation();
+  
+  // Type guards for state
+  if (navigation.state === "submitting") {
+    // formData is definitely available
+    const intent = navigation.formData?.get("intent");
+  }
+  
+  if (navigation.state === "loading") {
+    // location is definitely available
+    const path = navigation.location?.pathname;
+  }
+}
+```
+
+## Important Notes
+
+### Global state
+
+`useNavigation` tracks the global navigation state. For component-specific operations that shouldn't navigate, use [`useFetcher`](/api/hooks/use-fetcher).
+
+### Idle state
+
+When no navigation is in progress, `state` is `"idle"` and the other properties are `undefined`.
+
+### FormData availability
+
+`formData` is only available during the `"submitting"` state for forms using POST, PUT, PATCH, or DELETE methods. GET form submissions go directly to `"loading"` state.
+
+## Related
+
+- [`useFetcher`](/api/hooks/use-fetcher) - Component-specific form submissions without navigation
+- [`useFetchers`](/api/hooks/use-fetchers) - Access all in-flight fetchers
+- [`useNavigation`](/api/hooks/use-navigate) - Navigate programmatically
+- [`Form`](/api/components/form) - Form component

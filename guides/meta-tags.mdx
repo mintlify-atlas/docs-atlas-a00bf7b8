@@ -1,0 +1,293 @@
+---
+title: Meta Tags
+---
+
+# Meta Tags
+
+Learn how to manage document metadata, SEO tags, and Open Graph data in React Router applications.
+
+## Overview
+
+React Router provides a `meta` export from route modules to define `<title>`, `<meta>`, and `<link>` tags in the document `<head>`. This enables dynamic, route-based metadata for SEO and social sharing.
+
+## Basic Meta Function
+
+Export a `meta` function from your route module:
+
+```tsx
+// app/routes/about.tsx
+import type { Route } from "./+types/about";
+
+export function meta({}: Route.MetaArgs) {
+  return [
+    { title: "About Us" },
+    { name: "description", content: "Learn about our company" },
+  ];
+}
+
+export default function About() {
+  return <h1>About</h1>;
+}
+```
+
+This generates:
+
+```html
+<title>About Us</title>
+<meta name="description" content="Learn about our company" />
+```
+
+## Dynamic Meta from Loader Data
+
+Use loader data to generate dynamic metadata:
+
+```tsx
+// app/routes/blog.$slug.tsx
+import type { Route } from "./+types/blog.$slug";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const post = await getPost(params.slug);
+  if (!post) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  return { post };
+}
+
+export function meta({ data }: Route.MetaArgs) {
+  if (!data?.post) {
+    return [{ title: "Post Not Found" }];
+  }
+
+  return [
+    { title: data.post.title },
+    { name: "description", content: data.post.excerpt },
+    { name: "author", content: data.post.author },
+    { property: "og:title", content: data.post.title },
+    { property: "og:description", content: data.post.excerpt },
+    { property: "og:image", content: data.post.image },
+    { property: "og:type", content: "article" },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: data.post.title },
+    { name: "twitter:description", content: data.post.excerpt },
+    { name: "twitter:image", content: data.post.image },
+  ];
+}
+```
+
+## Merging Parent Meta
+
+Access and merge parent route metadata:
+
+```tsx
+import type { Route } from "./+types/blog.$slug";
+
+export function meta({ data, matches }: Route.MetaArgs) {
+  // Find parent route meta
+  const parentMeta = matches
+    .flatMap((match) => match.meta ?? [])
+    .filter((meta) => !('title' in meta));
+
+  return [
+    ...parentMeta,
+    { title: `${data.post.title} | My Blog` },
+    { name: "description", content: data.post.excerpt },
+  ];
+}
+```
+
+## Meta Descriptor Types
+
+React Router supports multiple meta descriptor types:
+
+```tsx
+export function meta({}: Route.MetaArgs) {
+  return [
+    // Title
+    { title: "My Page" },
+
+    // Meta tags
+    { name: "description", content: "Page description" },
+    { name: "keywords", content: "react, router" },
+
+    // Open Graph
+    { property: "og:title", content: "My Page" },
+    { property: "og:type", content: "website" },
+    { property: "og:url", content: "https://example.com" },
+    { property: "og:image", content: "https://example.com/image.jpg" },
+
+    // Twitter Card
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:site", content: "@username" },
+
+    // Additional tags with tagName
+    { tagName: "link", rel: "canonical", href: "https://example.com" },
+    {
+      tagName: "script",
+      type: "application/ld+json",
+      children: JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: "My Company",
+      }),
+    },
+  ];
+}
+```
+
+## Structured Data (JSON-LD)
+
+Add structured data for search engines:
+
+```tsx
+import type { Route } from "./+types/product.$id";
+
+export function meta({ data }: Route.MetaArgs) {
+  const { product } = data;
+
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    image: product.image,
+    description: product.description,
+    offers: {
+      "@type": "Offer",
+      url: `https://example.com/products/${product.id}`,
+      priceCurrency: "USD",
+      price: product.price,
+      availability: product.inStock
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
+    },
+  };
+
+  return [
+    { title: product.name },
+    { name: "description", content: product.description },
+    {
+      tagName: "script",
+      type: "application/ld+json",
+      children: JSON.stringify(structuredData),
+    },
+  ];
+}
+```
+
+## Global Meta Tags
+
+Set default meta tags in your root route:
+
+```tsx
+// app/root.tsx
+import type { Route } from "./+types/root";
+
+export function meta({}: Route.MetaArgs) {
+  return [
+    { charset: "utf-8" },
+    { name: "viewport", content: "width=device-width, initial-scale=1" },
+    { title: "My App" },
+    { name: "description", content: "Default description" },
+    { property: "og:site_name", content: "My App" },
+  ];
+}
+```
+
+## Dynamic Titles with Params
+
+Use route parameters in titles:
+
+```tsx
+import type { Route } from "./+types/users.$userId";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  return { user: await getUser(params.userId) };
+}
+
+export function meta({ data, params }: Route.MetaArgs) {
+  if (!data?.user) {
+    return [{ title: "User Not Found" }];
+  }
+
+  return [
+    { title: `${data.user.name}'s Profile` },
+    { name: "description", content: data.user.bio },
+  ];
+}
+```
+
+## SEO Best Practices
+
+```tsx
+import type { Route } from "./+types/products.$id";
+
+export function meta({ data }: Route.MetaArgs) {
+  const { product } = data;
+  const url = `https://example.com/products/${product.id}`;
+
+  return [
+    // Page title (50-60 characters)
+    { title: `${product.name} - Buy Online | Store Name` },
+
+    // Meta description (150-160 characters)
+    {
+      name: "description",
+      content: `${product.description.substring(0, 155)}...`,
+    },
+
+    // Canonical URL
+    { tagName: "link", rel: "canonical", href: url },
+
+    // Open Graph
+    { property: "og:title", content: product.name },
+    { property: "og:description", content: product.description },
+    { property: "og:image", content: product.image },
+    { property: "og:url", content: url },
+    { property: "og:type", content: "product" },
+
+    // Twitter Card
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: product.name },
+    { name: "twitter:description", content: product.description },
+    { name: "twitter:image", content: product.image },
+
+    // Additional meta tags
+    { name: "robots", content: "index, follow" },
+    { name: "googlebot", content: "index, follow" },
+  ];
+}
+```
+
+## Error Boundaries
+
+Handle meta tags in error scenarios:
+
+```tsx
+import { isRouteErrorResponse } from "react-router";
+import type { Route } from "./+types/blog.$slug";
+
+export function meta({ error }: Route.MetaArgs) {
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) {
+      return [
+        { title: "404 - Post Not Found" },
+        { name: "robots", content: "noindex" },
+      ];
+    }
+  }
+
+  return [
+    { title: "Error" },
+    { name: "robots", content: "noindex" },
+  ];
+}
+```
+
+## Best Practices
+
+1. **Keep titles concise** - 50-60 characters for optimal display in search results
+2. **Write compelling descriptions** - 150-160 characters that encourage clicks
+3. **Include Open Graph tags** - Essential for social media sharing
+4. **Use canonical URLs** - Prevent duplicate content issues
+5. **Add structured data** - Helps search engines understand your content
+6. **Set appropriate robots tags** - Control indexing for different pages
+7. **Test social sharing** - Use tools like Facebook Debugger and Twitter Card Validator

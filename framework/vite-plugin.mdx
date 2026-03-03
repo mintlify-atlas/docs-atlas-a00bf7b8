@@ -1,0 +1,267 @@
+---
+title: Vite Plugin
+---
+
+# Vite Plugin
+
+The React Router Vite plugin integrates React Router with Vite to enable Framework Mode with server-side rendering, type generation, and optimized builds.
+
+## Installation
+
+```bash
+npm install @react-router/dev
+```
+
+## Basic Configuration
+
+Add the plugin to your `vite.config.ts`:
+
+```typescript
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [reactRouter()],
+});
+```
+
+## Plugin Features
+
+The Vite plugin provides:
+
+- **Server-side rendering (SSR)** - Automatic SSR setup and configuration
+- **Route-based code splitting** - Automatic code splitting by route
+- **Type generation** - TypeScript types generated from your routes
+- **Development server** - Hot module replacement (HMR) for routes
+- **Build optimization** - Optimized production builds
+- **Server bundles** - Split server code into multiple bundles
+
+## Configuration Options
+
+Configure React Router behavior in `react-router.config.ts`:
+
+```typescript
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  // App directory (default: "app")
+  appDirectory: "app",
+
+  // Build directory (default: "build")
+  buildDirectory: "build",
+
+  // Server build file name (default: "index.js")
+  serverBuildFile: "index.js",
+
+  // Server module format (default: "esm")
+  serverModuleFormat: "esm",
+
+  // Enable SSR (default: true)
+  ssr: true,
+
+  // App basename (default: "/")
+  basename: "/",
+} satisfies Config;
+```
+
+## Directory Structure
+
+The plugin expects this structure:
+
+```
+project/
+├── app/
+│   ├── root.tsx              # Root component
+│   ├── routes.ts             # Route configuration
+│   ├── entry.client.tsx      # Client entry
+│   └── entry.server.tsx      # Server entry
+├── vite.config.ts
+└── react-router.config.ts
+```
+
+## Virtual Modules
+
+The plugin creates virtual modules for internal use:
+
+- `virtual:react-router/server-build` - Server build exports
+- `virtual:react-router/server-manifest` - Server-side route manifest
+- `virtual:react-router/browser-manifest` - Client-side route manifest
+
+## Build Process
+
+### Development
+
+Start the dev server:
+
+```bash
+npx react-router dev
+```
+
+The plugin:
+1. Creates a Vite dev server
+2. Sets up HMR for route modules
+3. Generates TypeScript types on file changes
+4. Handles SSR requests automatically
+
+### Production
+
+Build for production:
+
+```bash
+npx react-router build
+```
+
+The plugin:
+1. Builds the client bundle with all assets
+2. Builds the server bundle(s) for SSR
+3. Generates the route manifest
+4. Optimizes and code-splits by route
+5. Moves server-only assets to client directory
+
+## Environment API
+
+With Vite 6+, you can enable the Environment API:
+
+```typescript
+export default {
+  future: {
+    v8_viteEnvironmentApi: true,
+  },
+} satisfies Config;
+```
+
+This enables:
+- Better multi-environment support
+- Improved server bundle handling
+- More efficient builds
+
+## Route Module Optimization
+
+The plugin automatically removes server-only exports from client bundles:
+
+**Server-only exports:**
+- `loader`
+- `action`
+- `middleware`
+- `headers`
+
+**Client exports:**
+- `default` (component)
+- `ErrorBoundary`
+- `HydrateFallback`
+- `Layout`
+- `clientLoader`
+- `clientAction`
+- `clientMiddleware`
+- `handle`
+- `meta`
+- `links`
+- `shouldRevalidate`
+
+## CSS Handling
+
+### CSS Code Splitting
+
+By default, CSS is code-split by route:
+
+```typescript
+import "./styles.css"; // Loaded only for this route
+```
+
+Disable CSS code splitting in `vite.config.ts`:
+
+```typescript
+export default defineConfig({
+  plugins: [reactRouter()],
+  build: {
+    cssCodeSplit: false, // Single CSS bundle
+  },
+});
+```
+
+### CSS Modules
+
+CSS modules are fully supported:
+
+```typescript
+import styles from "./component.module.css";
+
+export default function Component() {
+  return <div className={styles.container}>Content</div>;
+}
+```
+
+## Source Maps
+
+Configure source maps:
+
+```bash
+# Client source maps
+npx react-router build --sourcemapClient
+
+# Server source maps
+npx react-router build --sourcemapServer
+```
+
+Or in `vite.config.ts`:
+
+```typescript
+export default defineConfig({
+  plugins: [reactRouter()],
+  build: {
+    sourcemap: true,
+  },
+});
+```
+
+## Advanced Configuration
+
+### Custom Vite Config
+
+Combine with other Vite plugins:
+
+```typescript
+import { reactRouter } from "@react-router/dev/vite";
+import { defineConfig } from "vite";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig({
+  plugins: [
+    reactRouter(),
+    tsconfigPaths(),
+  ],
+});
+```
+
+### Build Hooks
+
+Run code after the build completes:
+
+```typescript
+export default {
+  async buildEnd({ buildManifest, reactRouterConfig, viteConfig }) {
+    console.log("Build complete!");
+    console.log("Routes:", Object.keys(buildManifest.routes));
+  },
+} satisfies Config;
+```
+
+## Plugin Order
+
+The React Router plugin should generally be first:
+
+```typescript
+export default defineConfig({
+  plugins: [
+    reactRouter(), // First
+    otherPlugin(),
+  ],
+});
+```
+
+## See Also
+
+- [Server Rendering](/framework/server-rendering)
+- [Type Generation](/framework/type-generation)
+- [Server Bundles](/framework/server-bundles)
+- [Presets](/framework/presets)

@@ -1,0 +1,353 @@
+---
+title: Dynamic Route Segments
+description: Learn how to use dynamic URL parameters in React Router
+---
+
+# Dynamic Route Segments
+
+Dynamic segments allow routes to match URL patterns with variable parts, enabling you to build routes for user profiles, product pages, blog posts, and more.
+
+## Basic Dynamic Segments
+
+Define dynamic segments with a colon (`:`) prefix in manual configuration:
+
+```ts
+// app/routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("users/:userId", "routes/user.tsx"),
+  route("posts/:postId", "routes/post.tsx"),
+  route("blog/:year/:month/:slug", "routes/blog-post.tsx"),
+];
+```
+
+Matches:
+- `/users/123` → `userId` = `"123"`
+- `/posts/hello-world` → `postId` = `"hello-world"`
+- `/blog/2024/03/my-post` → `year` = `"2024"`, `month` = `"03"`, `slug` = `"my-post"`
+
+## File-Based Dynamic Segments
+
+When using `flatRoutes()`, prefix segments with `$`:
+
+```
+app/routes/
+├── users.$userId.tsx                # /users/:userId
+├── posts.$postId.tsx                # /posts/:postId
+└── blog.$year.$month.$slug.tsx      # /blog/:year/:month/:slug
+```
+
+The `$` character is converted to `:` in the route path.
+
+## Accessing Params in Loaders
+
+Access dynamic segments in your loader function:
+
+```tsx
+// app/routes/user.tsx
+import type { Route } from "./+types/user";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const user = await getUser(params.userId);
+  return { user };
+}
+
+export default function User({ loaderData }: Route.ComponentProps) {
+  return (
+    <div>
+      <h1>{loaderData.user.name}</h1>
+      <p>ID: {loaderData.user.id}</p>
+    </div>
+  );
+}
+```
+
+## Accessing Params in Components
+
+Use the `useParams` hook in your component:
+
+```tsx
+import { useParams } from "react-router";
+
+export default function User() {
+  const { userId } = useParams();
+  
+  return <h1>User ID: {userId}</h1>;
+}
+```
+
+## Type-Safe Params
+
+React Router provides automatic type inference for params:
+
+```tsx
+// app/routes/blog-post.tsx
+import type { Route } from "./+types/blog-post";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  // TypeScript knows params has: year, month, slug
+  const post = await getPost(params.year, params.month, params.slug);
+  return { post };
+}
+```
+
+## Multiple Dynamic Segments
+
+Combine multiple dynamic segments in a single route:
+
+```ts
+// app/routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("org/:orgId/project/:projectId", "routes/project.tsx"),
+];
+```
+
+```tsx
+// app/routes/project.tsx
+import type { Route } from "./+types/project";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const { orgId, projectId } = params;
+  const project = await getProject(orgId, projectId);
+  return { project };
+}
+```
+
+## Nested Dynamic Segments
+
+Dynamic segments work seamlessly with nested routes:
+
+```ts
+// app/routes.ts
+import { route } from "@react-router/dev/routes";
+
+export default [
+  route("users/:userId", "routes/user.tsx", [
+    route("posts/:postId", "routes/user/post.tsx"),
+    route("settings", "routes/user/settings.tsx"),
+  ]),
+];
+```
+
+Child routes inherit parent params:
+
+```tsx
+// app/routes/user/post.tsx
+import type { Route } from "./+types/user/post";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  // Has access to both userId and postId
+  const post = await getUserPost(params.userId, params.postId);
+  return { post };
+}
+```
+
+## Optional Segments
+
+Make segments optional using `?` (file-based routing):
+
+```
+app/routes/
+└── blog.($year).($month).$slug.tsx  # Matches /blog/:slug and /blog/:year/:month/:slug
+```
+
+Or in manual config:
+
+```ts
+route("blog/:year?/:month?/:slug", "routes/blog-post.tsx")
+```
+
+```tsx
+// app/routes/blog-post.tsx
+import type { Route } from "./+types/blog-post";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  const { slug, year, month } = params;
+  
+  if (year && month) {
+    return getPostByDate(year, month, slug);
+  }
+  
+  return getPostBySlug(slug);
+}
+```
+
+## Splat Routes (Catch-All)
+
+Match all remaining segments using `*`:
+
+```ts
+// Manual config
+route("files/*", "routes/files.tsx")
+```
+
+```
+# File-based routing
+app/routes/
+└── files.$.tsx                      # /files/*
+```
+
+Access the matched segments:
+
+```tsx
+// app/routes/files.tsx
+import type { Route } from "./+types/files";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  // params["*"] contains the splat value
+  const filePath = params["*"];
+  const file = await getFile(filePath);
+  return { file };
+}
+```
+
+Matches:
+- `/files/documents/report.pdf` → `params["*"]` = `"documents/report.pdf"`
+- `/files/images/2024/photo.jpg` → `params["*"]` = `"images/2024/photo.jpg"`
+
+## Escaped Segments (File-Based)
+
+In file-based routing, escape special characters with `[]`:
+
+```
+app/routes/
+├── posts.$slug[.]json.tsx           # /posts/:slug.json
+├── [sitemap.xml].tsx                # /sitemap.xml (literal)
+└── users.$id[.].tsx                 # /users/:id. (dot is literal)
+```
+
+Examples:
+- `$slug[.]json` → `:slug.json`
+- `[sitemap.xml]` → `sitemap.xml`
+- `api[/]v2` → `api/v2` (literal slash)
+
+## Data Mutations with Params
+
+Use params in action functions:
+
+```tsx
+// app/routes/post.tsx
+import type { Route } from "./+types/post";
+
+export async function action({ request, params }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const title = formData.get("title");
+  
+  await updatePost(params.postId, { title });
+  
+  return { success: true };
+}
+
+export default function Post({ loaderData }: Route.ComponentProps) {
+  return (
+    <form method="post">
+      <input name="title" defaultValue={loaderData.post.title} />
+      <button type="submit">Update</button>
+    </form>
+  );
+}
+```
+
+## Navigating with Params
+
+Build dynamic links:
+
+```tsx
+import { Link } from "react-router";
+
+export default function UserList({ users }) {
+  return (
+    <ul>
+      {users.map(user => (
+        <li key={user.id}>
+          <Link to={`/users/${user.id}`}>{user.name}</Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Or use the navigate function:
+
+```tsx
+import { useNavigate } from "react-router";
+
+export default function UserCard({ userId }) {
+  const navigate = useNavigate();
+  
+  return (
+    <button onClick={() => navigate(`/users/${userId}`)}>
+      View Profile
+    </button>
+  );
+}
+```
+
+## Param Constraints and Validation
+
+Validate params in your loader:
+
+```tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/user";
+
+export async function loader({ params }: Route.LoaderArgs) {
+  // Validate param format
+  if (!/^\d+$/.test(params.userId)) {
+    throw redirect("/404");
+  }
+  
+  const user = await getUser(params.userId);
+  
+  if (!user) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  
+  return { user };
+}
+```
+
+## Best Practices
+
+1. **Validate params**: Always validate dynamic segments in loaders
+2. **Use type inference**: Leverage Route.LoaderArgs for type-safe params
+3. **Handle missing data**: Throw 404 responses for invalid IDs
+4. **URL encoding**: Use `encodeURIComponent()` for special characters in params
+5. **Keep URLs readable**: Use slugs instead of raw IDs when possible
+6. **Document param format**: Comment expected param patterns in route files
+
+## Common Patterns
+
+### User Profile
+
+```ts
+route("users/:username", "routes/profile.tsx")
+```
+
+### Blog Post
+
+```ts
+route("blog/:slug", "routes/blog-post.tsx")
+```
+
+### E-commerce Product
+
+```ts
+route("products/:category/:productId", "routes/product.tsx")
+```
+
+### Date-based Archive
+
+```ts
+route("archive/:year/:month?/:day?", "routes/archive.tsx")
+```
+
+### File Browser
+
+```ts
+route("files/*", "routes/file-browser.tsx")
+```

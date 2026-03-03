@@ -1,0 +1,335 @@
+---
+title: Form
+---
+
+<Modes modes={["data", "framework"]} />
+
+A progressively enhanced HTML `<form>` that submits data to actions via `fetch`, activating pending states in `useNavigation` which enables advanced user interfaces beyond a basic HTML form.
+
+```tsx
+import { Form } from "react-router";
+
+function NewEvent() {
+  return (
+    <Form action="/events" method="post">
+      <input name="title" type="text" />
+      <input name="description" type="text" />
+      <button type="submit">Create</button>
+    </Form>
+  );
+}
+```
+
+## Type Declaration
+
+```tsx
+export interface FormProps extends React.FormHTMLAttributes<HTMLFormElement> {
+  method?: HTMLFormMethod;
+  encType?:
+    | "application/x-www-form-urlencoded"
+    | "multipart/form-data"
+    | "text/plain";
+  action?: string;
+  relative?: RelativeRoutingType;
+  preventScrollReset?: boolean;
+  onSubmit?: React.FormEventHandler<HTMLFormElement>;
+  unstable_defaultShouldRevalidate?: boolean;
+  discover?: DiscoverBehavior;
+  fetcherKey?: string;
+  navigate?: boolean;
+  reloadDocument?: boolean;
+  replace?: boolean;
+  state?: any;
+  viewTransition?: boolean;
+}
+
+export const Form: React.ForwardRefExoticComponent<
+  FormProps & React.RefAttributes<HTMLFormElement>
+>;
+
+type HTMLFormMethod = "get" | "post" | "put" | "patch" | "delete";
+```
+
+## Props
+
+<ParamField path="action" type="string">
+  The URL to submit the form data to. If `undefined`, this defaults to the closest route in context.
+
+  ```tsx
+  <Form action="/projects/new" method="post">
+    <input name="name" />
+    <button type="submit">Create Project</button>
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="method" type="HTMLFormMethod">
+  The HTTP verb to use when the form is submitted. Supports `"get"`, `"post"`, `"put"`, `"patch"`, and `"delete"`.
+
+  Native forms only support `"get"` and `"post"`, so avoid the other verbs if you'd like to support progressive enhancement.
+
+  ```tsx
+  <Form method="post">
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="encType" type="'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain'">
+  The encoding type to use for the form submission.
+
+  ```tsx
+  <Form encType="application/x-www-form-urlencoded" /> {/* Default */}
+  <Form encType="multipart/form-data" /> {/* For file uploads */}
+  <Form encType="text/plain" />
+  ```
+</ParamField>
+
+<ParamField path="replace" type="boolean">
+  Replaces the current entry in the browser History stack when the form navigates. Use this if you don't want the user to be able to click "back" to the page with the form on it.
+
+  ```tsx
+  <Form method="post" replace>
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="state" type="any">
+  State object to add to the History stack entry for this navigation.
+
+  ```tsx
+  <Form method="post" state={{ from: "dashboard" }}>
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="preventScrollReset" type="boolean">
+  Prevent the scroll position from resetting to the top of the viewport on completion of the navigation when using the `<ScrollRestoration>` component.
+
+  ```tsx
+  <Form method="post" preventScrollReset>
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="relative" type="RelativeRoutingType">
+  Determines whether the form action is relative to the route hierarchy or the pathname.
+
+  ```tsx
+  <Form relative="route" />
+  <Form relative="path" />
+  ```
+</ParamField>
+
+<ParamField path="reloadDocument" type="boolean">
+  Forces a full document navigation instead of client side routing and data fetch.
+
+  ```tsx
+  <Form method="post" reloadDocument>
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="navigate" type="boolean">
+  When `false`, skips the navigation and submits via a fetcher internally. This is essentially a shorthand for `useFetcher` + `<fetcher.Form>` where you don't care about the resulting data.
+
+  ```tsx
+  <Form method="post" navigate={false}>
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="fetcherKey" type="string">
+  Indicates a specific fetcherKey to use when using `navigate={false}` so you can pick up the fetcher's state in a different component using `useFetcher`.
+
+  ```tsx
+  <Form method="post" navigate={false} fetcherKey="my-form">
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="viewTransition" type="boolean">
+  Enables a View Transition for this navigation. To apply specific styles during the transition, see `useViewTransitionState`.
+
+  ```tsx
+  <Form method="post" viewTransition>
+    {/* ... */}
+  </Form>
+  ```
+</ParamField>
+
+<ParamField path="discover" type="DiscoverBehavior" modes={["framework"]}>
+  Defines the form lazy route discovery behavior.
+
+  - **render** (default) - Discover the route when the form renders
+  - **none** - Don't eagerly discover, only discover if the form is submitted
+
+  ```tsx
+  <Form discover="none" />
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Form
+
+```tsx
+import { Form } from "react-router";
+
+function CreateProject() {
+  return (
+    <Form method="post" action="/projects">
+      <label>
+        Name: <input name="name" type="text" />
+      </label>
+      <label>
+        Description: <textarea name="description" />
+      </label>
+      <button type="submit">Create Project</button>
+    </Form>
+  );
+}
+
+// Route action
+export async function action({ request }) {
+  const formData = await request.formData();
+  const project = await createProject({
+    name: formData.get("name"),
+    description: formData.get("description"),
+  });
+  return redirect(`/projects/${project.id}`);
+}
+```
+
+### With Pending UI
+
+```tsx
+import { Form, useNavigation } from "react-router";
+
+function CreateProject() {
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+
+  return (
+    <Form method="post">
+      <input name="name" disabled={isSubmitting} />
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? "Creating..." : "Create Project"}
+      </button>
+    </Form>
+  );
+}
+```
+
+### File Upload
+
+```tsx
+<Form method="post" encType="multipart/form-data">
+  <label>
+    Upload file:
+    <input type="file" name="file" />
+  </label>
+  <button type="submit">Upload</button>
+</Form>
+
+// Action
+export async function action({ request }) {
+  const formData = await request.formData();
+  const file = formData.get("file");
+  await uploadFile(file);
+  return redirect("/files");
+}
+```
+
+### Search Form (GET)
+
+```tsx
+function SearchForm() {
+  return (
+    <Form method="get" action="/search">
+      <input name="q" placeholder="Search..." />
+      <button type="submit">Search</button>
+    </Form>
+  );
+}
+
+// Loader
+export async function loader({ request }) {
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q");
+  const results = await searchProducts(query);
+  return { results };
+}
+```
+
+### Without Navigation (Fetcher)
+
+```tsx
+import { Form, useFetcher } from "react-router";
+
+function NewsletterSignup() {
+  const fetcher = useFetcher();
+
+  return (
+    <fetcher.Form method="post" action="/newsletter/subscribe">
+      <input name="email" type="email" />
+      <button type="submit">
+        {fetcher.state === "submitting" ? "Subscribing..." : "Subscribe"}
+      </button>
+    </fetcher.Form>
+  );
+}
+
+// Or use navigate={false}
+function NewsletterSignup() {
+  return (
+    <Form method="post" action="/newsletter/subscribe" navigate={false}>
+      <input name="email" type="email" />
+      <button type="submit">Subscribe</button>
+    </Form>
+  );
+}
+```
+
+### Progressive Enhancement
+
+```tsx
+function CreateTask() {
+  return (
+    <Form method="post" action="/tasks">
+      <input name="title" required />
+      <select name="priority">
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+      <button type="submit">Create Task</button>
+    </Form>
+  );
+}
+
+// This form works without JavaScript!
+// - Browser submits the form on submit
+// - After JS loads, React Router takes over for a better UX
+```
+
+## Behavior
+
+- After a form's action completes, all data on the page is automatically revalidated to keep the UI in sync with the data
+- Server rendered pages are interactive at a basic level before JavaScript loads
+- After JavaScript loads, React Router takes over enabling web application user experiences
+- Form submissions can be cancelled by the user or interrupted by other navigations
+- Multiple forms can be submitted simultaneously and React Router will track them all
+
+## Notes
+
+- Use `<Form>` for submissions that should change the URL or add an entry to the browser history stack
+- Use `<fetcher.Form>` or `navigate={false}` for forms that shouldn't manipulate the browser History stack
+- All standard HTML form attributes are supported
+- Progressive enhancement allows forms to work before JavaScript loads

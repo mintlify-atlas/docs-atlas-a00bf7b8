@@ -1,0 +1,141 @@
+---
+title: Routes
+---
+
+<Modes modes={["declarative"]} />
+
+Renders a branch of Route elements that best matches the current location. Note that these routes do not participate in data loading, actions, code splitting, or any other route module features.
+
+```tsx
+import { Routes, Route } from "react-router";
+
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="about" element={<About />} />
+  <Route path="users/*" element={<Users />} />
+</Routes>
+```
+
+## Type Declaration
+
+```tsx
+export interface RoutesProps {
+  children?: React.ReactNode;
+  location?: Partial<Location> | string;
+}
+
+export function Routes({
+  children,
+  location,
+}: RoutesProps): React.ReactElement | null;
+```
+
+## Props
+
+<ParamField path="children" type="React.ReactNode">
+  Nested `<Route>` elements that define the route configuration.
+
+  ```tsx
+  <Routes>
+    <Route path="/" element={<Home />} />
+    <Route path="about" element={<About />} />
+    <Route path="users" element={<Users />}>
+      <Route path=":id" element={<UserProfile />} />
+    </Route>
+  </Routes>
+  ```
+</ParamField>
+
+<ParamField path="location" type="Partial<Location> | string">
+  The Location to match against. Defaults to the current location. This is useful for testing or when you want to render routes based on a different location.
+
+  ```tsx
+  <Routes location="/about">
+    <Route path="/" element={<Home />} />
+    <Route path="about" element={<About />} />
+  </Routes>
+  ```
+</ParamField>
+
+## Example
+
+### Basic Usage
+
+```tsx
+import { BrowserRouter, Routes, Route } from "react-router";
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="about" element={<About />} />
+        <Route path="contact" element={<Contact />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+### Nested Routes
+
+```tsx
+<Routes>
+  <Route path="/" element={<Layout />}>
+    <Route index element={<Home />} />
+    <Route path="about" element={<About />} />
+    <Route path="users" element={<Users />}>
+      <Route path=":id" element={<UserProfile />} />
+      <Route path=":id/edit" element={<EditUser />} />
+    </Route>
+  </Route>
+</Routes>
+```
+
+### No Match (404)
+
+```tsx
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="about" element={<About />} />
+  <Route path="*" element={<NotFound />} />
+</Routes>
+```
+
+### Multiple Route Sets
+
+```tsx
+function App() {
+  return (
+    <BrowserRouter>
+      <header>
+        <Routes>
+          <Route path="/" element={<HomeNav />} />
+          <Route path="about" element={<AboutNav />} />
+        </Routes>
+      </header>
+
+      <main>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="about" element={<About />} />
+        </Routes>
+      </main>
+    </BrowserRouter>
+  );
+}
+```
+
+## Behavior
+
+- Renders the first `<Route>` that matches the current location
+- Uses a ranking system to determine the best match when multiple routes could match
+- Returns `null` if no routes match
+- Static routes (no params) rank higher than dynamic routes (`:id`)
+- Routes with more segments rank higher than routes with fewer segments
+
+## Notes
+
+- In most modern apps, you'll use `createBrowserRouter` instead for data loading, actions, and other advanced features
+- Routes are matched relative to their parent route's path
+- The `*` wildcard can be used to match any remaining path segments

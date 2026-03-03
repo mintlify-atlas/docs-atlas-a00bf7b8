@@ -1,0 +1,510 @@
+---
+title: createMemoryRouter
+---
+
+# createMemoryRouter
+
+Create a new data router that manages the application path using an in-memory [`History`](https://developer.mozilla.org/en-US/docs/Web/API/History) stack. Useful for non-browser environments without a DOM API, such as testing or React Native.
+
+## Function Signature
+
+```tsx
+function createMemoryRouter(
+  routes: RouteObject[],
+  opts?: MemoryRouterOpts
+): DataRouter
+```
+
+## Route Configuration
+
+The `routes` parameter accepts the same `RouteObject[]` configuration as `createBrowserRouter`. See the [createBrowserRouter route configuration](/api/routers/create-browser-router#route-configuration) for complete details.
+
+```tsx
+interface RouteObject {
+  path?: string;
+  caseSensitive?: boolean;
+  index?: boolean;
+  element?: React.ReactNode;
+  Component?: React.ComponentType;
+  loader?: LoaderFunction;
+  action?: ActionFunction;
+  errorElement?: React.ReactNode;
+  ErrorBoundary?: React.ComponentType;
+  children?: RouteObject[];
+  // ... and more
+}
+```
+
+## Options Parameter
+
+```tsx
+interface MemoryRouterOpts {
+  // Base path for all routes
+  basename?: string;
+  
+  // Context provider function for loaders/actions
+  getContext?: () => RouterContextProvider;
+  
+  // Future flags for opt-in features
+  future?: Partial<FutureConfig>;
+  
+  // Initial data from server-side rendering
+  hydrationData?: HydrationState;
+  
+  // Initial entries in the history stack
+  initialEntries?: InitialEntry[];
+  
+  // Index of initialEntries to start at (defaults to last entry)
+  initialIndex?: number;
+  
+  // Instrumentation for observability
+  unstable_instrumentations?: unstable_ClientInstrumentation[];
+  
+  // Custom data loading strategy
+  dataStrategy?: DataStrategyFunction;
+  
+  // Lazy route discovery
+  patchRoutesOnNavigation?: PatchRoutesOnNavigationFunction;
+}
+```
+
+### Initial Entries
+
+The `initialEntries` option allows you to specify the starting history stack:
+
+```tsx
+type InitialEntry = string | Partial<Location>;
+```
+
+Each entry can be:
+- A string path: `"/home"`, `"/products/123"`, `"/search?q=test"`
+- A partial Location object:
+  ```tsx
+  {
+    pathname: "/products",
+    search: "?category=electronics",
+    hash: "#reviews",
+    state: { from: "/home" }
+  }
+  ```
+
+## Return Type
+
+Returns an initialized `DataRouter` instance to be passed to `<RouterProvider>`.
+
+## Examples
+
+### Basic Usage
+
+```tsx
+import { createMemoryRouter, RouterProvider } from "react-router";
+
+const router = createMemoryRouter([
+  {
+    path: "/",
+    element: <Home />,
+  },
+  {
+    path: "/about",
+    element: <About />,
+  },
+]);
+
+function App() {
+  return <RouterProvider router={router} />;
+}
+```
+
+### With Initial Entries
+
+```tsx
+const router = createMemoryRouter(
+  [
+    {
+      path: "/",
+      element: <Home />,
+    },
+    {
+      path: "/products/:id",
+      element: <Product />,
+      loader: productLoader,
+    },
+  ],
+  {
+    initialEntries: ["/", "/products/123"],
+    initialIndex: 1, // Start at /products/123
+  }
+);
+```
+
+### Testing with History Stack
+
+```tsx
+import { createMemoryRouter } from "react-router";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+test("navigates between pages", async () => {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <div>
+            <h1>Home</h1>
+            <Link to="/about">About</Link>
+          </div>
+        ),
+      },
+      {
+        path: "/about",
+        element: <h1>About</h1>,
+      },
+    ],
+    {
+      initialEntries: ["/"],
+    }
+  );
+
+  render(<RouterProvider router={router} />);
+  
+  expect(screen.getByText("Home")).toBeInTheDocument();
+  
+  await userEvent.click(screen.getByText("About"));
+  
+  expect(screen.getByText("About")).toBeInTheDocument();
+});
+```
+
+### Testing Loaders
+
+```tsx
+import { createMemoryRouter } from "react-router";
+import { render, screen, waitFor } from "@testing-library/react";
+
+test("loads data", async () => {
+  const mockLoader = jest.fn(async () => {
+    return { user: { name: "John Doe" } };
+  });
+
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: <UserProfile />,
+        loader: mockLoader,
+      },
+    ],
+    {
+      initialEntries: ["/"],
+    }
+  );
+
+  render(<RouterProvider router={router} />);
+  
+  await waitFor(() => {
+    expect(screen.getByText("John Doe")).toBeInTheDocument();
+  });
+  
+  expect(mockLoader).toHaveBeenCalledTimes(1);
+});
+```
+
+### Testing Error Boundaries
+
+```tsx
+test("displays error boundary", async () => {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: <div>App</div>,
+        errorElement: <ErrorBoundary />,
+        loader: async () => {
+          throw new Error("Failed to load");
+        },
+      },
+    ],
+    {
+      initialEntries: ["/"],
+    }
+  );
+
+  render(<RouterProvider router={router} />);
+  
+  await waitFor(() => {
+    expect(screen.getByText(/Failed to load/)).toBeInTheDocument();
+  });
+});
+
+function ErrorBoundary() {
+  const error = useRouteError();
+  return <div>Error: {error.message}</div>;
+}
+```
+
+### Testing Actions
+
+```tsx
+import { createMemoryRouter } from "react-router";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+test("submits form", async () => {
+  const mockAction = jest.fn(async ({ request }) => {
+    const formData = await request.formData();
+    return { email: formData.get("email") };
+  });
+
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/contact",
+        element: <ContactForm />,
+        action: mockAction,
+      },
+    ],
+    {
+      initialEntries: ["/contact"],
+    }
+  );
+
+  render(<RouterProvider router={router} />);
+  
+  await userEvent.type(
+    screen.getByLabelText("Email"),
+    "test@example.com"
+  );
+  await userEvent.click(screen.getByText("Submit"));
+  
+  await waitFor(() => {
+    expect(mockAction).toHaveBeenCalled();
+  });
+});
+```
+
+### With Complex Initial State
+
+```tsx
+const router = createMemoryRouter(
+  [
+    {
+      path: "/",
+      element: <Home />,
+    },
+    {
+      path: "/products/:id",
+      element: <Product />,
+    },
+  ],
+  {
+    initialEntries: [
+      "/",
+      {
+        pathname: "/products/123",
+        search: "?variant=blue",
+        state: { from: "/home" },
+      },
+    ],
+    initialIndex: 1,
+  }
+);
+```
+
+### Integration Test Example
+
+```tsx
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+describe("App Navigation", () => {
+  it("navigates through the app flow", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <Layout />,
+          children: [
+            {
+              index: true,
+              element: <Home />,
+            },
+            {
+              path: "login",
+              element: <Login />,
+              action: loginAction,
+            },
+            {
+              path: "dashboard",
+              element: <Dashboard />,
+              loader: dashboardLoader,
+            },
+          ],
+        },
+      ],
+      {
+        initialEntries: ["/"],
+      }
+    );
+
+    render(<RouterProvider router={router} />);
+    
+    // Start at home
+    expect(screen.getByText("Welcome")).toBeInTheDocument();
+    
+    // Navigate to login
+    await userEvent.click(screen.getByText("Login"));
+    expect(screen.getByLabelText("Username")).toBeInTheDocument();
+    
+    // Submit login form
+    await userEvent.type(screen.getByLabelText("Username"), "john");
+    await userEvent.type(screen.getByLabelText("Password"), "secret");
+    await userEvent.click(screen.getByText("Submit"));
+    
+    // Should navigate to dashboard
+    await waitFor(() => {
+      expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    });
+  });
+});
+```
+
+### React Native Example
+
+```tsx
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { View, Text } from "react-native";
+
+const router = createMemoryRouter([
+  {
+    path: "/",
+    element: (
+      <View>
+        <Text>Home Screen</Text>
+      </View>
+    ),
+  },
+  {
+    path: "/profile/:id",
+    element: <ProfileScreen />,
+    loader: async ({ params }) => {
+      return await fetchProfile(params.id);
+    },
+  },
+]);
+
+export default function App() {
+  return <RouterProvider router={router} />;
+}
+```
+
+## Use Cases
+
+### When to Use createMemoryRouter
+
+Use `createMemoryRouter` when:
+
+- **Testing**: Unit or integration testing React Router applications
+- **React Native**: Building mobile apps with React Native
+- **Electron**: Desktop applications without browser history
+- **Node.js**: Server-side rendering or other Node environments
+- **Storybook**: Documenting components that use routing
+- **Isolated environments**: Any non-browser environment needing routing
+
+### Advantages
+
+- **No URL side effects**: Perfect for testing since it doesn't modify the browser URL
+- **Full control**: Complete control over the history stack via `initialEntries`
+- **Deterministic**: Predictable behavior for testing
+- **Platform agnostic**: Works in any JavaScript environment
+- **All data router features**: Full support for loaders, actions, and other data APIs
+
+### Testing Benefits
+
+1. **Isolation**: Tests don't interfere with each other via shared browser history
+2. **Speed**: No browser navigation overhead
+3. **Determinism**: Start each test with a known history state
+4. **Flexibility**: Test specific history scenarios easily
+
+## Differences from Other Routers
+
+| Feature | createMemoryRouter | createBrowserRouter | createHashRouter |
+|---------|-------------------|---------------------|------------------|
+| URL Updates | ✗ No | ✓ Yes | ✓ Yes (hash) |
+| Browser History | ✗ No | ✓ Yes | ✓ Yes |
+| Server Config | Not needed | Required | Not needed |
+| Testing | ✓ Perfect | ✗ Not ideal | ✗ Not ideal |
+| Production Use | ✗ Rare | ✓ Recommended | ✓ Fallback |
+| React Native | ✓ Yes | ✗ No | ✗ No |
+
+## Common Testing Patterns
+
+### Setup Helper
+
+```tsx
+function createTestRouter(routes: RouteObject[], options = {}) {
+  return createMemoryRouter(routes, {
+    initialEntries: ["/"],
+    ...options,
+  });
+}
+
+// Usage
+test("my test", () => {
+  const router = createTestRouter([
+    { path: "/", element: <Home /> },
+  ]);
+  
+  render(<RouterProvider router={router} />);
+  // ... assertions
+});
+```
+
+### Custom Render Helper
+
+```tsx
+function renderWithRouter(
+  ui: React.ReactElement,
+  {
+    routes = [],
+    initialEntries = ["/"],
+    ...options
+  } = {}
+) {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: ui,
+      },
+      ...routes,
+    ],
+    {
+      initialEntries,
+      ...options,
+    }
+  );
+  
+  return {
+    ...render(<RouterProvider router={router} />),
+    router,
+  };
+}
+
+// Usage
+test("renders component", () => {
+  const { getByText } = renderWithRouter(<MyComponent />, {
+    initialEntries: ["/test"],
+  });
+  
+  expect(getByText("Hello")).toBeInTheDocument();
+});
+```
+
+## Related
+
+- [`<RouterProvider>`](/api/components/router-provider) - Component to render the router
+- [`createBrowserRouter`](/api/routers/create-browser-router) - Browser history-based routing
+- [`createHashRouter`](/api/routers/create-hash-router) - Hash-based routing
+- [`<MemoryRouter>`](/api/components/memory-router) - Declarative version for simple use cases

@@ -1,0 +1,407 @@
+---
+title: Race Condition Handling
+description: How React Router prevents common race conditions
+---
+
+# Race Condition Handling
+
+Race conditions occur when the order of async operations affects correctness. React Router automatically prevents the most common UI race conditions.
+
+## What React Router Prevents
+
+React Router handles race conditions in:
+
+1. **Navigation**: Interrupted navigations are cancelled
+2. **Form submissions**: Interrupted submissions are cancelled  
+3. **Revalidation**: Stale revalidations are discarded
+4. **Fetcher requests**: Self-interrupting requests are cancelled
+
+## Browser-Inspired Behavior
+
+React Router mirrors browser behavior:
+
+### Link Navigation
+
+**Browser**: Click Link A, then Link B before A loads → A is cancelled, B proceeds
+
+**React Router**: Same behavior with client-side routing
+
+```tsx
+// User clicks "Products"
+<Link to="/products">Products</Link>
+// → Starts loading /products loaders
+
+// User quickly clicks "About" (before Products loads)
+<Link to="/about">About</Link>
+// → Cancels /products loaders
+// → Starts loading /about loaders
+```
+
+### Form Submission
+
+**Browser**: Submit Form A, then Form B before A completes → A is cancelled, B proceeds
+
+**React Router**: Same behavior with Form components
+
+```tsx
+// User submits Form 1
+<Form method="post" action="/create">
+  {/* ... */}
+</Form>
+
+// User quickly submits Form 2  
+<Form method="post" action="/update">
+  {/* ... */}
+</Form>
+// → Form 1 action cancelled
+// → Form 2 action proceeds
+```
+
+## Navigation Race Conditions
+
+### Problem: Stale Navigation
+
+Without cancellation, slow requests could overwrite newer navigations:
+
+```tsx
+// Without cancellation (bad):
+// 1. User clicks /slow-page (takes 5s)
+// 2. User clicks /fast-page (takes 1s) 
+// 3. /fast-page loads ✓
+// 4. /slow-page finishes and overwrites! ❌
+```
+
+### Solution: Automatic Cancellation
+
+React Router cancels in-flight requests:
+
+```tsx
+// With React Router (good):
+// 1. User clicks /slow-page (starts loading)
+// 2. User clicks /fast-page
+// 3. /slow-page request cancelled ✓
+// 4. /fast-page loads ✓
+```
+
+## Revalidation Race Conditions
+
+### Problem: Out-of-Order Revalidation
+
+Multiple actions can trigger overlapping revalidations:
+
+```tsx
+// Action 1 completes → revalidation starts (slow)
+// Action 2 completes → revalidation starts (fast)
+// Action 2 revalidation finishes ✓
+// Action 1 revalidation finishes ❌ overwrites with stale data!
+```
+
+### Solution: Discard Stale Revalidation
+
+React Router tracks request timing:
+
+```text
+action 1: |----✓---------❌
+action 2:    |-----✓-----✅
+action 3:             |-----✓-----✅
+```
+
+When action 2's revalidation completes before action 1's, action 1's data is discarded.
+
+## Fetcher Race Conditions
+
+### Self-Interrupting Fetchers
+
+Fetchers cancel their own previous requests:
+
+```tsx
+const fetcher = useFetcher();
+
+// Request 1
+fetcher.submit({ q: "a" });
+
+// Request 2 (before 1 completes)
+fetcher.submit({ q: "ab" });
+// → Request 1 cancelled
+// → Request 2 proceeds
+```
+
+### Independent Fetchers
+
+Different fetcher instances don't cancel each other:
+
+```tsx
+const fetcher1 = useFetcher();
+const fetcher2 = useFetcher();
+
+// Both run concurrently
+fetcher1.submit(data1);
+fetcher2.submit(data2);
+```
+
+## Type-Ahead Search Example
+
+Common race condition scenario:
+
+```tsx
+// Problem without cancellation:
+// User types "react"
+// Requests: r, re, rea, reac, react
+// If "rea" is slow, results might show:
+//   "react" → "rea" (wrong!)
+```
+
+### Solution
+
+React Router automatically cancels:
+
+```tsx
+export function SearchBox() {
+  const fetcher = useFetcher();
+  
+  return (
+    <fetcher.Form action="/search">
+      <input
+        name="q"
+        onChange={(e) => {
+          // Each keystroke cancels previous request
+          fetcher.submit(e.target.form);
+        }}
+      />
+      
+      {/* Always shows latest query results */}
+      {fetcher.data?.map((result) => (
+        <div key={result.id}>{result.title}</div>
+      ))}
+    </fetcher.Form>
+  );
+}
+```
+
+## Optimistic UI Race Conditions
+
+### Problem: Failed Optimistic Updates
+
+```tsx
+// Optimistic: count = 5 + 1 = 6
+// Server fails, but UI shows 6 ❌
+```
+
+### Solution: Revert on Error
+
+```tsx
+export function Counter({ id, initialCount }) {
+  const fetcher = useFetcher();
+  
+  // Optimistic value
+  const count = fetcher.formData
+    ? initialCount + 1
+    : fetcher.data?.count ?? initialCount;
+  
+  // Revert on error
+  useEffect(() => {
+    if (fetcher.data?.error) {
+      // Show error, count reverts to initialCount
+      toast.error("Failed to increment");
+    }
+  }, [fetcher.data]);
+  
+  return (
+    <fetcher.Form method="post" action="/increment">
+      <input type="hidden" name="id" value={id} />
+      <button type="submit">Count: {count}</button>
+    </fetcher.Form>
+  );
+}
+```
+
+## Server Race Conditions
+
+React Router only prevents *client* race conditions. Server race conditions require server-side solutions.
+
+### Problem: Backend Race Condition
+
+```tsx
+// Two requests race to update the same record:
+// Request 1: UPDATE SET value = 'A'
+// Request 2: UPDATE SET value = 'B'
+// Final value depends on server processing order
+```
+
+### Solutions
+
+**Optimistic Locking**:
+
+```tsx
+export async function action({ request }) {
+  const formData = await request.formData();
+  const version = formData.get("version");
+  
+  const result = await db.update({
+    where: { id, version }, // Only update if version matches
+    data: { value: formData.get("value"), version: version + 1 },
+  });
+  
+  if (!result) {
+    throw new Error("Record was modified by another request");
+  }
+  
+  return result;
+}
+```
+
+**Timestamps**:
+
+```tsx
+export async function action({ request }) {
+  const formData = await request.formData();
+  const timestamp = formData.get("timestamp");
+  
+  // Ignore stale submissions
+  const latest = await db.getLatestTimestamp();
+  if (timestamp < latest) {
+    return { ignored: true };
+  }
+  
+  return db.update({
+    timestamp: Date.now(),
+    value: formData.get("value"),
+  });
+}
+```
+
+**Request Tokens**:
+
+```tsx
+export async function action({ request }) {
+  const formData = await request.formData();
+  const token = formData.get("token");
+  
+  // Deduplicate requests
+  if (await cache.has(token)) {
+    return cache.get(token);
+  }
+  
+  const result = await processRequest(formData);
+  await cache.set(token, result, { ttl: 60 });
+  
+  return result;
+}
+```
+
+## Request Abortion
+
+Detect when requests are cancelled:
+
+```tsx
+export async function loader({ request }) {
+  const data = await fetch("/api/data", {
+    signal: request.signal, // Pass abort signal
+  });
+  
+  // This won't run if request was cancelled
+  return data.json();
+}
+```
+
+Manual abortion check:
+
+```tsx
+export async function loader({ request }) {
+  const step1 = await doWork1();
+  
+  // Check if cancelled
+  if (request.signal.aborted) {
+    return null; // Exit early
+  }
+  
+  const step2 = await doWork2();
+  return { step1, step2 };
+}
+```
+
+## Polling Race Conditions
+
+### Problem: Overlapping Polls
+
+```tsx
+// Poll every 5s
+// If request takes 6s, polls pile up!
+setInterval(() => fetchData(), 5000);
+```
+
+### Solution: Wait for Completion
+
+```tsx
+export function LiveData() {
+  const fetcher = useFetcher();
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Only poll if previous request finished
+      if (fetcher.state === "idle") {
+        fetcher.load("/api/live");
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [fetcher]);
+  
+  return <div>{fetcher.data?.value}</div>;
+}
+```
+
+## Testing Race Conditions
+
+Simulate race conditions in tests:
+
+```tsx
+import { test, expect } from "@playwright/test";
+
+test("handles rapid navigation", async ({ page }) => {
+  await page.goto("/");
+  
+  // Click links rapidly
+  await page.click('a[href="/page1"]');
+  await page.click('a[href="/page2"]');
+  await page.click('a[href="/page3"]');
+  
+  // Should end up on page3
+  await expect(page).toHaveURL("/page3");
+});
+
+test("handles rapid form submissions", async ({ page }) => {
+  await page.goto("/");
+  
+  // Submit forms rapidly
+  await page.fill('input[name="q"]', "a");
+  await page.press('input[name="q"]', "Enter");
+  
+  await page.fill('input[name="q"]', "ab");
+  await page.press('input[name="q"]', "Enter");
+  
+  // Should show results for "ab"
+  await expect(page.locator("[data-query]")).toHaveText("ab");
+});
+```
+
+## Best Practices
+
+1. **Trust automatic cancellation**: React Router handles it
+2. **Handle server race conditions**: Use locks, timestamps, or tokens
+3. **Revert optimistic failures**: Show error and original state
+4. **Pass abort signals**: To fetch() for proper cleanup
+5. **Test rapid interactions**: Simulate race conditions
+
+## What React Router Doesn't Prevent
+
+❌ Server-side race conditions  
+❌ Race conditions between different apps  
+❌ WebSocket message ordering  
+❌ Browser storage conflicts  
+
+## Related
+
+- [Concurrency](./concurrency)
+- [Data Strategy](./data-strategy)
+- [Network Management](../explanation/concurrency)

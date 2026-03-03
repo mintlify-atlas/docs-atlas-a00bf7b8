@@ -1,0 +1,382 @@
+---
+title: 'resolvePath'
+description: 'Resolve relative paths to absolute paths'
+---
+
+## Summary
+
+Returns a resolved [`Path`](https://api.reactrouter.com/v7/interfaces/react-router.Path.html) object relative to the given pathname. Handles relative navigation like `..` and `.` similar to how file system paths work.
+
+Useful for programmatically resolving paths before navigation or for building URLs.
+
+## Signature
+
+```typescript
+function resolvePath(
+  to: To,
+  fromPathname?: string
+): Path
+```
+
+## Parameters
+
+<ParamField path="to" type="To" required>
+  The path to resolve. Can be:
+  - A string path (e.g., `"../users"`, `"/dashboard"`)
+  - A partial `Path` object with `pathname`, `search`, and `hash`
+  
+  Supports relative paths with `..` (parent) and `.` (current).
+</ParamField>
+
+<ParamField path="fromPathname" type="string" default="/">
+  The pathname to resolve from. Acts as the "current location" for relative path resolution.
+</ParamField>
+
+## Path Object
+
+```typescript
+interface Path {
+  pathname: string;  // URL pathname
+  search: string;    // Query string (with leading "?")
+  hash: string;      // Hash fragment (with leading "#")
+}
+```
+
+## Returns
+
+<ResponseField name="path" type="Path">
+  A `Path` object with resolved `pathname`, `search`, and `hash` properties.
+</ResponseField>
+
+## Examples
+
+### Absolute paths
+
+```tsx
+import { resolvePath } from "react-router";
+
+resolvePath("/users", "/dashboard");
+// { pathname: "/users", search: "", hash: "" }
+
+// Absolute paths ignore fromPathname
+resolvePath("/about", "/any/current/path");
+// { pathname: "/about", search: "", hash: "" }
+```
+
+### Relative paths
+
+```tsx
+import { resolvePath } from "react-router";
+
+// Relative to current directory
+resolvePath("posts", "/users");
+// { pathname: "/users/posts", search: "", hash: "" }
+
+// Current directory
+resolvePath(".", "/users/123");
+// { pathname: "/users/123", search: "", hash: "" }
+```
+
+### Parent directory navigation
+
+```tsx
+import { resolvePath } from "react-router";
+
+// Go up one level
+resolvePath("..", "/users/123");
+// { pathname: "/users", search: "", hash: "" }
+
+// Go up two levels
+resolvePath("../..", "/users/123/posts");
+// { pathname: "/users", search: "", hash: "" }
+
+// Go up and into sibling
+resolvePath("../settings", "/users/123");
+// { pathname: "/users/settings", search: "", hash: "" }
+```
+
+### With search and hash
+
+```tsx
+import { resolvePath } from "react-router";
+
+resolvePath("/search?q=react#results", "/");
+// {
+//   pathname: "/search",
+//   search: "?q=react",
+//   hash: "#results"
+// }
+
+// Using Path object
+resolvePath(
+  {
+    pathname: "../users",
+    search: "?page=2",
+    hash: "#top",
+  },
+  "/dashboard/settings"
+);
+// {
+//   pathname: "/dashboard/users",
+//   search: "?page=2",
+//   hash: "#top"
+// }
+```
+
+### Complex relative paths
+
+```tsx
+import { resolvePath } from "react-router";
+
+// Multiple parent navigations
+resolvePath("../../posts/new", "/users/123/settings");
+// { pathname: "/users/posts/new", search: "", hash: "" }
+
+// Mixed absolute and relative
+resolvePath("/users/../posts", "/dashboard");
+// { pathname: "/posts", search: "", hash: "" }
+```
+
+## Common Use Cases
+
+### Building navigation URLs
+
+```tsx
+import { resolvePath, useLocation } from "react-router";
+
+function BackButton() {
+  const location = useLocation();
+  const backPath = resolvePath("..", location.pathname);
+  
+  return (
+    <Link to={backPath.pathname}>
+      Back
+    </Link>
+  );
+}
+```
+
+### Resolving links before navigation
+
+```tsx
+import { resolvePath, useNavigate, useLocation } from "react-router";
+
+function useRelativeNavigate() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  return (to: string) => {
+    const resolved = resolvePath(to, location.pathname);
+    navigate(resolved.pathname + resolved.search + resolved.hash);
+  };
+}
+```
+
+### Generating canonical URLs
+
+```tsx
+import { resolvePath } from "react-router";
+
+function getCanonicalUrl(relativePath: string, currentPath: string): string {
+  const resolved = resolvePath(relativePath, currentPath);
+  return `https://example.com${resolved.pathname}${resolved.search}${resolved.hash}`;
+}
+
+const url = getCanonicalUrl("../about", "/products/shoes");
+// "https://example.com/products/about"
+```
+
+### Breadcrumb navigation
+
+```tsx
+import { resolvePath } from "react-router";
+
+function getBreadcrumbPaths(pathname: string) {
+  const segments = pathname.split("/").filter(Boolean);
+  const breadcrumbs = [];
+  
+  for (let i = 0; i < segments.length; i++) {
+    const path = "/" + segments.slice(0, i + 1).join("/");
+    breadcrumbs.push({
+      label: segments[i],
+      path: resolvePath(path, "/").pathname,
+    });
+  }
+  
+  return breadcrumbs;
+}
+
+getBreadcrumbPaths("/users/123/posts");
+// [
+//   { label: "users", path: "/users" },
+//   { label: "123", path: "/users/123" },
+//   { label: "posts", path: "/users/123/posts" }
+// ]
+```
+
+### Validating relative paths
+
+```tsx
+import { resolvePath } from "react-router";
+
+function isValidRelativePath(
+  to: string,
+  from: string,
+  allowedBase: string
+): boolean {
+  const resolved = resolvePath(to, from);
+  return resolved.pathname.startsWith(allowedBase);
+}
+
+// Ensure navigation stays within /app
+isValidRelativePath("../settings", "/app/dashboard", "/app"); // true
+isValidRelativePath("../../admin", "/app/dashboard", "/app"); // false
+```
+
+## Path Resolution Rules
+
+### Absolute paths
+
+Paths starting with `/` are absolute and ignore `fromPathname`:
+
+```tsx
+resolvePath("/users", "/dashboard");
+// Always resolves to "/users"
+```
+
+### Relative paths
+
+Paths without leading `/` are relative to `fromPathname`:
+
+```tsx
+resolvePath("settings", "/users/123");
+// Resolves to "/users/123/settings"
+```
+
+### Parent directory (..)
+
+Each `..` goes up one directory level:
+
+```tsx
+resolvePath("..", "/users/123/posts");
+// Resolves to "/users/123"
+
+resolvePath("../..", "/users/123/posts");
+// Resolves to "/users"
+
+resolvePath("../../..", "/users/123/posts");
+// Resolves to "/" (root, can't go higher)
+```
+
+### Current directory (.)
+
+Stays at the current level:
+
+```tsx
+resolvePath(".", "/users/123");
+// Resolves to "/users/123"
+
+resolvePath("./posts", "/users/123");
+// Resolves to "/users/123/posts" (same as "posts")
+```
+
+### Empty paths
+
+```tsx
+resolvePath("", "/users/123");
+// Resolves to "/users/123"
+```
+
+## Search and Hash Handling
+
+### Search params are preserved
+
+```tsx
+resolvePath("?page=2", "/users");
+// { pathname: "/users", search: "?page=2", hash: "" }
+```
+
+### Hash fragments are preserved
+
+```tsx
+resolvePath("#section", "/users");
+// { pathname: "/users", search: "", hash: "#section" }
+```
+
+### Combined
+
+```tsx
+resolvePath("../posts?sort=date#top", "/users/123");
+// {
+//   pathname: "/users/posts",
+//   search: "?sort=date",
+//   hash: "#top"
+// }
+```
+
+## Edge Cases
+
+### Too many parent references
+
+```tsx
+resolvePath("../../../../..", "/users/123");
+// Resolves to "/" (stops at root)
+```
+
+### Trailing slashes
+
+```tsx
+resolvePath("users/", "/");
+// { pathname: "/users/", search: "", hash: "" }
+// Trailing slash is preserved
+```
+
+### Empty pathname
+
+```tsx
+resolvePath({ search: "?q=test" }, "/users");
+// { pathname: "/users", search: "?q=test", hash: "" }
+```
+
+## Type Safety
+
+TypeScript ensures proper types:
+
+```typescript
+import { resolvePath, Path } from "react-router";
+
+const path: Path = resolvePath("/users", "/");
+const pathname: string = path.pathname; // ✓
+const search: string = path.search;     // ✓
+const hash: string = path.hash;         // ✓
+```
+
+## Performance
+
+Path resolution is a synchronous, fast operation suitable for use in render functions:
+
+```tsx
+function MyComponent() {
+  const location = useLocation();
+  
+  // Fine to call in render
+  const backPath = resolvePath("..", location.pathname);
+  
+  return <Link to={backPath.pathname}>Back</Link>;
+}
+```
+
+## Related Functions
+
+- [`generatePath`](/api/utils/generate-path) - Generate paths with parameters
+- [`matchPath`](/api/utils/match-path) - Match paths against patterns
+- [`useResolvedPath`](/api/hooks/use-resolved-path) - Hook version with route context
+
+## Notes
+
+- Always returns a complete `Path` object with all three properties
+- Search params should include the leading `?`
+- Hash fragments should include the leading `#`
+- Root path is `/` and cannot be navigated above
+- Relative paths are resolved similar to file system paths
+- Empty `pathname` in `to` object uses `fromPathname`

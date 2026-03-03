@@ -1,0 +1,405 @@
+---
+title: createSessionStorage
+description: Create custom session storage with your own backend
+---
+
+# createSessionStorage
+
+Creates a SessionStorage object using a custom storage strategy. This is a low-level API for building session storage with your own backend (database, Redis, etc.).
+
+## Signature
+
+```tsx
+function createSessionStorage<Data = SessionData, FlashData = Data>(
+  strategy: SessionIdStorageStrategy<Data, FlashData>
+): SessionStorage<Data, FlashData>
+```
+
+<ParamField path="strategy" type="SessionIdStorageStrategy" required>
+  A storage strategy object that defines how session data is stored and retrieved.
+  
+  <ParamField path="cookie" type="Cookie | CookieOptions">
+    The cookie used to store the session ID, or options to create one automatically. Defaults to a cookie named `"__session"`.
+  </ParamField>
+  
+  <ParamField path="createData" type="function" required>
+    Creates a new session record and returns the session ID.
+    
+    ```tsx
+    createData(
+      data: SessionData,
+      expires?: Date
+    ): Promise<string>
+    ```
+  </ParamField>
+  
+  <ParamField path="readData" type="function" required>
+    Reads session data for the given session ID. Returns `null` if not found.
+    
+    ```tsx
+    readData(id: string): Promise<SessionData | null>
+    ```
+  </ParamField>
+  
+  <ParamField path="updateData" type="function" required>
+    Updates session data for the given session ID.
+    
+    ```tsx
+    updateData(
+      id: string,
+      data: SessionData,
+      expires?: Date
+    ): Promise<void>
+    ```
+  </ParamField>
+  
+  <ParamField path="deleteData" type="function" required>
+    Deletes session data for the given session ID.
+    
+    ```tsx
+    deleteData(id: string): Promise<void>
+    ```
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="SessionStorage" type="object">
+  A session storage object with methods to manage sessions.
+  
+  <ResponseField name="getSession" type="function">
+    Parses the session ID from the Cookie header and loads the session data.
+    
+    ```tsx
+    getSession(
+      cookieHeader?: string | null,
+      options?: ParseOptions
+    ): Promise<Session>
+    ```
+  </ResponseField>
+  
+  <ResponseField name="commitSession" type="function">
+    Saves session data and returns the Set-Cookie header.
+    
+    ```tsx
+    commitSession(
+      session: Session,
+      options?: SerializeOptions
+    ): Promise<string>
+    ```
+  </ResponseField>
+  
+  <ResponseField name="destroySession" type="function">
+    Deletes session data and returns a Set-Cookie header that clears the cookie.
+    
+    ```tsx
+    destroySession(
+      session: Session,
+      options?: SerializeOptions
+    ): Promise<string>
+    ```
+  </ResponseField>
+</ResponseField>
+
+## Database Session Storage Example
+
+Create session storage backed by a PostgreSQL database:
+
+```tsx filename=app/sessions.server.ts
+import { createSessionStorage } from "react-router";
+import { db } from "./db.server";
+
+type SessionData = {
+  userId: string;
+};
+
+export const sessionStorage = createSessionStorage<SessionData>({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+    sameSite: "lax",
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  },
+  
+  async createData(data, expires) {
+    // Generate a unique session ID
+    const id = crypto.randomUUID();
+    
+    // Store in database
+    await db.session.create({
+      data: {
+        id,
+        data: JSON.stringify(data),
+        expiresAt: expires,
+      },
+    });
+    
+    return id;
+  },
+  
+  async readData(id) {
+    // Fetch from database
+    const session = await db.session.findUnique({
+      where: { id },
+    });
+    
+    if (!session) return null;
+    
+    // Check expiration
+    if (session.expiresAt && session.expiresAt < new Date()) {
+      // Clean up expired session
+      await db.session.delete({ where: { id } });
+      return null;
+    }
+    
+    return JSON.parse(session.data);
+  },
+  
+  async updateData(id, data, expires) {
+    await db.session.update({
+      where: { id },
+      data: {
+        data: JSON.stringify(data),
+        expiresAt: expires,
+      },
+    });
+  },
+  
+  async deleteData(id) {
+    await db.session.delete({ where: { id } });
+  },
+});
+```
+
+## Redis Session Storage Example
+
+```tsx filename=app/sessions.server.ts
+import { createSessionStorage } from "react-router";
+import { redis } from "./redis.server";
+
+export const sessionStorage = createSessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET],
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  },
+  
+  async createData(data, expires) {
+    const id = crypto.randomUUID();
+    const ttl = expires 
+      ? Math.floor((expires.getTime() - Date.now()) / 1000)
+      : 60 * 60 * 24 * 7; // 7 days default
+    
+    await redis.setex(
+      `session:${id}`,
+      ttl,
+      JSON.stringify(data)
+    );
+    
+    return id;
+  },
+  
+  async readData(id) {
+    const data = await redis.get(`session:${id}`);
+    return data ? JSON.parse(data) : null;
+  },
+  
+  async updateData(id, data, expires) {
+    const ttl = expires
+      ? Math.floor((expires.getTime() - Date.now()) / 1000)
+      : 60 * 60 * 24 * 7;
+    
+    await redis.setex(
+      `session:${id}`,
+      ttl,
+      JSON.stringify(data)
+    );
+  },
+  
+  async deleteData(id) {
+    await redis.del(`session:${id}`);
+  },
+});
+```
+
+## Using Session Storage
+
+Once created, use the session storage in your routes:
+
+```tsx filename=app/routes/login.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/login";
+import { sessionStorage } from "~/sessions.server";
+
+export async function action({ request }: Route.ActionArgs) {
+  const formData = await request.formData();
+  const userId = await authenticateUser(formData);
+  
+  // Get or create session
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  // Set session data
+  session.set("userId", userId);
+  
+  // Commit session and redirect
+  return redirect("/dashboard", {
+    headers: {
+      "Set-Cookie": await sessionStorage.commitSession(session),
+    },
+  });
+}
+```
+
+## Reading Session Data
+
+```tsx filename=app/routes/dashboard.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/dashboard";
+import { sessionStorage } from "~/sessions.server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  const userId = session.get("userId");
+  
+  if (!userId) {
+    return redirect("/login");
+  }
+  
+  const user = await db.user.findUnique({ where: { id: userId } });
+  return { user };
+}
+```
+
+## Destroying Sessions
+
+```tsx filename=app/routes/logout.tsx
+import { redirect } from "react-router";
+import type { Route } from "./+types/logout";
+import { sessionStorage } from "~/sessions.server";
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  
+  return redirect("/", {
+    headers: {
+      "Set-Cookie": await sessionStorage.destroySession(session),
+    },
+  });
+}
+```
+
+## TypeScript Support
+
+Define session data types for full type safety:
+
+```tsx
+type SessionData = {
+  userId: string;
+  role: "admin" | "user";
+};
+
+type FlashData = {
+  error: string;
+  success: string;
+};
+
+const sessionStorage = createSessionStorage<SessionData, FlashData>({
+  cookie: { name: "__session", secrets: ["secret"] },
+  async createData(data, expires) {
+    // data is typed as SessionData
+    return crypto.randomUUID();
+  },
+  // ... other methods
+});
+
+// In your route
+const session = await sessionStorage.getSession();
+const userId = session.get("userId"); // string
+const role = session.get("role");     // "admin" | "user"
+```
+
+## Security Considerations
+
+### Always Sign Session Cookies
+
+Use secrets to prevent session hijacking:
+
+```tsx
+const sessionStorage = createSessionStorage({
+  cookie: {
+    name: "__session",
+    secrets: [process.env.SESSION_SECRET], // Required!
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+  },
+  // ... storage strategy
+});
+```
+
+### Implement Session Expiration
+
+Always set and check expiration dates:
+
+```tsx
+async readData(id) {
+  const session = await db.session.findUnique({ where: { id } });
+  
+  // Always check expiration
+  if (session?.expiresAt && session.expiresAt < new Date()) {
+    await this.deleteData(id);
+    return null;
+  }
+  
+  return session?.data || null;
+}
+```
+
+### Generate Secure Session IDs
+
+Use cryptographically secure random IDs:
+
+```tsx
+// Good - cryptographically secure
+async createData(data) {
+  const id = crypto.randomUUID();
+  // ... store data
+  return id;
+}
+
+// Bad - predictable IDs are a security risk
+async createData(data) {
+  const id = Math.random().toString(36); // Don't do this!
+  return id;
+}
+```
+
+### Clean Up Expired Sessions
+
+Implement periodic cleanup to prevent storage bloat:
+
+```tsx
+// Add a background job to clean expired sessions
+setInterval(async () => {
+  await db.session.deleteMany({
+    where: {
+      expiresAt: { lt: new Date() },
+    },
+  });
+}, 60 * 60 * 1000); // Every hour
+```
+
+## Related
+
+- [createCookieSessionStorage](/api/server/create-cookie-session-storage) - Store sessions in cookies
+- [createMemorySessionStorage](/api/server/create-memory-session-storage) - In-memory sessions for testing
+- [Sessions and Cookies](/concepts/sessions) - Sessions guide
